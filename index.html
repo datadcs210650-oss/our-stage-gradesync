@@ -608,6 +608,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 // Gia hạn grader_sessions sau reload; nếu Rules cũ chưa hỗ trợ thì không làm kẹt login.
                 try{await window.syncGraderSession(true,'restore');}catch(e){console.warn('RESTORE GRADER SESSION:',e);}
                 window._lastInitAuthUid=user.uid;
+                window._seedAssignedGroupPlaceholders?.();
                 window.initApp();
                 return true;
             }catch(e){
@@ -728,6 +729,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 const sessionOK=await window.syncGraderSession(true,'login');
                 if(!sessionOK) throw new Error('GRADER_SESSION_FAILED');
                 window._lastInitAuthUid=cred.user.uid;
+                window._seedAssignedGroupPlaceholders?.();
                 window.initApp();
                 window.showToast('Đăng nhập giám khảo thành công!');
             }catch(ex){
@@ -1578,28 +1580,46 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             return g.isManuallyOpened===true;
         };
 
+        window._seedAssignedGroupPlaceholders = function(){
+            if(window.currentUserData?.role!=='Grader') return [];
+            const assigned=Array.isArray(window.currentUserData?.assignedGroups)?window.currentUserData.assignedGroups:[];
+            window._groupMapCache=window._groupMapCache||{};
+            window._allowedGroupIdsCache=[...assigned];
+            assigned.forEach(id=>{
+                if(!window._groupMapCache[id]){
+                    const cachedName=(window.currentUserData?.assignedGroupNames||{})[id] ||
+                        (Array.isArray(window.currentUserData?.assignedGroupMeta)?window.currentUserData.assignedGroupMeta.find(x=>x?.id===id)?.name:null) ||
+                        id;
+                    window._groupMapCache[id]={id,name:cachedName,__instantPlaceholder:true};
+                }
+            });
+            if(assigned.length && (!window._selectedGradingGroupId || !assigned.includes(window._selectedGradingGroupId))){
+                window._selectedGradingGroupId=assigned[0];
+            }
+            return assigned;
+        };
+
         window.refreshGraderGroupSelector=function(){
             if(window.currentUserData?.role!=='Grader') return;
             const sel=document.getElementById('grading-group-select'); if(!sel) return;
-            const assigned=window._graderRealtime?.assigned||window.currentUserData?.assignedGroups||[];
-            const ids=assigned.filter(id=>window._groupMapCache?.[id]);
+            const assigned=window._seedAssignedGroupPlaceholders();
             const previous=window._selectedGradingGroupId;
-            if(!ids.length){
-                sel.innerHTML=`<option value="">-- ${assigned.length?'Đang đồng bộ nhóm đã phân quyền...':'Chưa được phân quyền'} --</option>`;
+            if(!assigned.length){
+                sel.innerHTML='<option value="">-- Chưa được phân quyền nhóm --</option>';
                 sel.disabled=true;
                 window._selectedGradingGroupId=null;
                 const c=document.getElementById('grading-tables-container');
-                if(c) c.innerHTML=assigned.length
-                    ? '<div class="bg-white p-10 rounded-2xl border border-blue-100 text-center"><i class="fas fa-sync fa-spin text-3xl text-blue-500 mb-3"></i><h3 class="font-black text-gray-800">Đang đồng bộ nhóm đã phân quyền</h3></div>'
-                    : '<div class="bg-white p-10 rounded-2xl border border-gray-100 text-center"><i class="fas fa-lock text-3xl text-gray-400 mb-3"></i><h3 class="font-black text-gray-800">Chưa được phân quyền nhóm</h3></div>';
+                if(c) c.innerHTML='<div class="bg-white p-10 rounded-2xl border border-gray-100 text-center"><i class="fas fa-lock text-3xl text-gray-400 mb-3"></i><h3 class="font-black text-gray-800">Chưa được phân quyền nhóm</h3><p class="text-xs text-gray-500 mt-2">Khi Admin cấp nhóm, danh sách nhóm sẽ xuất hiện ngay.</p></div>';
                 return;
             }
             sel.disabled=false;
-            sel.innerHTML=ids.map(id=>{
-                const g=window._groupMapCache[id]; const open=window._isGroupGateOpenLocal(g);
-                return `<option value="${id}">${window.escapeHtml(g?.name||id)}${open?' — ĐANG MỞ':' — CHƯA MỞ'}</option>`;
+            sel.innerHTML=assigned.map(id=>{
+                const g=window._groupMapCache?.[id];
+                const name=g?.name||id;
+                const suffix=(g && !g.__instantPlaceholder) ? (window._isGroupGateOpenLocal(g)?' — ĐANG MỞ':' — CHƯA MỞ') : '';
+                return `<option value="${id}">${window.escapeHtml(name)}${suffix}</option>`;
             }).join('');
-            window._selectedGradingGroupId=ids.includes(previous)?previous:ids[0];
+            window._selectedGradingGroupId=assigned.includes(previous)?previous:assigned[0];
             sel.value=window._selectedGradingGroupId;
         };
 
@@ -1792,7 +1812,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         };
 
         window.renderGradingShell=function(container,isAdmin,groupOptions=''){
-            container.innerHTML = `<div class="bg-white p-4 rounded-t-2xl shadow-sm border border-gray-100 border-b-0 flex flex-col md:flex-row items-center gap-3 z-[40] animate-fade-up"><div class="flex items-center gap-2 w-full md:w-auto shrink-0"><div class="bg-red-50 w-8 h-8 rounded-full flex items-center justify-center text-red-800"><i class="fas fa-layer-group text-[10px]"></i></div><select id="grading-group-select" onchange="window.changeGradingGroup()" class="w-full md:w-56 border-none py-1.5 rounded-lg text-xs font-bold text-red-800 outline-none cursor-pointer hover:bg-red-50 transition">${groupOptions||'<option value="">-- Đang đồng bộ nhóm --</option>'}</select></div>${isAdmin?`<div class="hidden md:block w-px h-5 bg-gray-200"></div><div class="flex items-center gap-2 w-full md:w-auto shrink-0"><div class="bg-blue-50 w-8 h-8 rounded-full flex items-center justify-center text-blue-600"><i class="fas fa-eye text-[10px]"></i></div><select id="grading-grader-select" onchange="window.renderGradingTables()" class="w-full md:w-48 border-none py-1.5 rounded-lg text-xs font-bold text-blue-700 outline-none cursor-pointer hover:bg-blue-50 transition"></select></div>`:''}<div class="flex-1 relative w-full ml-auto md:max-w-xs"><i class="fas fa-search absolute left-3 top-2.5 text-gray-400 text-[11px]"></i><input type="text" id="filter-search" oninput="window.renderGradingTables()" placeholder="Tìm thí sinh nhanh..." class="w-full border border-gray-200 pl-8 pr-3 py-2 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 transition bg-gray-50"></div></div><div class="gs-content-tabs animate-fade-up" id="grader-content-tabs"><button class="gs-content-tab active" data-section="scores" onclick="window.showGraderSection('scores')"><i class="fas fa-table mr-1"></i> 1. Tiêu chí chấm điểm</button><button class="gs-content-tab" data-section="scoring" onclick="window.showGraderSection('scoring')"><i class="fas fa-book-open mr-1"></i> Nội dung tiêu chí chấm</button><button class="gs-content-tab" data-section="interview" onclick="window.showGraderSection('interview')"><i class="fas fa-file-alt mr-1"></i> Câu hỏi phỏng vấn</button></div><div id="grader-section-panel" style="display:none" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar"></div><div id="grading-score-panel" class="flex-1 flex flex-col min-h-0 animate-fade-up"><div id="grading-tables-container" class="flex-1 flex flex-col min-h-0"></div></div>`;
+            container.innerHTML = `<div class="bg-white p-4 rounded-t-2xl shadow-sm border border-gray-100 border-b-0 flex flex-col md:flex-row items-center gap-3 z-[40] animate-fade-up"><div class="flex items-center gap-2 w-full md:w-auto shrink-0"><div class="bg-red-50 w-8 h-8 rounded-full flex items-center justify-center text-red-800"><i class="fas fa-layer-group text-[10px]"></i></div><select id="grading-group-select" onchange="window.changeGradingGroup()" class="w-full md:w-56 border-none py-1.5 rounded-lg text-xs font-bold text-red-800 outline-none cursor-pointer hover:bg-red-50 transition">${groupOptions||'<option value="">-- Chọn nhóm --</option>'}</select></div>${isAdmin?`<div class="hidden md:block w-px h-5 bg-gray-200"></div><div class="flex items-center gap-2 w-full md:w-auto shrink-0"><div class="bg-blue-50 w-8 h-8 rounded-full flex items-center justify-center text-blue-600"><i class="fas fa-eye text-[10px]"></i></div><select id="grading-grader-select" onchange="window.renderGradingTables()" class="w-full md:w-48 border-none py-1.5 rounded-lg text-xs font-bold text-blue-700 outline-none cursor-pointer hover:bg-blue-50 transition"></select></div>`:''}<div class="flex-1 relative w-full ml-auto md:max-w-xs"><i class="fas fa-search absolute left-3 top-2.5 text-gray-400 text-[11px]"></i><input type="text" id="filter-search" oninput="window.renderGradingTables()" placeholder="Tìm thí sinh nhanh..." class="w-full border border-gray-200 pl-8 pr-3 py-2 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-red-100 focus:border-red-500 transition bg-gray-50"></div></div><div class="gs-content-tabs animate-fade-up" id="grader-content-tabs"><button class="gs-content-tab active" data-section="scores" onclick="window.showGraderSection('scores')"><i class="fas fa-table mr-1"></i> 1. Tiêu chí chấm điểm</button><button class="gs-content-tab" data-section="scoring" onclick="window.showGraderSection('scoring')"><i class="fas fa-book-open mr-1"></i> Nội dung tiêu chí chấm</button><button class="gs-content-tab" data-section="interview" onclick="window.showGraderSection('interview')"><i class="fas fa-file-alt mr-1"></i> Câu hỏi phỏng vấn</button></div><div id="grader-section-panel" style="display:none" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar"></div><div id="grading-score-panel" class="flex-1 flex flex-col min-h-0 animate-fade-up"><div id="grading-tables-container" class="flex-1 flex flex-col min-h-0"></div></div>`;
             window._renderGradingUIInternal=window.renderGradingTables;
         };
         window.loadGradingTable = async function(container) {
@@ -1800,11 +1820,20 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 if(!window.currentUserData?.code) return window.renderErrorState(container,'Phiên đăng nhập không hợp lệ.');
                 const isAdmin=['Admin','SuperAdmin'].includes(window.currentUserData.role);
                 if(!isAdmin){
-                    const assigned=Array.isArray(window.currentUserData.assignedGroups)?window.currentUserData.assignedGroups:[];
-                    if(!assigned.length){container.innerHTML='<div class="bg-white p-10 rounded-2xl shadow-sm border border-gray-100 text-center"><i class="fas fa-lock text-3xl text-amber-500 mb-4"></i><h3 class="text-base font-bold text-gray-800 mb-1">Chưa được cấp quyền</h3><p class="text-gray-500 text-xs">Vui lòng chờ Admin phân công nhóm.</p></div>';return;}
+                    const assigned=window._seedAssignedGroupPlaceholders();
+                    if(!assigned.length){
+                        if(!window._graderRealtime?.started) window.startGraderRealtime();
+                        window.renderGradingShell(container,false,'<option value="">-- Chưa được phân quyền nhóm --</option>');
+                        window.refreshGraderGroupSelector();
+                        window.startGroupContentClock();
+                        return;
+                    }
                     if(!window._graderRealtime?.started) window.startGraderRealtime();
-                    const ids=(window._allowedGroupIdsCache||[]).filter(id=>window._groupMapCache?.[id]);
-                    const opts=ids.map(id=>`<option value="${id}">${window.escapeHtml(window._groupMapCache[id]?.name||id)}</option>`).join('');
+                    const opts=assigned.map(id=>{
+                        const g=window._groupMapCache?.[id];
+                        const suffix=(g && !g.__instantPlaceholder)?(window._isGroupGateOpenLocal(g)?' — ĐANG MỞ':' — CHƯA MỞ'):'';
+                        return `<option value="${id}">${window.escapeHtml(g?.name||id)}${suffix}</option>`;
+                    }).join('');
                     window.renderGradingShell(container,false,opts);
                     window.refreshGraderGroupSelector();
                     window.startGroupContentClock();
@@ -1954,16 +1983,20 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             const searchInput = document.getElementById('filter-search'); const searchKeyword = (searchInput ? searchInput.value : "").toLowerCase();
             const isAdmin = window.currentUserData.role === 'SuperAdmin' || window.currentUserData.role === 'Admin';
             let gId = window._selectedGradingGroupId;
+             if(!gId && !isAdmin){
+                 const assigned=window._seedAssignedGroupPlaceholders?.()||[];
+                 if(assigned.length){ gId=assigned[0]; window._selectedGradingGroupId=gId; }
+             }
              if(!gId){
-                 container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-gray-400 border border-gray-100 border-t-0 shadow-sm text-xs">Chưa có nhóm được chọn.</div>';
+                 container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-gray-400 border border-gray-100 border-t-0 shadow-sm text-xs">Chưa được phân quyền nhóm.</div>';
                  return;
              }
              if(!window._groupMapCache[gId]){
                  const rt=window._graderRealtime;
                  if(rt?.started && !rt.publicationReady){
-                     container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-gray-400 border border-gray-100 border-t-0 shadow-sm text-xs"><i class="fas fa-sync fa-spin mr-2"></i>Đang đồng bộ nhóm realtime...</div>';
+                     container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-gray-400 border border-gray-100 border-t-0 shadow-sm text-xs"><i class="fas fa-sync fa-spin mr-2"></i>Đang tải dữ liệu nhóm...</div>';
                  }else{
-                     container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-amber-600 border border-amber-100 border-t-0 shadow-sm text-xs">Nhóm đang được đồng bộ.</div>';
+                     container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-amber-600 border border-amber-100 border-t-0 shadow-sm text-xs">Đang tải cấu hình nhóm...</div>';
                  }
                  return;
              }
@@ -2658,7 +2691,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 @media(max-width:1100px){.gs-grader-split{grid-template-columns:1fr}.gs-candidate-list-body{max-height:260px}.gs-detail-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.gs-detail-head{padding:18px 18px 12px}.gs-detail-meta{padding:14px 18px;grid-template-columns:1fr 1fr}.gs-detail-body{padding:0 18px 20px}.gs-candidate-fields{grid-template-columns:1fr}.gs-score-row{grid-template-columns:1fr}.gs-mode-banner{margin:0 18px 16px}}
 </style>
-<script id="v20-grader-2view-script">
+<script type="module" id="v20-grader-2view-script">
 (function(){
     window._gradingViewMode = window._gradingViewMode || (localStorage.getItem('gradeSyncGradingViewMode') || 'table');
     window._selectedGradingCandidateId = window._selectedGradingCandidateId || null;
@@ -2697,7 +2730,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                     <div class="flex items-center gap-2 w-full md:w-auto shrink-0">
                         <div class="bg-red-50 w-8 h-8 rounded-full flex items-center justify-center text-red-800"><i class="fas fa-layer-group text-[10px]"></i></div>
                         <select id="grading-group-select" onchange="window.changeGradingGroup()" class="w-full md:w-56 border-none py-1.5 rounded-lg text-xs font-bold text-red-800 outline-none cursor-pointer hover:bg-red-50 transition">
-                            ${groupOptions || '<option value="">-- Đang đồng bộ nhóm --</option>'}
+                            ${groupOptions || '<option value="">-- Chọn nhóm --</option>'}
                         </select>
                     </div>
                     ${graderSelectHtml}
@@ -2765,18 +2798,21 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         const searchInput = document.getElementById('filter-search');
         const searchKeyword = (searchInput ? searchInput.value : '').toLowerCase();
         const isAdmin = window.currentUserData.role === 'SuperAdmin' || window.currentUserData.role === 'Admin';
-        const gId = window._selectedGradingGroupId;
-
+        let gId = window._selectedGradingGroupId;
+        if(!gId && !isAdmin){
+            const assigned=window._seedAssignedGroupPlaceholders?.()||[];
+            if(assigned.length){ gId=assigned[0]; window._selectedGradingGroupId=gId; }
+        }
         if(!gId){
-            container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-gray-400 border border-gray-100 border-t-0 shadow-sm text-xs">Chưa có nhóm được chọn.</div>';
+            container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-gray-400 border border-gray-100 border-t-0 shadow-sm text-xs">Chưa được phân quyền nhóm.</div>';
             return;
         }
         if(!window._groupMapCache[gId]){
             const rt=window._graderRealtime;
             if(rt?.started && !rt.publicationReady){
-                container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-gray-400 border border-gray-100 border-t-0 shadow-sm text-xs"><i class="fas fa-sync fa-spin mr-2"></i>Đang đồng bộ nhóm realtime...</div>';
+                container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-gray-400 border border-gray-100 border-t-0 shadow-sm text-xs"><i class="fas fa-sync fa-spin mr-2"></i>Đang tải dữ liệu nhóm...</div>';
             }else{
-                container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-amber-600 border border-amber-100 border-t-0 shadow-sm text-xs">Nhóm đang được đồng bộ.</div>';
+                container.innerHTML = '<div class="bg-white p-8 rounded-b-2xl text-center text-amber-600 border border-amber-100 border-t-0 shadow-sm text-xs">Đang tải cấu hình nhóm...</div>';
             }
             return;
         }
@@ -2990,7 +3026,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 </script>
 
 
-<script id="v21-permission-sync-fix">
+<script type="module" id="v21-permission-sync-fix">
 (function(){
     // V21: mặc định mở giao diện cá nhân để BGK thấy ngay sự thay đổi thiết kế.
     if(!localStorage.getItem('gradeSyncGradingViewMode')){
@@ -3138,7 +3174,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 })();
 </script>
 
-<script id="v24-attendance-ultra-realtime">
+<script type="module" id="v24-attendance-ultra-realtime">
 (function(){
     // V24: kênh điểm danh realtime nhẹ, không polling.
     // Mỗi nhóm mở chỉ thêm 1 listener document nhỏ attendance_realtime/{groupId}.
@@ -3400,5 +3436,390 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 })();
 </script>
 
+
+<script type="module" id="v25-instant-assigned-groups">
+(function(){
+    // V25: Nhóm được phân quyền phải có mặt trong selector NGAY khi BGK vào trang.
+    // Không hiển thị trạng thái "Đang tải thông tin nhóm..." nữa.
+
+    window._groupNameCache = window._groupNameCache || {};
+    try{
+        const saved = JSON.parse(localStorage.getItem('gradeSyncGroupNameCache') || '{}');
+        if(saved && typeof saved === 'object') window._groupNameCache = {...saved, ...window._groupNameCache};
+    }catch(_e){}
+
+    window._saveGroupNameCache = function(){
+        try{ localStorage.setItem('gradeSyncGroupNameCache', JSON.stringify(window._groupNameCache || {})); }catch(_e){}
+    };
+
+    window._seedAssignedGroupNamesFromUser = function(){
+        const meta = Array.isArray(window.currentUserData?.assignedGroupMeta) ? window.currentUserData.assignedGroupMeta : [];
+        meta.forEach(x=>{
+            if(x?.id && x?.name) window._groupNameCache[x.id] = x.name;
+        });
+        const names = window.currentUserData?.assignedGroupNames;
+        if(names && typeof names === 'object'){
+            Object.entries(names).forEach(([id,name])=>{ if(id && name) window._groupNameCache[id] = name; });
+        }
+        window._saveGroupNameCache();
+    };
+
+    window._preloadGraderAssignedGroups = async function(){
+        if(window.currentUserData?.role !== 'Grader') return [];
+        window._seedAssignedGroupNamesFromUser();
+
+        const assigned = Array.isArray(window.currentUserData.assignedGroups) ? [...window.currentUserData.assignedGroups] : [];
+        const rt = window._graderRealtime = window._graderRealtime || {};
+        rt.groupState = rt.groupState || new Map();
+        rt.assigned = assigned;
+
+        if(!assigned.length){
+            window._allowedGroupIdsCache = [];
+            window._selectedGradingGroupId = null;
+            return [];
+        }
+
+        // Seed selector ngay bằng metadata đã lưu cùng tài khoản/local cache.
+        window._groupMapCache = window._groupMapCache || {};
+        assigned.forEach(id=>{
+            if(!window._groupMapCache[id]){
+                window._groupMapCache[id] = {
+                    id,
+                    name: window._groupNameCache[id] || id,
+                    __instantPlaceholder: true
+                };
+            }
+        });
+        window._allowedGroupIdsCache = [...assigned];
+        if(!window._selectedGradingGroupId || !assigned.includes(window._selectedGradingGroupId)){
+            window._selectedGradingGroupId = assigned[0];
+        }
+
+        // Lấy cấu hình thật của TẤT CẢ nhóm song song sau khi grader_session đã tồn tại.
+        const results = await Promise.allSettled(
+            assigned.map(async id=>{
+                const snap = await window.getDoc(window.doc(window.db,'competition_groups',id));
+                if(!snap.exists()) return null;
+                return {id:snap.id, ...snap.data()};
+            })
+        );
+
+        const valid = [];
+        results.forEach((r,idx)=>{
+            const id = assigned[idx];
+            if(r.status === 'fulfilled' && r.value){
+                const g = r.value;
+                valid.push(id);
+                window._groupMapCache[id] = g;
+                rt.groupState.set(id,g);
+                if(g.name) window._groupNameCache[id] = g.name;
+            }else{
+                // Vẫn giữ nhóm trong selector vì Admin đã phân quyền.
+                // Listener realtime sẽ cập nhật khi Firestore sẵn sàng.
+                valid.push(id);
+            }
+        });
+        window._saveGroupNameCache();
+        window._allowedGroupIdsCache = [...valid];
+        if(!window._selectedGradingGroupId && valid.length) window._selectedGradingGroupId = valid[0];
+        return valid;
+    };
+
+    // Selector không còn trạng thái "đang đồng bộ". Hễ assignedGroups có ID là hiển thị ngay.
+    window.refreshGraderGroupSelector = function(){
+        if(window.currentUserData?.role!=='Grader') return;
+        const sel = document.getElementById('grading-group-select');
+        if(!sel) return;
+
+        window._seedAssignedGroupNamesFromUser();
+        const assigned = Array.isArray(window._graderRealtime?.assigned)
+            ? window._graderRealtime.assigned
+            : (Array.isArray(window.currentUserData?.assignedGroups) ? window.currentUserData.assignedGroups : []);
+
+        if(!assigned.length){
+            sel.innerHTML = '<option value="">-- Chưa được phân quyền nhóm --</option>';
+            sel.disabled = true;
+            window._selectedGradingGroupId = null;
+            const c=document.getElementById('grading-tables-container');
+            if(c) c.innerHTML='<div class="bg-white p-10 rounded-2xl border border-gray-100 text-center"><i class="fas fa-lock text-3xl text-gray-400 mb-3"></i><h3 class="font-black text-gray-800">Chưa được phân quyền nhóm</h3><p class="text-xs text-gray-500 mt-2">Khi Admin cấp nhóm, danh sách sẽ xuất hiện tự động.</p></div>';
+            return;
+        }
+
+        sel.disabled = false;
+        const previous = window._selectedGradingGroupId;
+        sel.innerHTML = assigned.map(id=>{
+            const g = window._groupMapCache?.[id];
+            const name = g?.name || window._groupNameCache?.[id] || id;
+            let suffix = '';
+            if(g && !g.__instantPlaceholder){
+                suffix = window._isGroupGateOpenLocal?.(g) ? ' — ĐANG MỞ' : ' — CHƯA MỞ';
+            }
+            return `<option value="${id}">${window.escapeHtml(name)}${suffix}</option>`;
+        }).join('');
+
+        window._selectedGradingGroupId = assigned.includes(previous) ? previous : assigned[0];
+        sel.value = window._selectedGradingGroupId;
+    };
+
+    // Mỗi nhóm mới được cấp: hiện ngay trong selector, rồi tải cấu hình thật song song.
+    const _oldRefreshAssignedGroupSubscriptionsV25 = window.refreshAssignedGroupSubscriptions;
+    window.refreshAssignedGroupSubscriptions = function(){
+        const rt = window._graderRealtime;
+        const assigned = Array.isArray(rt?.assigned) ? [...rt.assigned] : [];
+
+        window._allowedGroupIdsCache = [...assigned];
+        window._groupMapCache = window._groupMapCache || {};
+        assigned.forEach(id=>{
+            if(!window._groupMapCache[id]){
+                window._groupMapCache[id] = {
+                    id,
+                    name: window._groupNameCache?.[id] || id,
+                    __instantPlaceholder: true
+                };
+            }
+        });
+        if(!window._selectedGradingGroupId && assigned.length) window._selectedGradingGroupId = assigned[0];
+
+        // Vẽ selector trước, không đợi snapshot.
+        window.refreshGraderGroupSelector?.();
+
+        const result = _oldRefreshAssignedGroupSubscriptionsV25 ? _oldRefreshAssignedGroupSubscriptionsV25() : undefined;
+
+        // Direct fetch song song giúp nhóm mới được cấp có cấu hình nhanh hơn onSnapshot đầu tiên.
+        assigned.forEach(id=>{
+            const current = window._groupMapCache?.[id];
+            if(current && !current.__instantPlaceholder) return;
+            window.getDoc(window.doc(window.db,'competition_groups',id)).then(snap=>{
+                if(!snap.exists()) return;
+                const g={id:snap.id,...snap.data()};
+                window._groupMapCache[id]=g;
+                rt.groupState = rt.groupState || new Map();
+                rt.groupState.set(id,g);
+                if(g.name){
+                    window._groupNameCache[id]=g.name;
+                    window._saveGroupNameCache();
+                }
+                window.refreshGraderGroupSelector?.();
+                window._syncGraderRealtimeGroups?.();
+                window._rerenderGraderRealtime?.();
+            }).catch(()=>{});
+        });
+        return result;
+    };
+
+    // Đăng nhập BGK: tạo session -> preload nhóm -> mới mở app.
+    // Vì thế khi màn hình Bảng Điểm Live xuất hiện, selector đã có danh sách nhóm.
+    window.handleLoginCode = async function(){
+        const c=String(document.getElementById('login-code')?.value||'').trim().toUpperCase();
+        if(!c) return window.showToast('Nhập mã giám khảo!','error');
+        if(navigator.onLine===false) return window.showToast('Thiết bị đang mất mạng. Không thể xác thực mã giám khảo.','error');
+
+        window._authFlow='grader-login';
+        window.showLoading(true,'Đang vào hệ thống...');
+        try{
+            if(window.auth.currentUser){
+                try{
+                    if(window.currentUserData?.role==='Grader') await window.syncGraderSession(false,'switch-account');
+                }catch(_){}
+                await window.signOut(window.auth);
+                await window.waitForAuthState(u=>!u,4000);
+            }
+            localStorage.removeItem('gradeSyncSession');
+
+            const cred=await window.signInAnonymously(window.auth);
+            const authUser=await window.waitForAuthState(u=>!!u&&u.isAnonymous,5000);
+            if(!authUser?.isAnonymous) throw new Error('Không tạo được phiên Firebase Anonymous.');
+
+            const q=window.query(window.collection(window.db,'users'),window.where('code','==',c));
+            const sp=await window.getDocs(q);
+            if(sp.empty) throw new Error('GRADER_NOT_FOUND');
+            const d=sp.docs[0].data();
+            if(window.normalizeRole(d.role)!=='Grader') throw new Error('NOT_GRADER');
+            if(window.isInactiveStatus(d.status)) throw new Error('GRADER_DISABLED');
+
+            window.currentUserData={
+                id:sp.docs[0].id,
+                ...d,
+                role:'Grader',
+                status:d.status||'Active',
+                assignedGroups:Array.isArray(d.assignedGroups)?d.assignedGroups:[],
+                code:c
+            };
+            localStorage.setItem('gradeSyncSession',JSON.stringify(window.currentUserData));
+            window._seedAssignedGroupNamesFromUser();
+
+            const sessionOK=await window.syncGraderSession(true,'login');
+            if(!sessionOK) throw new Error('GRADER_SESSION_FAILED');
+
+            // Quan trọng: preload nhóm trước initApp để không có màn "Đang đồng bộ nhóm".
+            await window._preloadGraderAssignedGroups();
+
+            window._lastInitAuthUid=cred.user.uid;
+            window.initApp();
+            window.showToast('Đăng nhập giám khảo thành công!');
+        }catch(ex){
+            console.error('GRADER LOGIN ERROR:',ex);
+            window.showLoading(false);
+            let msg='Không thể vào hệ thống: '+(ex.code||ex.message||'Lỗi không xác định');
+            if(ex.message==='GRADER_NOT_FOUND') msg='Mã giám khảo không tồn tại.';
+            else if(ex.message==='NOT_GRADER') msg='Mã này không phải tài khoản giám khảo.';
+            else if(ex.message==='GRADER_DISABLED') msg='Thẻ giám khảo đang bị khóa.';
+            else if(ex.message==='GRADER_SESSION_FAILED') msg='Không thể tạo phiên giám khảo. Hãy kiểm tra Firestore Rules.';
+            window.showToast(msg,'error');
+            try{await window.signOut(window.auth);}catch(_){}
+        }finally{
+            window._authFlow=null;
+        }
+    };
+
+    // Khi trang Bảng Điểm Live được mở lại sau login/reload:
+    // nếu cache chưa có thì preload trước khi render. Không dựng shell rỗng.
+    const _oldLoadGradingTableV25 = window.loadGradingTable;
+    window.loadGradingTable = async function(container){
+        const isAdmin=['Admin','SuperAdmin'].includes(window.currentUserData?.role);
+        if(isAdmin) return _oldLoadGradingTableV25(container);
+
+        try{
+            if(!window.currentUserData?.code) return window.renderErrorState(container,'Phiên đăng nhập không hợp lệ.');
+
+            const assigned = Array.isArray(window.currentUserData.assignedGroups) ? window.currentUserData.assignedGroups : [];
+            if(!assigned.length){
+                if(!window._graderRealtime?.started) window.startGraderRealtime();
+                window.renderGradingShell(container,false,'<option value="">-- Chưa được phân quyền nhóm --</option>');
+                window.refreshGraderGroupSelector();
+                window.startGroupContentClock();
+                return;
+            }
+
+            // Nếu reload trang, đảm bảo session tồn tại rồi preload group trước khi vẽ giao diện.
+            if(!window._graderRealtime?.started){
+                // start realtime trước để quyền thay đổi sau này vẫn được nhận.
+                window.startGraderRealtime();
+            }
+
+            const missing = assigned.some(id=>!window._groupMapCache?.[id] || window._groupMapCache[id].__instantPlaceholder);
+            if(missing){
+                await window._preloadGraderAssignedGroups();
+            }
+
+            const opts = assigned.map(id=>{
+                const g=window._groupMapCache?.[id];
+                const name=g?.name || window._groupNameCache?.[id] || id;
+                const suffix=(g && !g.__instantPlaceholder)
+                    ? (window._isGroupGateOpenLocal?.(g) ? ' — ĐANG MỞ' : ' — CHƯA MỞ')
+                    : '';
+                return `<option value="${id}">${window.escapeHtml(name)}${suffix}</option>`;
+            }).join('');
+
+            if(!window._selectedGradingGroupId || !assigned.includes(window._selectedGradingGroupId)){
+                window._selectedGradingGroupId=assigned[0];
+            }
+
+            window.renderGradingShell(container,false,opts);
+            const sel=document.getElementById('grading-group-select');
+            if(sel){
+                sel.value=window._selectedGradingGroupId;
+                sel.disabled=false;
+            }
+            window.refreshGraderGroupSelector();
+            window.startGroupContentClock();
+            window.changeGradingGroup();
+        }catch(e){
+            console.error('V25 LOAD GRADING:',e);
+            window.renderErrorState(container,e.message||String(e));
+        }
+    };
+
+    // Admin lưu phân quyền kèm tên nhóm để lần đăng nhập sau BGK render selector tức thời.
+    window.saveGraderEdit = async function(userId){
+        const newName=document.getElementById('edit-grader-name-modal')?.value.trim();
+        if(!newName) return window.showToast('Tên không được để trống!','error');
+
+        const assignedGroups=[];
+        document.querySelectorAll('.grader-edit-chk-modal:checked').forEach(chk=>assignedGroups.push(chk.value));
+        const groups=window._groupsListCacheForModal||[];
+        const assignedGroupMeta=assignedGroups.map(id=>{
+            const g=groups.find(x=>x.id===id);
+            return {id,name:g?.name||id};
+        });
+        const assignedGroupNames=Object.fromEntries(assignedGroupMeta.map(x=>[x.id,x.name]));
+
+        window.closeCustomModal();
+        window.showLoading(true,'Đang cập nhật phân quyền...');
+        try{
+            const ref=window.doc(window.db,'users',userId);
+            const snap=await window.getDoc(ref);
+            const oldVersion=snap.exists()?Number(snap.data()?.permissionsVersion||0):0;
+            await window.setDoc(ref,{
+                name:window.escapeHtml(newName),
+                assignedGroups,
+                assignedGroupMeta,
+                assignedGroupNames,
+                permissionsVersion:oldVersion+1,
+                permissionsUpdatedAt:window.serverTimestamp(),
+                updatedAt:window.serverTimestamp()
+            },{merge:true});
+            window.showToast('Đã cập nhật. BGK đang online sẽ thấy danh sách nhóm ngay.');
+            await window.loadAccountManager(document.getElementById('main-content'));
+        }catch(e){
+            console.error('V25 SAVE GRADER:',e);
+            window.showToast('Không thể cập nhật phân quyền: '+(e.message||e.code),'error');
+        }finally{window.showLoading(false);}
+    };
+
+    window.createAccountByCode = async function(){
+        const name=document.getElementById('acc-name')?.value.trim();
+        const code=document.getElementById('acc-code')?.value.trim();
+        if(!name||!code) return window.showToast('Vui lòng nhập tên','error');
+
+        const assignedGroups=[];
+        document.querySelectorAll('.acc-group-chk:checked').forEach(chk=>assignedGroups.push(chk.value));
+        const groups=window._groupsListCacheForModal||[];
+        const assignedGroupMeta=assignedGroups.map(id=>{
+            const g=groups.find(x=>x.id===id);
+            return {id,name:g?.name||id};
+        });
+        const assignedGroupNames=Object.fromEntries(assignedGroupMeta.map(x=>[x.id,x.name]));
+
+        window.showLoading(true,'Đang đăng ký...');
+        try{
+            await window.addDoc(window.collection(window.db,'users'),{
+                code:window.escapeHtml(code),
+                name:window.escapeHtml(name),
+                role:'Grader',
+                status:'Active',
+                assignedGroups,
+                assignedGroupMeta,
+                assignedGroupNames,
+                permissionsVersion:1,
+                permissionsUpdatedAt:window.serverTimestamp(),
+                updatedAt:window.serverTimestamp()
+            });
+            window.showToast('Cấp thẻ ID thành công!');
+            await window.loadAccountManager(document.getElementById('main-content'));
+        }catch(e){
+            window.showToast('Không thể tạo giám khảo: '+(e.message||e.code),'error');
+        }finally{window.showLoading(false);}
+    };
+})();
+</script>
+
+
+<script type="module" id="v26-final-group-init">
+(async()=>{
+  const apply=()=>{
+    if(window.currentUserData?.role!=='Grader') return;
+    window._seedAssignedGroupPlaceholders?.();
+    window.refreshGraderGroupSelector?.();
+    const main=document.getElementById('main-content');
+    if(main && document.getElementById('grading-group-select')){
+      window.changeGradingGroup?.();
+    }
+  };
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(apply,0),{once:true});
+  else setTimeout(apply,0);
+  setTimeout(apply,250);
+})();
+</script>
 </body>
 </html>
