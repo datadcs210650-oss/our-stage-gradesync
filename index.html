@@ -3138,5 +3138,267 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 })();
 </script>
 
+<script id="v24-attendance-ultra-realtime">
+(function(){
+    // V24: kênh điểm danh realtime nhẹ, không polling.
+    // Mỗi nhóm mở chỉ thêm 1 listener document nhỏ attendance_realtime/{groupId}.
+    const rt = window._graderRealtime = window._graderRealtime || {};
+    rt.unsubAttendance = rt.unsubAttendance || new Map();
+    rt.lastAttendanceEvent = rt.lastAttendanceEvent || new Map();
+    rt.pendingAttendance = rt.pendingAttendance || new Map();
+
+    const oldStopRealtime = window.stopGraderRealtime;
+    window.stopGraderRealtime = function(clearCaches=true){
+        try{
+            rt.unsubAttendance?.forEach(u=>{ try{u?.();}catch(_e){} });
+            rt.unsubAttendance?.clear?.();
+            rt.lastAttendanceEvent?.clear?.();
+            rt.pendingAttendance?.clear?.();
+        }catch(_e){}
+        return oldStopRealtime ? oldStopRealtime(clearCaches) : undefined;
+    };
+
+    window._attendanceValue = function(v){
+        return v === true || v === 1 || v === 'true' || v === '1';
+    };
+
+    window._patchAttendanceCache = function(candidateId, isPresent, attendanceOrder, updatedAt){
+        const idx=(window._allCandidatesCache||[]).findIndex(c=>c.id===candidateId);
+        if(idx<0){
+            rt.pendingAttendance.set(candidateId,{candidateId,isPresent:!!isPresent,attendanceOrder:Number(attendanceOrder||0),updatedAt});
+            return false;
+        }
+        const prev=window._allCandidatesCache[idx];
+        window._allCandidatesCache[idx]={...prev,isPresent:!!isPresent,attendanceOrder:Number(attendanceOrder||0),attendanceUpdatedAt:updatedAt||prev.attendanceUpdatedAt};
+        return true;
+    };
+
+    // Cập nhật DOM tối thiểu cho view bảng để không render lại cả bảng.
+    window._applyAttendanceDomFast = function(candidateId, isPresent){
+        try{
+            const scoreInput=document.querySelector(`input.score-input[data-cand="${CSS.escape(candidateId)}"]`);
+            const row=scoreInput?.closest('tr');
+            if(!row) return false;
+
+            const groupId=scoreInput?.dataset?.group;
+            const groupInfo=window._groupMapCache?.[groupId]||{};
+            if(groupInfo.attendanceEnabled){
+                const inputs=row.querySelectorAll('input.score-input');
+                inputs.forEach(inp=>{
+                    if(window.currentUserData?.role==='Grader') inp.disabled=!isPresent;
+                    if(isPresent){
+                        inp.classList.remove('bg-gray-100','text-gray-400','cursor-not-allowed','opacity-60');
+                        inp.classList.add('bg-white','shadow-sm');
+                    }else{
+                        inp.classList.add('bg-gray-100','text-gray-400','cursor-not-allowed','opacity-60');
+                        inp.classList.remove('bg-white','shadow-sm');
+                    }
+                });
+
+                const cells=[...row.children];
+                // Cột điểm danh luôn nằm sau STT, SBD, Tên khi attendanceEnabled.
+                const attendanceCell=cells[3];
+                if(attendanceCell){
+                    attendanceCell.className=`py-3 px-2 text-center align-middle ${isPresent?'bg-emerald-100/70':'bg-blue-50/20'}`;
+                    attendanceCell.innerHTML=isPresent
+                        ? '<span class="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full inline-flex items-center gap-1"><i class="fas fa-circle text-[6px]"></i> CÓ MẶT</span>'
+                        : '<span class="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">Chờ điểm danh</span>';
+                }
+
+                const nameP=cells[2]?.querySelector('p');
+                if(nameP){
+                    const oldBadge=nameP.querySelector('.v24-present-badge');
+                    oldBadge?.remove();
+                    if(isPresent){
+                        nameP.classList.remove('text-gray-900');
+                        nameP.classList.add('text-emerald-900');
+                        nameP.insertAdjacentHTML('beforeend','<span class="v24-present-badge ml-2 inline-flex items-center gap-1 text-[8px] font-black uppercase text-emerald-700 bg-white border border-emerald-200 px-1.5 py-0.5 rounded-full"><i class="fas fa-arrow-up"></i> ĐANG THI</span>');
+                    }else{
+                        nameP.classList.remove('text-emerald-900');
+                        nameP.classList.add('text-gray-900');
+                    }
+                }
+
+                if(isPresent){
+                    row.classList.add('bg-emerald-50/80','ring-1','ring-inset','ring-emerald-200');
+                    const tbody=row.parentElement;
+                    if(tbody && tbody.firstElementChild!==row) tbody.insertBefore(row,tbody.firstElementChild);
+                }else{
+                    row.classList.remove('bg-emerald-50/80','ring-1','ring-inset','ring-emerald-200');
+                    // Khi bỏ có mặt cần phục hồi thứ tự chuẩn; render một lần là đủ.
+                    requestAnimationFrame(()=>window.renderGradingTables?.());
+                }
+                return true;
+            }
+        }catch(e){ console.warn('FAST ATTENDANCE DOM PATCH:',e); }
+        return false;
+    };
+
+    window._consumeAttendanceRealtimeEvent = function(data){
+        if(!data?.candidateId) return;
+        const eventKey=data.eventId || `${data.candidateId}_${data.attendanceOrder||0}_${data.isPresent?1:0}`;
+        if(rt.lastAttendanceEvent.get(data.groupId)===eventKey) return;
+        rt.lastAttendanceEvent.set(data.groupId,eventKey);
+
+        const patched=window._patchAttendanceCache(data.candidateId, data.isPresent, data.attendanceOrder, data.updatedAt);
+        if(!patched) return;
+
+        // View bảng: cập nhật đúng row, không dựng lại cả DOM.
+        if((window._gradingViewMode||'table')==='table' && window._selectedGradingGroupId===data.groupId){
+            if(window._applyAttendanceDomFast(data.candidateId,!!data.isPresent)) return;
+        }
+        // View cá nhân / tab khác: gom render vào 1 frame duy nhất.
+        if(!window._attendanceRenderRAF){
+            window._attendanceRenderRAF=requestAnimationFrame(()=>{
+                window._attendanceRenderRAF=null;
+                window._rerenderGraderRealtime?.();
+            });
+        }
+    };
+
+    // Override Admin tick điểm danh: cập nhật local ngay + batch candidate + tín hiệu realtime nhẹ.
+    window.toggleCandAttendance = async function(candId, isPresent) {
+        const cand=(window._allCandidatesCache||[]).find(c=>c.id===candId);
+        if(!cand) return window.showToast('Không tìm thấy thí sinh.','error');
+        const oldPresent=window._attendanceValue(cand.isPresent);
+        const oldOrder=Number(cand.attendanceOrder||0);
+        const groupId=cand.groupId;
+        const attendanceOrder=isPresent ? Date.now() : 0;
+        const eventId=`${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
+
+        // Optimistic UI Admin: không chờ Firebase round-trip.
+        cand.isPresent=!!isPresent;
+        cand.attendanceOrder=attendanceOrder;
+        try{ window._renderGradingUIInternal?.(); }catch(_e){}
+
+        try{
+            const batch=window.writeBatch(window.db);
+            batch.set(window.doc(window.db,'candidates',candId),{
+                isPresent:!!isPresent,
+                attendanceOrder:isPresent?attendanceOrder:null,
+                attendanceUpdatedAt:window.serverTimestamp()
+            },{merge:true});
+            if(groupId){
+                batch.set(window.doc(window.db,'attendance_realtime',groupId),{
+                    groupId,
+                    candidateId:candId,
+                    isPresent:!!isPresent,
+                    attendanceOrder,
+                    eventId,
+                    updatedAt:window.serverTimestamp()
+                },{merge:true});
+            }
+            await batch.commit();
+        }catch(e){
+            cand.isPresent=oldPresent;
+            cand.attendanceOrder=oldOrder;
+            try{ window._renderGradingUIInternal?.(); }catch(_e){}
+            console.error('ATTENDANCE FAST WRITE:',e);
+            window.showToast('Không đồng bộ được điểm danh: '+(e.code||e.message||'Lỗi Firebase'),'error');
+        }
+    };
+
+    // Thay listener nhóm mở bằng phiên bản tối ưu docChanges + kênh attendance_realtime.
+    window._startOpenGroupDataListeners = function(gid){
+        const rt=window._graderRealtime;
+        if(!rt.unsubCandidates.has(gid)){
+            const q=window.query(window.collection(window.db,'candidates'),window.where('groupId','==',gid));
+            let initialized=false;
+            const u=window.onSnapshot(q,snap=>{
+                let needsRender=!initialized;
+                if(!initialized){
+                    const others=(window._allCandidatesCache||[]).filter(x=>x.groupId!==gid), mine=[];
+                    snap.forEach(ds=>{
+                        const d={id:ds.id,...ds.data()};
+                        const pending=rt.pendingAttendance.get(ds.id);
+                        if(pending){
+                            d.isPresent=pending.isPresent;
+                            d.attendanceOrder=pending.attendanceOrder;
+                            rt.pendingAttendance.delete(ds.id);
+                        }
+                        mine.push(d);
+                    });
+                    window._allCandidatesCache=others.concat(mine);
+                    initialized=true;
+                }else{
+                    for(const change of snap.docChanges()){
+                        const id=change.doc.id;
+                        if(change.type==='removed'){
+                            window._allCandidatesCache=(window._allCandidatesCache||[]).filter(x=>x.id!==id);
+                            needsRender=true;
+                            continue;
+                        }
+                        const incoming={id,...change.doc.data()};
+                        const idx=(window._allCandidatesCache||[]).findIndex(x=>x.id===id);
+                        if(idx<0){
+                            window._allCandidatesCache.push(incoming);
+                            needsRender=true;
+                            continue;
+                        }
+                        const prev=window._allCandidatesCache[idx];
+                        const onlyAttendanceChanged =
+                            prev.name===incoming.name && prev.code===incoming.code && prev.groupId===incoming.groupId &&
+                            JSON.stringify(prev.extraData||{})===JSON.stringify(incoming.extraData||{}) &&
+                            window._attendanceValue(prev.isPresent)===window._attendanceValue(incoming.isPresent) &&
+                            Number(prev.attendanceOrder||0)===Number(incoming.attendanceOrder||0);
+                        window._allCandidatesCache[idx]={...prev,...incoming};
+                        if(!onlyAttendanceChanged) needsRender=true;
+                    }
+                }
+                if(needsRender) window._rerenderGraderRealtime();
+            },err=>{
+                console.warn('Realtime candidates error:',gid,err);
+                if(err?.code==='permission-denied') window.showToast('Nhóm vừa bị khóa hoặc quyền vừa thay đổi.','error');
+            });
+            rt.unsubCandidates.set(gid,u);
+        }
+
+        if(!rt.unsubAttendance.has(gid)){
+            const ref=window.doc(window.db,'attendance_realtime',gid);
+            const u=window.onSnapshot(ref,snap=>{
+                if(snap.exists()) window._consumeAttendanceRealtimeEvent({id:snap.id,...snap.data()});
+            },err=>console.warn('Realtime attendance signal error:',gid,err));
+            rt.unsubAttendance.set(gid,u);
+        }
+
+        if(!rt.unsubScores.has(gid)){
+            const q=window.query(window.collection(window.db,'scores'),window.where('groupId','==',gid),window.where('graderCode','==',window.currentUserData.code));
+            const u=window.onSnapshot(q,snap=>{
+                const others=(window._allScoresCache||[]).filter(x=>x.groupId!==gid||x.graderCode!==window.currentUserData.code),mine=[];
+                snap.forEach(ds=>{const d=ds.data();if(d.graderCode===window.currentUserData.code)mine.push({id:ds.id,...d});});
+                window._allScoresCache=others.concat(mine);
+                if(!document.activeElement?.classList?.contains('score-input')) window._rerenderGraderRealtime();
+            },err=>console.warn('Realtime scores error:',gid,err));
+            rt.unsubScores.set(gid,u);
+        }
+
+        if(!rt.unsubVerifications.has(gid)){
+            const q=window.query(window.collection(window.db,'grader_verifications'),window.where('groupId','==',gid),window.where('graderCode','==',window.currentUserData.code));
+            const u=window.onSnapshot(q,snap=>{
+                const cache=Object.fromEntries(Object.entries(window._allVerificationsCache||{}).filter(([k,v])=>v.groupId!==gid||v.graderCode!==window.currentUserData.code));
+                snap.forEach(ds=>{const d=ds.data();if(d.graderCode===window.currentUserData.code)cache[`${d.graderCode}_${d.groupId}`]={id:ds.id,...d};});
+                window._allVerificationsCache=cache;
+                window._rerenderGraderRealtime();
+            },err=>console.warn('Realtime verification error:',gid,err));
+            rt.unsubVerifications.set(gid,u);
+        }
+    };
+
+    window._stopOpenGroupDataListeners = function(gid){
+        const rt=window._graderRealtime;
+        for(const map of [rt.unsubCandidates,rt.unsubAttendance,rt.unsubScores,rt.unsubVerifications]){
+            try{map.get(gid)?.();}catch(_e){}
+            map.delete(gid);
+        }
+        rt.lastAttendanceEvent.delete(gid);
+        window._allCandidatesCache=(window._allCandidatesCache||[]).filter(x=>x.groupId!==gid);
+        window._allScoresCache=(window._allScoresCache||[]).filter(x=>x.groupId!==gid);
+        if(window._allVerificationsCache){
+            for(const k of Object.keys(window._allVerificationsCache)) if(window._allVerificationsCache[k]?.groupId===gid) delete window._allVerificationsCache[k];
+        }
+    };
+})();
+</script>
+
 </body>
 </html>
