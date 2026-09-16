@@ -225,7 +225,14 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             toast.innerHTML = `<i class="fas ${icon} text-lg"></i><p class="text-[11px] font-bold break-words flex-1 whitespace-normal"></p>`; toast.querySelector("p").textContent = String(msg ?? "");
             container.appendChild(toast); setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400); }, 3500);
         };
-        window.renderErrorState = function(container, msg) { container.innerHTML = `<div class="flex flex-col items-center justify-center h-full p-8 text-center animate-fade-up"><div class="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-4"><i class="fas fa-exclamation-triangle text-4xl text-red-600"></i></div><h3 class="text-xl font-black mb-2">Lỗi hệ thống</h3><p id="render-error-message" class="text-sm font-bold text-red-600 bg-red-50 px-4 py-2 rounded-xl mb-3"></p></div>`; const el=document.getElementById("render-error-message"); if(el) el.textContent=String(msg ?? "Không xác định"); };
+        window.renderErrorState = function(container, msg) {
+            const text=String(msg ?? 'Không xác định');
+            const permission=/missing or insufficient permissions|permission-denied/i.test(text);
+            container.innerHTML = permission
+                ? `<div class="flex flex-col items-center justify-center h-full p-8 text-center animate-fade-up"><div class="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-4"><i class="fas fa-shield-alt text-4xl text-red-600"></i></div><h3 class="text-xl font-black mb-2">Firebase đang chặn quyền truy cập</h3><p class="text-sm font-bold text-red-600 bg-red-50 px-4 py-2 rounded-xl mb-3">Firestore Rules chưa khớp với phiên bản website hiện tại.</p><p class="text-xs text-gray-500 max-w-xl leading-6">Hãy cập nhật file <b>GradeSync_Firestore_Rules_V23_ACCESS_PERMISSION_FIXED.txt</b> trong Firebase → Firestore Database → Rules → Publish, sau đó tải lại trang.</p></div>`
+                : `<div class="flex flex-col items-center justify-center h-full p-8 text-center animate-fade-up"><div class="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-4"><i class="fas fa-exclamation-triangle text-4xl text-red-600"></i></div><h3 class="text-xl font-black mb-2">Lỗi hệ thống</h3><p id="render-error-message" class="text-sm font-bold text-red-600 bg-red-50 px-4 py-2 rounded-xl mb-3"></p></div>`;
+            const el=document.getElementById('render-error-message'); if(el) el.textContent=text;
+        };
         window.showLoading = function(show, text="Đang xử lý...") { document.getElementById('loading-text').innerText = text; document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none'; };
         window.openModal = function() { document.getElementById('custom-modal-container').style.display = 'flex'; };
         window.closeCustomModal = function() { document.getElementById('custom-modal-container').style.display = 'none'; };
