@@ -1,0 +1,21 @@
+GradeSync V27 - SYSTEM HARDENED REALTIME
+
+Các thay đổi chính:
+1. Sửa tên nhóm/thí sinh bị hiện &amp;amp; bằng cơ chế giải mã dữ liệu cũ + chỉ escape khi render.
+2. Tên nhóm dài hiển thị tốt hơn trong selector BGK.
+3. BGK tự đăng xuất sau tối đa 2 giờ kể từ lúc đăng nhập. Cảnh báo trước 5 phút.
+4. Xóa thí sinh sẽ xóa kèm scores + audit_logs của thí sinh, kể cả log cũ chỉ còn candidateName.
+5. Xóa nhóm sẽ xóa kèm candidates, scores, audit_logs, grader_verifications,
+   submission_notifications, attendance_realtime, group_publication_index và gỡ nhóm khỏi phân quyền BGK/session.
+6. Batch cleanup chia lô 350 thao tác để tránh vượt giới hạn Firestore batch.
+7. Realtime có cơ chế tự đồng bộ lại quyền/phiên khi mạng trở lại.
+8. Bỏ lỗ hổng UI tự nâng tài khoản Email/Password không có hồ sơ thành SuperAdmin.
+9. Thêm admin_sessions: Firestore Rules chỉ cấp quyền quản trị khi Firebase Auth khớp đúng hồ sơ Admin/SuperAdmin.
+10. Anonymous BGK chỉ đọc hồ sơ users có role Grader.
+11. Scores/Audit Logs kiểm tra candidateId phải thuộc đúng groupId ở Firestore Rules.
+12. Dữ liệu tên cũ bị encode nhiều lớp được chuẩn hóa một lần bởi Admin.
+
+CÀI ĐẶT:
+- GitHub/Vercel: thay file index.html bằng index.html V27.
+- Firebase Console > Firestore Database > Rules: thay toàn bộ bằng Rules V27 rồi Publish.
+- Đăng xuất rồi đăng nhập lại Admin/BGK sau khi Publish Rules để tạo admin_sessions/grader_sessions theo phiên mới.
