@@ -1,0 +1,2 @@
+import {adminAuth,requireAdmin} from '../_firebaseAdmin.js';
+export default async function handler(req,res){if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});try{await requireAdmin(req);const{uid,password}=req.body||{};if(!uid||!password||password.length<6)return res.status(400).json({error:'UID và mật khẩu tối thiểu 6 ký tự là bắt buộc.'});await adminAuth.updateUser(uid,{password});res.json({ok:true})}catch(e){console.error(e);res.status(e.message==='UNAUTHORIZED'?401:e.message==='FORBIDDEN'?403:500).json({error:e.message||'Reset failed'})}}
