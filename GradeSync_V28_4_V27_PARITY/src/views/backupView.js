@@ -1,0 +1,8 @@
+import { createBackup,restoreBackup } from '../services/backup.js';
+import { downloadBlob,toast,$,confirmModal } from '../utils/dom.js';
+export function renderBackup(){
+  const view=$('#view');
+  view.innerHTML=`<div class="grid grid-2"><div class="card pad"><div class="tiny muted">BẢO VỆ DỮ LIỆU</div><h3>Sao lưu toàn hệ thống</h3><p class="muted">Xuất file JSON của các dữ liệu chính để lưu trữ trước sự kiện hoặc trước khi cập nhật phiên bản.</p><button class="btn primary" id="backup-now"><i class="fa-solid fa-download"></i> Tạo bản sao lưu</button></div><div class="card pad"><div class="tiny muted">KHÔI PHỤC</div><h3>Khôi phục dữ liệu</h3><p class="muted">Khôi phục theo ID tài liệu. Hệ thống không tự xóa dữ liệu nằm ngoài file sao lưu.</p><input id="restore-file" class="input" type="file" accept=".json"><button class="btn danger" id="restore-now" style="margin-top:10px"><i class="fa-solid fa-rotate-left"></i> Khôi phục dữ liệu</button></div></div>`;
+  $('#backup-now').onclick=async()=>{toast('Đang tạo bản sao lưu...');const data=await createBackup();downloadBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),`GradeSync_Backup_${new Date().toISOString().slice(0,10)}.json`);toast('Đã tạo bản sao lưu')};
+  $('#restore-now').onclick=()=>{const f=$('#restore-file').files[0];if(!f)return toast('Hãy chọn file sao lưu','error');confirmModal('Khôi phục sẽ ghi đè hoặc gộp các tài liệu có cùng ID. Bạn có chắc muốn tiếp tục?',async()=>{try{const data=JSON.parse(await f.text()),n=await restoreBackup(data);toast(`Đã khôi phục ${n} tài liệu`)}catch(e){toast(e.message,'error')}})};
+}
