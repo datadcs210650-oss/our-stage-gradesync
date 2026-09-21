@@ -1,0 +1,179 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn(){ return request.auth != null; }
+    function userPath(){ return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function ownProfileExists(){ return signedIn() && exists(userPath()); }
+    function ownProfile(){ return get(userPath()).data; }
+
+    function adminSessionPath(){ return /databases/$(database)/documents/admin_sessions/$(request.auth.uid); }
+    function validAdminProfile(profileId){
+      let p=/databases/$(database)/documents/users/$(profileId);
+      return signedIn() && exists(p)
+        && get(p).data.role in ['Admin','SuperAdmin']
+        && get(p).data.get('status','Active') != 'Inactive'
+        && request.auth.token.email != null
+        && get(p).data.get('email',request.auth.token.email) == request.auth.token.email;
+    }
+    function isAdmin(){
+      return signedIn()
+        && exists(adminSessionPath())
+        && get(adminSessionPath()).data.authUid == request.auth.uid
+        && validAdminProfile(get(adminSessionPath()).data.profileId);
+    }
+    function validAdminSessionPayload(uid){
+      return signedIn() && request.auth.uid==uid
+        && request.auth.token.email != null
+        && request.resource.data.authUid==request.auth.uid
+        && request.resource.data.email==request.auth.token.email
+        && request.resource.data.profileId is string
+        && validAdminProfile(request.resource.data.profileId);
+    }
+
+    function isGrader(){
+      return ownProfileExists()
+        && ownProfile().role == 'Grader'
+        && ownProfile().get('status','Active') != 'Inactive';
+    }
+    function assigned(groupId){
+      return isGrader() && groupId in ownProfile().get('assignedGroups',[]);
+    }
+    function groupPath(groupId){ return /databases/$(database)/documents/competition_groups/$(groupId); }
+    function groupOpen(groupId){
+      let p=groupPath(groupId);
+      return exists(p) && (
+        (
+          get(p).data.get('openMode','manual') != 'auto'
+          && (get(p).data.get('isManuallyOpened',false)==true || get(p).data.get('isPublished',false)==true)
+          && (
+            !(get(p).data.get('endTime',null) is timestamp)
+            || request.time <= get(p).data.endTime
+          )
+        ) || (
+          get(p).data.get('openMode','manual') == 'auto'
+          && (
+            (
+              get(p).data.get('startTime',null) is timestamp
+              && request.time >= get(p).data.startTime
+              && (!(get(p).data.get('endTime',null) is timestamp) || request.time <= get(p).data.endTime)
+            )
+            || (
+              get(p).data.get('openAt',null) is timestamp
+              && request.time >= get(p).data.openAt
+              && (!(get(p).data.get('closeAt',null) is timestamp) || request.time <= get(p).data.closeAt)
+            )
+          )
+        )
+      );
+    }
+    function globalUnlocked(){
+      let p=/databases/$(database)/documents/system_config/global;
+      return !exists(p) || get(p).data.get('emergencyLock',false) != true;
+    }
+    function candidatePath(candidateId){ return /databases/$(database)/documents/candidates/$(candidateId); }
+    function candidateInGroup(candidateId,groupId){
+      return exists(candidatePath(candidateId)) && get(candidatePath(candidateId)).data.groupId==groupId;
+    }
+    function candidateUnlocked(candidateId){
+      return exists(candidatePath(candidateId)) && get(candidatePath(candidateId)).data.get('locked',false) != true;
+    }
+    function notSubmitted(groupId){
+      let p=/databases/$(database)/documents/grader_verifications/$(request.auth.uid + '_' + groupId);
+      return !exists(p) || get(p).data.get('isVerified',false) != true;
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin()
+        || (signedIn() && request.auth.uid==userId)
+        || (signedIn() && request.auth.token.email != null && resource.data.get('email','')==request.auth.token.email);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /admin_sessions/{uid} {
+      allow read: if signedIn() && request.auth.uid==uid;
+      allow create, update: if validAdminSessionPayload(uid);
+      allow delete: if signedIn() && request.auth.uid==uid;
+    }
+
+    match /competition_groups/{groupId} {
+      allow read: if isAdmin() || assigned(groupId);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /candidates/{candidateId} {
+      allow read: if isAdmin() || (isGrader() && assigned(resource.data.groupId) && groupOpen(resource.data.groupId));
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /scores/{scoreId} {
+      allow read: if isAdmin()
+        || (isGrader() && resource.data.graderUid==request.auth.uid && assigned(resource.data.groupId));
+      allow create: if isGrader()
+        && request.resource.data.graderUid==request.auth.uid
+        && request.resource.data.revision==1
+        && request.resource.data.groupId is string
+        && request.resource.data.candidateId is string
+        && assigned(request.resource.data.groupId)
+        && groupOpen(request.resource.data.groupId)
+        && globalUnlocked()
+        && candidateInGroup(request.resource.data.candidateId,request.resource.data.groupId)
+        && candidateUnlocked(request.resource.data.candidateId)
+        && notSubmitted(request.resource.data.groupId);
+      allow update: if isGrader()
+        && resource.data.graderUid==request.auth.uid
+        && request.resource.data.graderUid==resource.data.graderUid
+        && request.resource.data.groupId==resource.data.groupId
+        && request.resource.data.candidateId==resource.data.candidateId
+        && request.resource.data.revision==resource.data.revision+1
+        && assigned(resource.data.groupId)
+        && groupOpen(resource.data.groupId)
+        && globalUnlocked()
+        && candidateUnlocked(resource.data.candidateId)
+        && notSubmitted(resource.data.groupId);
+      allow delete: if isAdmin();
+    }
+
+    match /grader_verifications/{verificationId} {
+      allow read: if isAdmin() || (isGrader() && resource.data.graderUid==request.auth.uid);
+      allow create, update: if isAdmin() || (
+        isGrader()
+        && request.resource.data.graderUid==request.auth.uid
+        && request.resource.data.groupId is string
+        && assigned(request.resource.data.groupId)
+        && groupOpen(request.resource.data.groupId)
+        && globalUnlocked()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /grading_presence/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid==uid);
+      allow create, update, delete: if signedIn() && request.auth.uid==uid;
+    }
+
+    match /system_config/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() || (isGrader() && request.resource.data.actorUid==request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /submission_notifications/{id} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /attendance_realtime/{id} {
+      allow read: if isAdmin() || assigned(id);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /group_publication_index/{id} {
+      allow read: if isAdmin() || assigned(id);
+      allow create, update, delete: if isAdmin();
+    }
+  }
+}

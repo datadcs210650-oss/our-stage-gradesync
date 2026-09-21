@@ -1,0 +1,3 @@
+import { ref,setDoc,serverTimestamp } from '../data/firestore.js';
+export async function setQueueState(candidate,status,order=null){await setDoc(ref('candidates',candidate.id),{queueStatus:status,queueOrder:order??candidate.queueOrder??0,queueUpdatedAt:serverTimestamp()},{merge:true})}
+export async function callNext(candidates){const waiting=candidates.filter(c=>(c.queueStatus||'waiting')==='waiting'&&c.isPresent!==false).sort((a,b)=>Number(a.queueOrder||999999)-Number(b.queueOrder||999999));if(!waiting.length)return null;const c=waiting[0];await setQueueState(c,'grading',Date.now());return c}
