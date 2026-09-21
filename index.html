@@ -113,6 +113,13 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         @media(max-width:700px){.gs-network-banner{top:8px;width:calc(100vw - 20px);justify-content:center;text-align:center}.gs-net-pill{display:none}}
 
 </style>
+
+<style id="v27-ui-hardening">
+#grading-group-select{min-width:360px;max-width:520px;width:min(44vw,520px);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+@media(max-width:900px){#grading-group-select{min-width:0;max-width:none;width:100%}}
+.gs-v27-session-warning{position:fixed;right:24px;bottom:24px;z-index:99999;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px 15px;border-radius:16px;box-shadow:0 12px 32px rgba(15,23,42,.16);font-size:12px;font-weight:800;max-width:320px}
+</style>
+
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex relative selection:bg-red-200 selection:text-red-900">
     <div id="loading-overlay" class="fixed inset-0 bg-white/90 backdrop-blur-sm z-[150] justify-center items-center flex-col gap-3">
@@ -533,19 +540,10 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 }catch(e){ console.warn('ADMIN LEGACY PROFILE LOOKUP:',e); }
             }
 
-            // Rules V14/V15 đã coi tài khoản Firebase Email là tài khoản quản trị.
-            // Nếu Auth hợp lệ nhưng database cũ chưa có hồ sơ users, vẫn cho đăng nhập để tránh khóa Admin khỏi hệ thống.
+            // V27 SECURITY: không tự nâng mọi tài khoản Email/Password thành SuperAdmin.
+            // Tài khoản quản trị phải có hồ sơ users với role Admin/SuperAdmin.
             if(!found){
-                return {
-                    id:`auth_${user.uid}`,
-                    email,
-                    name:(user.displayName||email.split('@')[0]||'Quản trị viên'),
-                    role:'SuperAdmin',
-                    status:'Active',
-                    assignedGroups:[],
-                    allowedMenus:window.getAllAdminMenuIds(),
-                    _authFallback:true
-                };
+                throw new Error('ADMIN_PROFILE_MISSING');
             }
 
             if(window.isInactiveStatus(found.status)) throw new Error('ADMIN_DISABLED');
@@ -571,6 +569,16 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 const profile=await window.resolveAdminProfile(user);
                 window.currentUserData={...profile,code:'ADMIN'};
                 localStorage.setItem('gradeSyncSession',JSON.stringify(window.currentUserData));
+                // V27 SECURITY: tạo admin_sessions trước khi mở ứng dụng.
+                // Firestore Rules dùng session này để xác minh đúng hồ sơ Admin/SuperAdmin thay vì tin mọi Email Auth.
+                await window.setDoc(window.doc(window.db,'admin_sessions',user.uid),{
+                    authUid:user.uid,
+                    profileId:profile.id,
+                    email:String(user.email||profile.email||'').trim(),
+                    role:profile.role,
+                    lastSeen:window.serverTimestamp(),
+                    updatedAt:window.serverTimestamp()
+                },{merge:true});
                 window._lastInitAuthUid=user.uid;
                 window.initApp();
                 window.startAdminSubmissionNotifications?.();
@@ -584,6 +592,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 window.showLoading(false);
                 if(e.message==='ADMIN_DISABLED') window.showToast('Tài khoản quản trị đã bị khóa.','error');
                 else if(e.message==='ADMIN_ROLE_INVALID') window.showToast('Tài khoản Firebase này không có vai trò quản trị.','error');
+                else if(e.message==='ADMIN_PROFILE_MISSING') window.showToast('Tài khoản Firebase chưa có hồ sơ Admin/SuperAdmin trong Firestore users.','error');
                 else window.showToast('Không thể tải hồ sơ quản trị: '+(e.message||e.code||'Lỗi không xác định'),'error');
                 try{await window.signOut(window.auth);}catch(_){}
                 return false;
@@ -598,7 +607,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 const parsed=JSON.parse(s);
                 if(parsed.role!=='Grader'||!parsed.code) return false;
                 const code=String(parsed.code).trim().toUpperCase();
-                const q=window.query(window.collection(window.db,'users'),window.where('code','==',code));
+                const q=window.query(window.collection(window.db,'users'),window.where('code','==',code),window.where('role','==','Grader'));
                 const sp=await window.getDocs(q);
                 if(sp.empty) return false;
                 const d=sp.docs[0].data();
@@ -709,7 +718,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 const authUser=await window.waitForAuthState(u=>!!u&&u.isAnonymous,5000);
                 if(!authUser?.isAnonymous) throw new Error('Không tạo được phiên Firebase Anonymous.');
 
-                const q=window.query(window.collection(window.db,'users'),window.where('code','==',c));
+                const q=window.query(window.collection(window.db,'users'),window.where('code','==',c),window.where('role','==','Grader'));
                 const sp=await window.getDocs(q);
                 if(sp.empty) throw new Error('GRADER_NOT_FOUND');
                 const d=sp.docs[0].data();
@@ -739,7 +748,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 if(ex.message==='GRADER_NOT_FOUND') msg='Mã giám khảo không tồn tại.';
                 else if(ex.message==='NOT_GRADER') msg='Mã này không phải tài khoản giám khảo.';
                 else if(ex.message==='GRADER_DISABLED') msg='Thẻ giám khảo đang bị khóa.';
-                else if(ex.message==='GRADER_SESSION_FAILED') msg='Không thể tạo phiên giám khảo. Hãy cập nhật Firestore Rules V14/V15.';
+                else if(ex.message==='GRADER_SESSION_FAILED') msg='Không thể tạo phiên giám khảo. Hãy cập nhật Firestore Rules V27.';
                 else if(ex.code==='auth/operation-not-allowed') msg='Firebase chưa bật Anonymous Authentication.';
                 else if(ex.code==='auth/network-request-failed') msg='Không thể kết nối Firebase. Hãy kiểm tra Internet.';
                 window.showToast(msg,'error');
@@ -758,6 +767,9 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         },0);
 
         window.handleLogout = async function() {
+            if(['Admin','SuperAdmin'].includes(window.currentUserData?.role) && window.auth.currentUser?.uid){
+                try{await window.deleteDoc(window.doc(window.db,'admin_sessions',window.auth.currentUser.uid));}catch(e){console.warn('ADMIN SESSION LOGOUT:',e);}
+            }
             if(window.currentUserData?.role==='Grader' && navigator.onLine!==false){ try{await window.syncGraderSession(false,'logout');}catch(e){} }
             window.stopGraderPresenceHeartbeat?.();
             window.stopAdminPresenceWatch?.();
@@ -773,7 +785,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         window.initApp = function() {
             if(!window.currentUserData) return window.showLoading(false); window.showLoading(false); 
             document.getElementById('login-view').style.display = 'none'; document.getElementById('app-view').style.display = 'flex';
-            document.getElementById('user-name-display').innerText = window.escapeHtml(window.currentUserData.name); document.getElementById('user-role-display').innerText = window.escapeHtml(window.currentUserData.role); document.getElementById('header-role-badge').innerText = window.escapeHtml(window.currentUserData.role); document.getElementById('user-avatar').innerText = (window.currentUserData.name || 'U').substring(0,2).toUpperCase();
+            document.getElementById('user-name-display').innerText = window.decodeStoredText(window.currentUserData.name); document.getElementById('user-role-display').innerText = window.decodeStoredText(window.currentUserData.role); document.getElementById('header-role-badge').innerText = window.decodeStoredText(window.currentUserData.role); document.getElementById('user-avatar').innerText = (window.currentUserData.name || 'U').substring(0,2).toUpperCase();
             window.setOwnConnectionUI(navigator.onLine!==false);
             if(window.currentUserData.role==='Grader'){
                 window.startGraderPresenceHeartbeat();
@@ -1254,19 +1266,19 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             const n = document.getElementById('g-n').value.trim(); const p = parseFloat(document.getElementById('g-p').value); const o = document.getElementById('g-o').value; const s = document.getElementById('g-s').value; const e = document.getElementById('g-e').value; const a = document.getElementById('g-a').checked;
             if(!n || isNaN(p)) return window.showToast("Nhập tên và điểm!","error"); if(o === 'auto' && !s) return window.showToast("Cài giờ mở","error"); if(!e) return window.showToast("Cài giờ khóa","error");
             let c = []; let t = 0; let x = []; 
-            document.querySelectorAll('.c-r').forEach(r => { const cn = r.querySelector('.c-n').value.trim(); const cw = parseFloat(r.querySelector('.c-w').value); if(cn && !isNaN(cw)){ c.push({ name: window.escapeHtml(cn), weight: cw }); t += cw; } });
+            document.querySelectorAll('.c-r').forEach(r => { const cn = r.querySelector('.c-n').value.trim(); const cw = parseFloat(r.querySelector('.c-w').value); if(cn && !isNaN(cw)){ c.push({ name: window.cleanTextForStore(cn), weight: cw }); t += cw; } });
             if(t !== 100) return window.showToast("Tổng % phải = 100!","error");
-            document.querySelectorAll('.e-r').forEach(r => { const en = r.querySelector('.e-n').value.trim(); const es = r.querySelector('.e-s').checked; if(en) x.push({ name: window.escapeHtml(en), showToGrader: es }); });
+            document.querySelectorAll('.e-r').forEach(r => { const en = r.querySelector('.e-n').value.trim(); const es = r.querySelector('.e-s').checked; if(en) x.push({ name: window.cleanTextForStore(en), showToGrader: es }); });
             window.showLoading(true,"Đang tạo..."); 
-            try { await window.addDoc(window.collection(window.db, "competition_groups"), { name: window.escapeHtml(n), criteria: c, extraFields: x, passScore: p, openMode: o, startTime: s ? new Date(s).toISOString() : null, endTime: new Date(e).toISOString(), openAt: (o === 'auto' && s) ? new Date(s) : null, closeAt: new Date(e), isManuallyOpened: false, attendanceEnabled: a, createdAt: new Date(), visibleToGraders: true, publishEnabled: true, visibilityExplicitlySet: false, isPublished: false, publishAt: s ? new Date(s) : null, publishUntil: new Date(e), contentSchemaVersion: 1, contentConfig: { scoringContent: { enabled:false, mode:'group', title:'NỘI DUNG TIÊU CHÍ CHẤM', rows:[] }, interviewContent: { enabled:false, mode:'group', title:'CÂU HỎI PHỎNG VẤN', groups:[] } } }); window.showToast("Thành công!"); window.navigate('groups_manager', null, 'QL Nhóm'); } catch(er){} window.showLoading(false);
+            try { await window.addDoc(window.collection(window.db, "competition_groups"), { name: window.cleanTextForStore(n), criteria: c, extraFields: x, passScore: p, openMode: o, startTime: s ? new Date(s).toISOString() : null, endTime: new Date(e).toISOString(), openAt: (o === 'auto' && s) ? new Date(s) : null, closeAt: new Date(e), isManuallyOpened: false, attendanceEnabled: a, createdAt: new Date(), visibleToGraders: true, publishEnabled: true, visibilityExplicitlySet: false, isPublished: false, publishAt: s ? new Date(s) : null, publishUntil: new Date(e), contentSchemaVersion: 1, contentConfig: { scoringContent: { enabled:false, mode:'group', title:'NỘI DUNG TIÊU CHÍ CHẤM', rows:[] }, interviewContent: { enabled:false, mode:'group', title:'CÂU HỎI PHỎNG VẤN', groups:[] } } }); window.showToast("Thành công!"); window.navigate('groups_manager', null, 'QL Nhóm'); } catch(er){} window.showLoading(false);
         };
 
         window.updateGroup = async function(id) {
             const n = document.getElementById(`e-gn-${id}`).value.trim(); const p = parseFloat(document.getElementById(`e-gp-${id}`).value); const o = document.getElementById(`e-m-${id}`).value; const s = document.getElementById(`e-s-${id}`).value; const e = document.getElementById(`e-e-${id}`).value; const a = document.getElementById(`e-a-${id}`).checked;
             let c = []; let t = 0; let x = [];
-            document.querySelectorAll(`.e-c-${id}`).forEach(r => { const cn = r.querySelector('.c-n').value.trim(); const cw = parseFloat(r.querySelector('.c-w').value); if(cn && !isNaN(cw)){ c.push({ name: window.escapeHtml(cn), weight: cw }); t += cw; } });
+            document.querySelectorAll(`.e-c-${id}`).forEach(r => { const cn = r.querySelector('.c-n').value.trim(); const cw = parseFloat(r.querySelector('.c-w').value); if(cn && !isNaN(cw)){ c.push({ name: window.cleanTextForStore(cn), weight: cw }); t += cw; } });
             if(t !== 100) return window.showToast("Tổng % = 100!","error");
-            document.querySelectorAll(`.e-e-${id}`).forEach(r => { const en = r.querySelector('.e-n').value.trim(); const es = r.querySelector('.e-s').checked; if(en) x.push({ name: window.escapeHtml(en), showToGrader: es }); });
+            document.querySelectorAll(`.e-e-${id}`).forEach(r => { const en = r.querySelector('.e-n').value.trim(); const es = r.querySelector('.e-s').checked; if(en) x.push({ name: window.cleanTextForStore(en), showToGrader: es }); });
             if(o==='auto' && !s) return window.showToast('Nhóm tự động cần Giờ Mở.','error');
             if(!e) return window.showToast('Vui lòng cài Giờ Khóa.','error');
             window.showLoading(true,"Lưu...");
@@ -1274,7 +1286,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 const ref=window.doc(window.db,"competition_groups",id);
                 const oldSnap=await window.getDoc(ref); const oldData=oldSnap.exists()?oldSnap.data():{};
                 const update={
-                    name:window.escapeHtml(n), criteria:c, extraFields:x, passScore:p,
+                    name:window.cleanTextForStore(n), criteria:c, extraFields:x, passScore:p,
                     openMode:o, startTime:s?new Date(s).toISOString():null, endTime:new Date(e).toISOString(),
                     openAt:(o==='auto'&&s)?new Date(s):null, closeAt:new Date(e), attendanceEnabled:a,
                     visibleToGraders:true,publishEnabled:true,visibilityExplicitlySet:false,
@@ -1359,14 +1371,14 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             const g = document.getElementById('c-g').value; const c = document.getElementById('c-c').value.trim(); const n = document.getElementById('c-n').value.trim(); 
             if(!g || !n) return window.showToast("Nhập tên & chọn Nhóm!", "error"); 
             let eD = {}; document.querySelectorAll('.c-d-i').forEach(i => { eD[i.getAttribute('data-fn')] = i.value.trim(); }); 
-            window.showLoading(true, "Ghi danh..."); try { await window.addDoc(window.collection(window.db, "candidates"), { groupId: g, code: window.escapeHtml(c), name: window.escapeHtml(n), extraData: eD, isPresent: false, createdAt: new Date() }); window.showToast("Đã lưu!"); document.getElementById('c-c').value = ''; document.getElementById('c-n').value = ''; document.querySelectorAll('.c-d-i').forEach(i => i.value = ''); window.fRC(); } catch(e) { window.showToast("Lỗi thêm", "error"); } window.showLoading(false); 
+            window.showLoading(true, "Ghi danh..."); try { await window.addDoc(window.collection(window.db, "candidates"), { groupId: g, code: window.cleanTextForStore(c), name: window.cleanTextForStore(n), extraData: eD, isPresent: false, createdAt: new Date() }); window.showToast("Đã lưu!"); document.getElementById('c-c').value = ''; document.getElementById('c-n').value = ''; document.querySelectorAll('.c-d-i').forEach(i => i.value = ''); window.fRC(); } catch(e) { window.showToast("Lỗi thêm", "error"); } window.showLoading(false); 
         };
         window.tCA = function() { const k = document.getElementById('c-a').checked; document.querySelectorAll('.c-ck').forEach(c => c.checked = k); };
         window.bDC = function() { const bx = document.querySelectorAll('.c-ck:checked'); if(bx.length === 0) return; window.showCustomConfirm(`Xóa ${bx.length} thí sinh?`, async () => { window.showLoading(true, "Xóa..."); try { for(let c of bx) { await window.deleteDoc(window.doc(window.db, "candidates", c.value)); } window.fRC(); window.showToast("Đã xóa!"); } catch(e){} window.showLoading(false); }); };
         window.uC = async function(id) {
             const n = document.getElementById(`e-cn-${id}`).value.trim(); const c = document.getElementById(`e-cc-${id}`).value.trim(); const g = document.getElementById(`e-cg-${id}`).value; 
             if(!n) return; let eD = {}; document.querySelectorAll(`.e-c-e-${id}`).forEach(i => { eD[i.getAttribute('data-ef')] = i.value.trim(); }); 
-            window.showLoading(true, "Lưu..."); try { await window.setDoc(window.doc(window.db, "candidates", id), { name: window.escapeHtml(n), code: window.escapeHtml(c), extraData: eD, groupId: g }, { merge: true }); window.showToast("Đã lưu!"); window.fRC(); } catch(e){} window.showLoading(false); 
+            window.showLoading(true, "Lưu..."); try { await window.setDoc(window.doc(window.db, "candidates", id), { name: window.cleanTextForStore(n), code: window.cleanTextForStore(c), extraData: eD, groupId: g }, { merge: true }); window.showToast("Đã lưu!"); window.fRC(); } catch(e){} window.showLoading(false); 
         };
         window.dC = function(id) { window.showCustomConfirm("Xóa thí sinh này?", async () => { window.showLoading(true, "Xóa..."); try { await window.deleteDoc(window.doc(window.db, "candidates", id)); window.fRC(); window.showToast("Đã xóa!"); } catch(e){} window.showLoading(false); }); };
 
@@ -1506,8 +1518,8 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 for (const c of parsedCands) {
                     await window.addDoc(window.collection(window.db, "candidates"), {
                         groupId: targetGroupId,
-                        code: window.escapeHtml(c.code),
-                        name: window.escapeHtml(c.name),
+                        code: window.cleanTextForStore(c.code),
+                        name: window.cleanTextForStore(c.name),
                         extraData: c.extraData || {},
                         isPresent: false,
                         createdAt: new Date()
@@ -2279,7 +2291,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                         }
                     }catch(recoverErr){
                         console.error('SCORE PERMISSION RECOVERY ERROR:',recoverErr);
-                        window.showToast('Không có quyền lưu điểm. Vui lòng kiểm tra phân quyền nhóm và Firestore Rules V22.','error');
+                        window.showToast('Không có quyền lưu điểm. Vui lòng kiểm tra phân quyền nhóm và Firestore Rules V27.','error');
                     }
                 }else{
                     window.showToast('Không lưu được điểm: '+(e.code||e.message||'Lỗi hệ thống'),'error');
@@ -2631,7 +2643,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         window.saveGraderEdit = async function(userId) {
             const newName = document.getElementById('edit-grader-name-modal').value.trim(); if(!newName) { window.showToast("Tên không được để trống!", "error"); return; }
             let assignedGroups = []; document.querySelectorAll('.grader-edit-chk-modal:checked').forEach(chk => { assignedGroups.push(chk.value); });
-            window.closeCustomModal(); window.showLoading(true, "Cập nhật hồ sơ..."); try { await window.setDoc(window.doc(window.db, "users", userId), { name: window.escapeHtml(newName), assignedGroups: assignedGroups }, { merge: true }); window.showToast("Cập nhật thành công!"); await window.loadAccountManager(document.getElementById('main-content')); } catch(e){ window.showToast('Không thể cập nhật giám khảo: '+(e.message||e.code),'error'); } window.showLoading(false);
+            window.closeCustomModal(); window.showLoading(true, "Cập nhật hồ sơ..."); try { await window.setDoc(window.doc(window.db, "users", userId), { name: window.cleanTextForStore(newName), assignedGroups: assignedGroups }, { merge: true }); window.showToast("Cập nhật thành công!"); await window.loadAccountManager(document.getElementById('main-content')); } catch(e){ window.showToast('Không thể cập nhật giám khảo: '+(e.message||e.code),'error'); } window.showLoading(false);
         };
 
         window.generateRandomCode = function() { const cInput = document.getElementById('acc-code'); if(cInput) cInput.value = 'GS-' + Math.random().toString(36).substring(2, 6).toUpperCase(); };
@@ -2640,7 +2652,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         window.createAccountByCode = async function() {
             const name = document.getElementById('acc-name').value.trim(); const code = document.getElementById('acc-code').value.trim();
             if(!name || !code) { window.showToast("Vui lòng nhập tên", "error"); return; } let assignedGroups = []; document.querySelectorAll('.acc-group-chk:checked').forEach(chk => { assignedGroups.push(chk.value); });
-            window.showLoading(true, "Đang đăng ký..."); try { await window.addDoc(window.collection(window.db, "users"), { code: window.escapeHtml(code), name: window.escapeHtml(name), role: "Grader", status: "Active", assignedGroups, updatedAt: window.serverTimestamp() }); window.showToast("Cấp thẻ ID thành công!"); await window.loadAccountManager(document.getElementById('main-content')); } catch(e){} window.showLoading(false);
+            window.showLoading(true, "Đang đăng ký..."); try { await window.addDoc(window.collection(window.db, "users"), { code: window.cleanTextForStore(code), name: window.cleanTextForStore(name), role: "Grader", status: "Active", assignedGroups, updatedAt: window.serverTimestamp() }); window.showToast("Cấp thẻ ID thành công!"); await window.loadAccountManager(document.getElementById('main-content')); } catch(e){} window.showLoading(false);
         };
         window.toggleAccountStatus = async function(userId, newStatus) { window.showLoading(true, "Đang xử lý..."); try { await window.setDoc(window.doc(window.db, "users", userId), { status: newStatus }, { merge: true }); await window.loadAccountManager(document.getElementById('main-content')); window.showToast("Đã đổi trạng thái!"); } catch(e){} window.showLoading(false); };
         window.deleteAccount = function(id) { window.showCustomConfirm("Xóa vĩnh viễn thẻ này?", async () => { window.showLoading(true, "Đang xóa..."); try { await window.deleteDoc(window.doc(window.db, "users", id)); await window.loadAccountManager(document.getElementById('main-content')); window.showToast("Đã xóa!"); } catch(e){} window.showLoading(false); }); };
@@ -3158,7 +3170,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             const snap=await window.getDoc(ref);
             const oldVersion=snap.exists()?Number(snap.data()?.permissionsVersion||0):0;
             await window.setDoc(ref,{
-                name:window.escapeHtml(newName),
+                name:window.cleanTextForStore(newName),
                 assignedGroups,
                 permissionsVersion:oldVersion+1,
                 permissionsUpdatedAt:window.serverTimestamp(),
@@ -3630,7 +3642,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             const authUser=await window.waitForAuthState(u=>!!u&&u.isAnonymous,5000);
             if(!authUser?.isAnonymous) throw new Error('Không tạo được phiên Firebase Anonymous.');
 
-            const q=window.query(window.collection(window.db,'users'),window.where('code','==',c));
+            const q=window.query(window.collection(window.db,'users'),window.where('code','==',c),window.where('role','==','Grader'));
             const sp=await window.getDocs(q);
             if(sp.empty) throw new Error('GRADER_NOT_FOUND');
             const d=sp.docs[0].data();
@@ -3751,7 +3763,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             const snap=await window.getDoc(ref);
             const oldVersion=snap.exists()?Number(snap.data()?.permissionsVersion||0):0;
             await window.setDoc(ref,{
-                name:window.escapeHtml(newName),
+                name:window.cleanTextForStore(newName),
                 assignedGroups,
                 assignedGroupMeta,
                 assignedGroupNames,
@@ -3784,8 +3796,8 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         window.showLoading(true,'Đang đăng ký...');
         try{
             await window.addDoc(window.collection(window.db,'users'),{
-                code:window.escapeHtml(code),
-                name:window.escapeHtml(name),
+                code:window.cleanTextForStore(code),
+                name:window.cleanTextForStore(name),
                 role:'Grader',
                 status:'Active',
                 assignedGroups,
@@ -3821,5 +3833,299 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
   setTimeout(apply,250);
 })();
 </script>
+
+<script type="module" id="v27-system-hardening">
+(function(){
+    // ===== V27: canonical text handling =====
+    window.decodeStoredText = function(value){
+        if(value === null || value === undefined) return '';
+        let s = String(value);
+        const replacements = [
+            [/&amp;/gi,'&'],[/&lt;/gi,'<'],[/&gt;/gi,'>'],[/&quot;/gi,'"'],[/&#0*39;|&apos;/gi,"'"]
+        ];
+        // Dữ liệu cũ có thể bị encode nhiều lần (&amp;amp;). Giải tối đa 4 lớp.
+        for(let pass=0; pass<4; pass++){
+            const before=s;
+            replacements.forEach(([re,to])=>{ s=s.replace(re,to); });
+            if(s===before) break;
+        }
+        return s;
+    };
+    window.cleanTextForStore = function(value){
+        return window.decodeStoredText(value).replace(/[\u0000-\u001F\u007F]/g,' ').replace(/\s+/g,' ').trim();
+    };
+    const _rawEscape = function(value){
+        if(value === null || value === undefined) return '';
+        return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    };
+    // Render legacy data safely without displaying &amp;amp;.
+    window.escapeHtml = function(value){ return _rawEscape(window.decodeStoredText(value)); };
+
+    // Clean cached names immediately so the grader selector is correct on first paint.
+    try{
+        if(window._groupNameCache){
+            Object.keys(window._groupNameCache).forEach(k=>window._groupNameCache[k]=window.decodeStoredText(window._groupNameCache[k]));
+            localStorage.setItem('gradeSyncGroupNameCache',JSON.stringify(window._groupNameCache));
+        }
+    }catch(_e){}
+
+    // ===== V27: grader session maximum lifetime =====
+    // Default: 2 hours. Change this single value if you want a different maximum login duration.
+    window.GRADER_SESSION_MAX_MS = 2 * 60 * 60 * 1000;
+    window.GRADER_SESSION_WARNING_MS = 5 * 60 * 1000;
+    window._v27SessionWarningShown = false;
+
+    const _originalLogoutV27 = window.handleLogout;
+    window.handleLogout = async function(){
+        try{
+            localStorage.removeItem('gradeSyncGraderLoginAt');
+            localStorage.removeItem('gradeSyncGraderSessionUserId');
+        }catch(_e){}
+        return _originalLogoutV27 ? _originalLogoutV27() : undefined;
+    };
+
+    window.ensureGraderSessionClock = function(){
+        if(window.currentUserData?.role!=='Grader') return;
+        const userId=String(window.currentUserData.id||window.currentUserData.code||'grader');
+        let storedId='';
+        try{storedId=localStorage.getItem('gradeSyncGraderSessionUserId')||'';}catch(_e){}
+        if(storedId!==userId){
+            try{
+                localStorage.setItem('gradeSyncGraderSessionUserId',userId);
+                localStorage.setItem('gradeSyncGraderLoginAt',String(Date.now()));
+            }catch(_e){}
+            window._v27SessionWarningShown=false;
+        }
+        let loginAt=0;
+        try{loginAt=Number(localStorage.getItem('gradeSyncGraderLoginAt')||0);}catch(_e){}
+        if(!loginAt){
+            loginAt=Date.now();
+            try{localStorage.setItem('gradeSyncGraderLoginAt',String(loginAt));}catch(_e){}
+        }
+        const elapsed=Date.now()-loginAt;
+        const remain=window.GRADER_SESSION_MAX_MS-elapsed;
+        if(remain<=0){
+            window.showToast('Phiên giám khảo đã hết hạn. Hệ thống tự động đăng xuất để bảo mật.','error');
+            setTimeout(()=>window.handleLogout(),100);
+            return;
+        }
+        if(remain<=window.GRADER_SESSION_WARNING_MS && !window._v27SessionWarningShown){
+            window._v27SessionWarningShown=true;
+            const mins=Math.max(1,Math.ceil(remain/60000));
+            window.showToast(`Phiên giám khảo sẽ tự đăng xuất sau khoảng ${mins} phút.`,'error');
+        }
+    };
+    setInterval(()=>window.ensureGraderSessionClock(),30000);
+    setTimeout(()=>window.ensureGraderSessionClock(),1000);
+
+    // ===== V27: realtime self-repair =====
+    window._v27RealtimeRepairTimer=null;
+    window.scheduleRealtimeRepairV27=function(reason='realtime'){
+        if(window.currentUserData?.role!=='Grader' || navigator.onLine===false) return;
+        clearTimeout(window._v27RealtimeRepairTimer);
+        window._v27RealtimeRepairTimer=setTimeout(async()=>{
+            try{
+                if(window.currentUserData?.id){
+                    const u=await window.getDoc(window.doc(window.db,'users',window.currentUserData.id));
+                    if(u.exists()){
+                        const d=u.data()||{};
+                        window.currentUserData={...window.currentUserData,...d,id:u.id,code:window.currentUserData.code||d.code};
+                        if(window._graderRealtime) window._graderRealtime.assigned=Array.isArray(d.assignedGroups)?d.assignedGroups:[];
+                        localStorage.setItem('gradeSyncSession',JSON.stringify(window.currentUserData));
+                    }
+                }
+                await window.syncGraderSession?.(true,'v27-'+reason);
+                window.refreshAssignedGroupSubscriptions?.();
+                window.refreshGraderGroupSelector?.();
+                window._rerenderGraderRealtime?.();
+            }catch(e){console.warn('V27 REALTIME REPAIR:',reason,e);}
+        },1200);
+    };
+    window.addEventListener('online',()=>window.scheduleRealtimeRepairV27('online'));
+
+    // ===== V27: generic chunked cleanup helpers =====
+    window._v27CommitOps = async function(ops,chunkSize=350){
+        for(let i=0;i<ops.length;i+=chunkSize){
+            const batch=window.writeBatch(window.db);
+            ops.slice(i,i+chunkSize).forEach(op=>{
+                if(op.type==='delete') batch.delete(op.ref);
+                else if(op.type==='set') batch.set(op.ref,op.data,op.options||{merge:true});
+            });
+            await batch.commit();
+        }
+    };
+    window._v27QueryDocs = async function(collectionName,field,value){
+        const q=window.query(window.collection(window.db,collectionName),window.where(field,'==',value));
+        const s=await window.getDocs(q);
+        return s.docs;
+    };
+
+    window.deleteCandidateCascade = async function(candidateId){
+        const candRef=window.doc(window.db,'candidates',candidateId);
+        const candSnap=await window.getDoc(candRef);
+        const cand=candSnap.exists()?candSnap.data():{};
+        const [scores,logsById,legacyLogsByName]=await Promise.all([
+            window._v27QueryDocs('scores','candidateId',candidateId),
+            window._v27QueryDocs('audit_logs','candidateId',candidateId),
+            cand.name ? window._v27QueryDocs('audit_logs','candidateName',cand.name) : Promise.resolve([])
+        ]);
+        const logMap=new Map();
+        logsById.forEach(d=>logMap.set(d.id,d));
+        legacyLogsByName.forEach(d=>{ const x=d.data()||{}; if(!cand.groupId || !x.groupId || x.groupId===cand.groupId) logMap.set(d.id,d); });
+        const logs=[...logMap.values()];
+        const ops=[{type:'delete',ref:candRef}];
+        scores.forEach(d=>ops.push({type:'delete',ref:d.ref}));
+        logs.forEach(d=>ops.push({type:'delete',ref:d.ref}));
+        if(cand.groupId){
+            try{
+                const aRef=window.doc(window.db,'attendance_realtime',cand.groupId);
+                const aSnap=await window.getDoc(aRef);
+                if(aSnap.exists() && aSnap.data()?.candidateId===candidateId) ops.push({type:'delete',ref:aRef});
+            }catch(_e){}
+        }
+        await window._v27CommitOps(ops);
+        return {scores:scores.length,logs:logs.length};
+    };
+
+    window.deleteGroupCascade = async function(groupId){
+        const groupRef=window.doc(window.db,'competition_groups',groupId);
+        const groupSnap=await window.getDoc(groupRef);
+        const groupData=groupSnap.exists()?groupSnap.data():{};
+        const queries=await Promise.all([
+            window._v27QueryDocs('candidates','groupId',groupId),
+            window._v27QueryDocs('scores','groupId',groupId),
+            window._v27QueryDocs('audit_logs','groupId',groupId),
+            groupData.name ? window._v27QueryDocs('audit_logs','groupName',groupData.name) : Promise.resolve([]),
+            window._v27QueryDocs('grader_verifications','groupId',groupId),
+            window._v27QueryDocs('submission_notifications','groupId',groupId),
+            window.getDocs(window.query(window.collection(window.db,'users'),window.where('assignedGroups','array-contains',groupId))),
+            window.getDocs(window.query(window.collection(window.db,'grader_sessions'),window.where('assignedGroups','array-contains',groupId)))
+        ]);
+        const [candidates,scores,logsById,legacyLogsByName,verifications,notifications,userSnap,sessionSnap]=queries;
+        const logMap=new Map();
+        logsById.forEach(d=>logMap.set(d.id,d));
+        legacyLogsByName.forEach(d=>logMap.set(d.id,d));
+        const logs=[...logMap.values()];
+        const ops=[];
+        [candidates,scores,logs,verifications,notifications].forEach(list=>list.forEach(d=>ops.push({type:'delete',ref:d.ref})));
+        ops.push({type:'delete',ref:groupRef});
+        ops.push({type:'delete',ref:window.doc(window.db,'group_publication_index',groupId)});
+        ops.push({type:'delete',ref:window.doc(window.db,'attendance_realtime',groupId)});
+
+        userSnap.docs.forEach(d=>{
+            const data=d.data()||{};
+            const assigned=(data.assignedGroups||[]).filter(x=>x!==groupId);
+            const meta=(data.assignedGroupMeta||[]).filter(x=>x?.id!==groupId);
+            const names={...(data.assignedGroupNames||{})}; delete names[groupId];
+            ops.push({type:'set',ref:d.ref,data:{assignedGroups:assigned,assignedGroupMeta:meta,assignedGroupNames:names,permissionsVersion:Number(data.permissionsVersion||0)+1,permissionsUpdatedAt:window.serverTimestamp(),updatedAt:window.serverTimestamp()},options:{merge:true}});
+        });
+        sessionSnap.docs.forEach(d=>{
+            const data=d.data()||{};
+            ops.push({type:'set',ref:d.ref,data:{assignedGroups:(data.assignedGroups||[]).filter(x=>x!==groupId),lastSeen:window.serverTimestamp(),reason:'group-deleted'},options:{merge:true}});
+        });
+        await window._v27CommitOps(ops);
+        try{
+            if(window._groupNameCache){delete window._groupNameCache[groupId];localStorage.setItem('gradeSyncGroupNameCache',JSON.stringify(window._groupNameCache));}
+        }catch(_e){}
+        return {candidates:candidates.length,scores:scores.length,logs:logs.length};
+    };
+
+    // Replace destructive actions so history/scores don't become orphans.
+    window.deleteGroup=function(id){
+        window.showCustomConfirm('Xóa nhóm này sẽ xóa luôn thí sinh, điểm, lịch sử truy vết, trạng thái nộp và gỡ phân quyền BGK. Tiếp tục?',async()=>{
+            window.showLoading(true,'Đang xóa sạch dữ liệu nhóm...');
+            try{
+                const result=await window.deleteGroupCascade(id);
+                window.showToast(`Đã xóa nhóm và dữ liệu liên quan (${result.candidates} thí sinh, ${result.scores} bảng điểm, ${result.logs} lịch sử).`);
+                window.navigate('groups_manager',null,'QL Nhóm');
+            }catch(e){console.error('DELETE GROUP CASCADE:',e);window.showToast('Không thể xóa sạch nhóm: '+(e.message||e.code),'error');}
+            finally{window.showLoading(false);}
+        });
+    };
+
+    window.dC=function(id){
+        window.showCustomConfirm('Xóa thí sinh này? Điểm và lịch sử truy vết của thí sinh cũng sẽ bị xóa.',async()=>{
+            window.showLoading(true,'Đang xóa thí sinh và lịch sử...');
+            try{await window.deleteCandidateCascade(id);window.fRC?.();window.showToast('Đã xóa thí sinh, điểm và lịch sử liên quan.');}
+            catch(e){console.error('DELETE CANDIDATE CASCADE:',e);window.showToast('Không thể xóa thí sinh: '+(e.message||e.code),'error');}
+            finally{window.showLoading(false);}
+        });
+    };
+
+    window.bDC=function(){
+        const ids=[...document.querySelectorAll('.c-ck:checked')].map(x=>x.value).filter(Boolean);
+        if(!ids.length) return;
+        window.showCustomConfirm(`Xóa ${ids.length} thí sinh? Điểm và lịch sử liên quan cũng sẽ bị xóa.`,async()=>{
+            window.showLoading(true,'Đang dọn dữ liệu liên quan...');
+            try{
+                for(const id of ids) await window.deleteCandidateCascade(id);
+                window.fRC?.();window.showToast(`Đã xóa sạch dữ liệu của ${ids.length} thí sinh.`);
+            }catch(e){console.error('BULK DELETE CASCADE:',e);window.showToast('Có lỗi khi xóa dữ liệu: '+(e.message||e.code),'error');}
+            finally{window.showLoading(false);}
+        });
+    };
+
+    // One-time legacy text repair for current database. Only Admin/SuperAdmin executes it.
+    window.repairLegacyEncodedTextV27=async function(){
+        if(!['Admin','SuperAdmin'].includes(window.currentUserData?.role)) return;
+        if(localStorage.getItem('gradeSyncV27TextMigration')==='1') return;
+        try{
+            const [groups,cands,users]=await Promise.all([
+                window.getDocs(window.collection(window.db,'competition_groups')),
+                window.getDocs(window.collection(window.db,'candidates')),
+                window.getDocs(window.collection(window.db,'users'))
+            ]);
+            const ops=[];
+            groups.docs.forEach(d=>{
+                const x=d.data()||{}; const name=window.cleanTextForStore(x.name||'');
+                const criteria=(x.criteria||[]).map(c=>({...c,name:window.cleanTextForStore(c.name||'')}));
+                const extraFields=(x.extraFields||[]).map(f=>({...f,name:window.cleanTextForStore(f.name||'')}));
+                if(name!==x.name || JSON.stringify(criteria)!==JSON.stringify(x.criteria||[]) || JSON.stringify(extraFields)!==JSON.stringify(x.extraFields||[]))
+                    ops.push({type:'set',ref:d.ref,data:{name,criteria,extraFields},options:{merge:true}});
+            });
+            cands.docs.forEach(d=>{
+                const x=d.data()||{}; const name=window.cleanTextForStore(x.name||''); const code=window.cleanTextForStore(x.code||'');
+                if(name!==x.name || code!==x.code) ops.push({type:'set',ref:d.ref,data:{name,code},options:{merge:true}});
+            });
+            users.docs.forEach(d=>{
+                const x=d.data()||{}; const name=window.cleanTextForStore(x.name||''); const code=window.cleanTextForStore(x.code||'');
+                const meta=(x.assignedGroupMeta||[]).map(m=>({...m,name:window.cleanTextForStore(m.name||'')}));
+                const names={}; Object.entries(x.assignedGroupNames||{}).forEach(([k,v])=>names[k]=window.cleanTextForStore(v));
+                const data={}; if(name!==x.name)data.name=name;if(code!==x.code)data.code=code;
+                if(JSON.stringify(meta)!==JSON.stringify(x.assignedGroupMeta||[]))data.assignedGroupMeta=meta;
+                if(JSON.stringify(names)!==JSON.stringify(x.assignedGroupNames||{}))data.assignedGroupNames=names;
+                if(Object.keys(data).length) ops.push({type:'set',ref:d.ref,data,options:{merge:true}});
+            });
+            if(ops.length) await window._v27CommitOps(ops);
+            localStorage.setItem('gradeSyncV27TextMigration','1');
+            if(ops.length) console.info('V27 normalized legacy encoded text:',ops.length);
+        }catch(e){console.warn('V27 TEXT MIGRATION:',e);}
+    };
+
+    // Hook initApp without blocking UI.
+    const _initAppV27=window.initApp;
+    window.initApp=function(){
+        const r=_initAppV27?.apply(this,arguments);
+        setTimeout(()=>{
+            window.ensureGraderSessionClock();
+            window.repairLegacyEncodedTextV27();
+        },300);
+        return r;
+    };
+
+    // Ensure long group names display correctly after all old modules have loaded.
+    const _refreshSelectorV27=window.refreshGraderGroupSelector;
+    window.refreshGraderGroupSelector=function(){
+        const r=_refreshSelectorV27?.apply(this,arguments);
+        const sel=document.getElementById('grading-group-select');
+        if(sel){
+            [...sel.options].forEach(o=>{o.textContent=window.decodeStoredText(o.textContent);});
+            sel.title=window.decodeStoredText(sel.options[sel.selectedIndex]?.textContent||'');
+        }
+        return r;
+    };
+})();
+</script>
+
 </body>
 </html>
