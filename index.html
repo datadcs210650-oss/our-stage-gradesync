@@ -6,10 +6,10 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <meta name="gradesync-build" content="V29-V27-RESTORED">
+    <meta name="gradesync-build" content="V29.1-V27-STABLE">
 
-    <!-- GradeSync V29 - V27 RESTORED CORE -->
-    <title>GradeSync V29 - Hệ thống Chấm điểm Live</title>
+    <!-- GradeSync V29.1 - V27 STABLE HOTFIX: time/PDF/score-clear -->
+    <title>GradeSync V29.1 - Hệ thống Chấm điểm Live</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
@@ -225,14 +225,41 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 
         window.escapeHtml = function(unsafe) { if(!unsafe) return ''; return String(unsafe).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); };
         window.sanitizeFileName = function(name, fallback="GradeSync_BaoCao") { let s=String(name||"").trim().replace(/[\\/:*?"<>|]/g,"_").replace(/[\x00-\x1F]/g,"").replace(/\s+/g," ").replace(/^\.+|\.+$/g,""); return (s || fallback).slice(0,120); };
-        window.toLocalDatetime = function(isoStr) { if(!isoStr) return ''; let d = new Date(isoStr); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,16); };
+        window.toLocalDatetime = function(value) {
+            if(value==null || value==='') return '';
+            try {
+                let d=null;
+                if(value instanceof Date) d=new Date(value.getTime());
+                else if(value && typeof value.toDate==='function') d=value.toDate();
+                else if(value && typeof value.toMillis==='function') d=new Date(value.toMillis());
+                else if(value && typeof value.seconds==='number') d=new Date(value.seconds*1000 + Math.floor((value.nanoseconds||0)/1000000));
+                else d=new Date(value);
+                if(!d || Number.isNaN(d.getTime())) return '';
+                d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                return d.toISOString().slice(0,16);
+            } catch(_e) { return ''; }
+        };
         window.getGroupTimeStatus = function(g) {
             if (!g) return { active: false, text: "Lỗi cấu hình", color: "gray", icon: "fa-exclamation" };
-            let now = new Date().getTime(); let end = g.endTime ? new Date(g.endTime).getTime() : Infinity;
+            const toMs=(v)=>{
+                if(v==null || v==='') return null;
+                try{
+                    if(typeof v==='number') return Number.isFinite(v)?v:null;
+                    if(v instanceof Date) return Number.isNaN(v.getTime())?null:v.getTime();
+                    if(typeof v?.toMillis==='function'){const n=v.toMillis();return Number.isFinite(n)?n:null;}
+                    if(typeof v?.seconds==='number') return v.seconds*1000 + Math.floor((v.nanoseconds||0)/1000000);
+                    const n=Date.parse(v); return Number.isNaN(n)?null:n;
+                }catch(_e){return null;}
+            };
+            const now=Date.now();
+            const end=toMs(g.endTime) ?? toMs(g.closeAt) ?? toMs(g.publishUntil) ?? Infinity;
             if (now > end) return { active: false, text: "Đã đóng", color: "rose", icon: "fa-lock" };
-            if (g.openMode === 'manual') { const opened = g.isManuallyOpened === true || g.isPublished === true; return opened ? { active: true, text: "Đang mở", color: "emerald", icon: "fa-unlock" } : { active: false, text: "Chưa mở", color: "amber", icon: "fa-pause-circle" }; } 
-            let start = g.startTime ? new Date(g.startTime).getTime() : 0; 
-            if (now < start) return { active: false, text: `Sẽ mở: ${new Date(start).toLocaleString('vi-VN').slice(0, 16)}`, color: "amber", icon: "fa-clock" }; 
+            if (g.openMode === 'manual') {
+                const opened = g.isManuallyOpened === true || g.isPublished === true;
+                return opened ? { active: true, text: "Đang mở", color: "emerald", icon: "fa-unlock" } : { active: false, text: "Chưa mở", color: "amber", icon: "fa-pause-circle" };
+            }
+            const start=toMs(g.startTime) ?? toMs(g.openAt) ?? toMs(g.publishAt) ?? 0;
+            if (now < start) return { active: false, text: `Sẽ mở: ${new Date(start).toLocaleString('vi-VN').slice(0, 16)}`, color: "amber", icon: "fa-clock" };
             return { active: true, text: "Đang mở", color: "emerald", icon: "fa-play-circle" };
         };
         window.showToast = function(msg, type = 'success') {
@@ -959,8 +986,10 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         // Giữ publication index chỉ để tương thích dữ liệu cũ. V19 không dùng nó để ẩn nhóm.
         window.buildPublicationMeta=function(groupId,g){
             const auto=g.openMode==='auto';
-            const start=auto && g.startTime?new Date(g.startTime):(g.openAt instanceof Date?g.openAt:null);
-            const end=g.endTime?new Date(g.endTime):(g.closeAt instanceof Date?g.closeAt:null);
+            const startMs=window.toMillisSafe(g.startTime) ?? window.toMillisSafe(g.openAt) ?? window.toMillisSafe(g.publishAt);
+            const endMs=window.toMillisSafe(g.endTime) ?? window.toMillisSafe(g.closeAt) ?? window.toMillisSafe(g.publishUntil);
+            const start=startMs!=null?new Date(startMs):null;
+            const end=endMs!=null?new Date(endMs):null;
             return {
                 groupId,
                 name:g.name||'',
@@ -990,8 +1019,10 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 const batch=window.writeBatch(window.db); let count=0;
                 snap.forEach(ds=>{
                     const g=ds.data();
-                    const openAt=(g.openMode==='auto' && g.startTime)?new Date(g.startTime):null;
-                    const closeAt=g.endTime?new Date(g.endTime):null;
+                    const openMs=(g.openMode==='auto')?(window.toMillisSafe(g.startTime) ?? window.toMillisSafe(g.openAt) ?? window.toMillisSafe(g.publishAt)):null;
+                    const closeMs=window.toMillisSafe(g.endTime) ?? window.toMillisSafe(g.closeAt) ?? window.toMillisSafe(g.publishUntil);
+                    const openAt=openMs!=null?new Date(openMs):null;
+                    const closeAt=closeMs!=null?new Date(closeMs):null;
                     const compat={
                         visibleToGraders:true,
                         publishEnabled:true,
@@ -1056,7 +1087,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         window.getSectionAccess=function(groupInfo,sectionKey){
             const cfg=window.normalizeGroupContent(groupInfo), sec=cfg[sectionKey];
             if(!sec.enabled)return {enabled:false,open:false,text:'Chưa bật'};
-            const now=Date.now(), end=groupInfo.endTime?new Date(groupInfo.endTime).getTime():null;
+            const now=Date.now(), end=window.toMillisSafe?.(groupInfo.endTime) ?? window.toMillisSafe?.(groupInfo.closeAt) ?? null;
             if(end&&now>end)return {enabled:true,open:false,text:'Đã đóng'};
             if(sec.mode==='before')return {enabled:true,open:true,text:'Được mở trước giờ chấm'};
             const t=window.getGroupTimeStatus(groupInfo); return {enabled:true,open:t.active,text:t.active?'Đang mở theo nhóm':t.text};
@@ -2103,7 +2134,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                     criteriaInputs += `<td class="py-2 px-2 text-center border-l border-gray-100 hover:bg-gray-50/50 transition"><input type="number" id="score-${cand.id}-${idx}" data-cand="${cand.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="100" step="0.5" value="${val}" ${candInputDisabled ? 'disabled' : ''} oninput="if(this.value>100)this.value=100; if(this.value<0)this.value=0; window.autoSaveScore('${cand.id}', '${gId}', ${groupInfo.passScore})" class="score-input w-16 mx-auto border border-gray-300 p-2 rounded-lg text-center text-xs font-bold text-red-800 outline-none focus:border-red-600 focus:bg-red-50 ${candInputDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent shadow-inner opacity-60' : 'bg-white shadow-sm hover:border-red-400 transition-all duration-300'}" placeholder="-"></td>`;
                 });
 
-                let statusBadgeHtml = graded.candidateId ? (isPass ? `<span class="bg-emerald-50 text-emerald-600 px-2 py-1 rounded text-[10px] font-bold border border-emerald-200">PASS</span>` : `<span class="bg-rose-50 text-rose-600 px-2 py-1 rounded text-[10px] font-bold border border-rose-200">FAIL</span>`) : `<span class="bg-gray-100 text-gray-500 px-2 py-1 rounded text-[9px] font-medium border border-gray-200">CHỜ</span>`;
+                let statusBadgeHtml = (graded.candidateId && Object.keys(scoresObj).length) ? (isPass ? `<span class="bg-emerald-50 text-emerald-600 px-2 py-1 rounded text-[10px] font-bold border border-emerald-200">PASS</span>` : `<span class="bg-rose-50 text-rose-600 px-2 py-1 rounded text-[10px] font-bold border border-rose-200">FAIL</span>`) : `<span class="bg-gray-100 text-gray-500 px-2 py-1 rounded text-[9px] font-medium border border-gray-200">CHỜ</span>`;
 
                 const presentRowClass = (!isAdmin && groupInfo.attendanceEnabled && cand.isPresent)
                     ? 'bg-emerald-50/80 ring-1 ring-inset ring-emerald-200'
@@ -2167,7 +2198,6 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             };
 
             try{
-                // Bảo đảm phiên anonymous + grader_sessions tồn tại trước khi ghi điểm.
                 if(window.currentUserData?.role==='Grader'){
                     const au=window.auth?.currentUser;
                     if(!au?.isAnonymous) throw Object.assign(new Error('GRADER_AUTH_MISSING'),{code:'grader-auth-missing'});
@@ -2175,79 +2205,93 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                     if(!sessionOK) throw Object.assign(new Error('GRADER_SESSION_SYNC_FAILED'),{code:'grader-session-sync-failed'});
                 }
 
-                const inputs=document.querySelectorAll(`input[data-cand="${cId}"][data-group="${gId}"]`),scores={};
-                let total=0,changes=[];
+                const inputs=[...document.querySelectorAll(`input.score-input[data-cand="${cId}"][data-group="${gId}"]`)];
+                const scores={}; let total=0,changes=[];
                 const graderCode=window.currentUserData?.code||'UNK';
                 const candidate=(window._allCandidatesCache||[]).find(c=>c.id===cId);
                 const groupInfo=window._groupMapCache?.[gId]||{};
 
                 inputs.forEach(i=>{
                     const crit=i.getAttribute('data-crit'),weight=parseFloat(i.getAttribute('data-weight'))||0;
-                    let v=parseFloat(i.value);
-                    if(v>100){v=100;i.value=100;}
-                    if(v<0){v=0;i.value=0;}
-                    if(!Number.isNaN(v)){scores[crit]=v;total+=(v*weight)/100;}
+                    const raw=String(i.value??'').trim();
+                    if(raw==='') return; // ô bị xóa => tiêu chí đó bị xóa khỏi Firestore
+                    let v=parseFloat(raw);
+                    if(Number.isNaN(v)) return;
+                    if(v>100){v=100;i.value='100';}
+                    if(v<0){v=0;i.value='0';}
+                    scores[crit]=v; total+=(v*weight)/100;
                 });
-                if(!Object.keys(scores).length) return false;
-
                 total=Number(total.toFixed(2));
-                const passed=total>=Number(pS);
-                const totalEl=document.getElementById(`tot-${cId}`),statusEl=document.getElementById(`status-container-${cId}`);
-                if(totalEl){totalEl.innerText=total;totalEl.className=`font-bold text-base ${passed?'text-emerald-600':'text-rose-600'}`;}
-                if(statusEl)statusEl.innerHTML=`<span class="${passed?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-rose-50 text-rose-600 border-rose-200'} px-2 py-1 rounded text-[10px] font-bold border">${passed?'PASS':'FAIL'}</span>`;
-                setSaveState('Đang lưu...','amber');
 
-                const graderName=`${window.currentUserData?.name||'Giám khảo'} - ${graderCode}`;
                 const scoreId=`${graderCode}_${cId}`.replace(/[^a-zA-Z0-9_-]/g,'_');
                 const scoreRef=window.doc(window.db,'scores',scoreId);
                 let cached=window._gradedDataCache?.[cId]||{};
+                let cachedRevision=(cached.id===scoreId)?Number(cached.revision||0):0;
+
+                // Nếu chưa từng có bảng điểm và mọi ô đều trống thì chỉ đưa UI về CHỜ, không tạo document rỗng.
+                if(!Object.keys(scores).length && cachedRevision<=0){
+                    try{
+                        const serverSnap=await window.getDoc(scoreRef);
+                        if(serverSnap.exists()){
+                            cached={id:serverSnap.id,...serverSnap.data()};
+                            cachedRevision=Number(cached.revision||0);
+                        }
+                    }catch(_e){}
+                    if(cachedRevision<=0){
+                        window._gradedDataCache=window._gradedDataCache||{};
+                        window._gradedDataCache[cId]={};
+                        const totalEl=document.getElementById(`tot-${cId}`),statusEl=document.getElementById(`status-container-${cId}`);
+                        if(totalEl){totalEl.innerText='0';totalEl.className='font-bold text-base text-gray-400';}
+                        if(statusEl)statusEl.innerHTML='<span class="bg-gray-100 text-gray-500 px-2 py-1 rounded text-[9px] font-medium border border-gray-200">CHỜ</span>';
+                        return true;
+                    }
+                }
+
+                const hasAnyScore=Object.keys(scores).length>0;
+                const passed=hasAnyScore && total>=Number(pS);
+                const totalEl=document.getElementById(`tot-${cId}`),statusEl=document.getElementById(`status-container-${cId}`);
+                if(totalEl){totalEl.innerText=hasAnyScore?total:'0';totalEl.className=`font-bold text-base ${hasAnyScore?(passed?'text-emerald-600':'text-rose-600'):'text-gray-400'}`;}
+                if(statusEl)statusEl.innerHTML=hasAnyScore
+                    ? `<span class="${passed?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-rose-50 text-rose-600 border-rose-200'} px-2 py-1 rounded text-[10px] font-bold border">${passed?'PASS':'FAIL'}</span>`
+                    : '<span class="bg-gray-100 text-gray-500 px-2 py-1 rounded text-[9px] font-medium border border-gray-200">CHỜ</span>';
+                setSaveState('Đang lưu...','amber');
+
+                const graderName=`${window.currentUserData?.name||'Giám khảo'} - ${graderCode}`;
                 let committedRevision=0;
+                const basePayload={candidateId:cId,groupId:gId,graderCode,graderName,scores,totalScore:total,schemaVersion:2,locked:false,timestamp:window.serverTimestamp(),updatedAt:window.serverTimestamp()};
 
-                const basePayload={
-                    candidateId:cId,groupId:gId,graderCode,graderName,scores,totalScore:total,
-                    schemaVersion:2,locked:false,timestamp:window.serverTimestamp(),updatedAt:window.serverTimestamp()
-                };
-
-                // QUAN TRỌNG V22:
-                // Với điểm CHƯA TỒN TẠI, không dùng transaction.get(scoreRef).
-                // Firestore transaction phải đọc trước khi ghi; đọc một document chưa tồn tại có thể bị Rules từ chối.
-                // Tạo mới trực tiếp revision=1. Rules sẽ tự chặn nếu document thực ra đã tồn tại.
-                const cachedRevision=(cached.id===scoreId)?Number(cached.revision||0):0;
                 if(cachedRevision<=0){
                     try{
                         await window.setDoc(scoreRef,{...basePayload,revision:1});
                         committedRevision=1;
                     }catch(createErr){
-                        // Cache có thể chậm hơn server. Nếu doc đã tồn tại thì tải bản server và chuyển sang update transaction.
-                        try{
-                            const serverSnap=await window.getDoc(scoreRef);
-                            if(serverSnap.exists()){
-                                cached={id:serverSnap.id,...serverSnap.data()};
-                                window._gradedDataCache=window._gradedDataCache||{};
-                                window._gradedDataCache[cId]=cached;
-                            }else{
-                                throw createErr;
-                            }
-                        }catch(readErr){
-                            throw createErr;
-                        }
+                        const serverSnap=await window.getDoc(scoreRef);
+                        if(!serverSnap.exists()) throw createErr;
+                        cached={id:serverSnap.id,...serverSnap.data()};
+                        cachedRevision=Number(cached.revision||0);
+                        window._gradedDataCache=window._gradedDataCache||{};
+                        window._gradedDataCache[cId]=cached;
                     }
                 }
 
-                // Nếu chưa commit ở nhánh create thì document đã tồn tại -> update transaction chống ghi đè.
                 if(committedRevision===0){
-                    const expectedRevision=Number((window._gradedDataCache?.[cId]?.id===scoreId ? window._gradedDataCache[cId].revision : cached.revision)||0);
+                    const expectedRevision=Number((window._gradedDataCache?.[cId]?.id===scoreId ? window._gradedDataCache[cId].revision : cachedRevision)||0);
                     committedRevision=await window.runTransaction(window.db,async tx=>{
                         const latest=await tx.get(scoreRef);
-                        if(!latest.exists()){
-                            const err=new Error('SCORE_MISSING_RETRY'); err.code='score-missing-retry'; throw err;
-                        }
+                        if(!latest.exists()){const err=new Error('SCORE_MISSING_RETRY');err.code='score-missing-retry';throw err;}
                         const old=latest.data()||{};
                         const serverRevision=Number(old.revision||0);
                         if(serverRevision!==expectedRevision){const err=new Error('SCORE_CONFLICT');err.serverRevision=serverRevision;throw err;}
-                        Object.keys(scores).forEach(k=>{if(Number(old.scores?.[k])!==Number(scores[k]))changes.push(`[${k}]: ${old.scores?.[k]??'-'} → ${scores[k]}`);});
+                        const oldScores=old.scores||{};
+                        const keys=new Set([...Object.keys(oldScores),...Object.keys(scores)]);
+                        keys.forEach(k=>{
+                            const before=oldScores[k]; const after=scores[k];
+                            const same=(before===undefined&&after===undefined)||(Number(before)===Number(after) && before!==undefined && after!==undefined);
+                            if(!same) changes.push(`[${k}]: ${before??'-'} → ${after??'-'}`);
+                        });
                         const nextRevision=serverRevision+1;
-                        tx.set(scoreRef,{...basePayload,revision:nextRevision},{merge:true});
+                        // Không merge scores: phải thay toàn bộ map để ô đã xóa không còn dữ liệu cũ trên Firestore.
+                        tx.set(scoreRef,{...basePayload,revision:nextRevision});
                         return nextRevision;
                     });
                 }
@@ -2255,12 +2299,11 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 window._gradedDataCache=window._gradedDataCache||{};
                 window._gradedDataCache[cId]={id:scoreId,candidateId:cId,groupId:gId,graderCode,graderName,scores,totalScore:total,revision:committedRevision,locked:false};
 
-                // Audit log là best-effort; lỗi audit KHÔNG được rollback điểm.
                 if(changes.length || committedRevision===1){
                     try{
                         await window.setDoc(window.doc(window.db,'audit_logs',`${scoreId}_${committedRevision}_${Date.now()}`),{
                             candidateId:cId,candidateName:candidate?.name||'TS',graderCode,graderName,groupId:gId,groupName:groupInfo.name||'',scoreValue:total,
-                            scoreChanged:true,changeContent:changes.length?changes.join(' | '):'Tạo bảng điểm lần đầu',revision:committedRevision,
+                            scoreChanged:true,changeContent:changes.length?changes.join(' | '):(hasAnyScore?'Tạo bảng điểm lần đầu':'Xóa toàn bộ điểm hiện tại'),revision:committedRevision,
                             timestamp:window.serverTimestamp(),schemaVersion:2
                         });
                     }catch(e){console.warn('AUDIT LOG SAVE ERROR:',e);}
@@ -2272,7 +2315,6 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             }catch(e){
                 console.error('SAVE SCORE ERROR:',e);
                 setSaveState(e.message==='SCORE_CONFLICT'?'Đang đồng bộ':'Lỗi lưu','rose');
-
                 if(e.message==='SCORE_CONFLICT'){
                     try{
                         const scoreId=`${(window.currentUserData?.code||'UNK')}_${cId}`.replace(/[^a-zA-Z0-9_-]/g,'_');
@@ -2281,7 +2323,6 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                         window._scoreSavePending[cId]={gId,pS};
                     }catch(_e){}
                 }else if(e.code==='permission-denied' || e.code==='grader-session-sync-failed' || e.code==='grader-auth-missing'){
-                    // Recovery một lần: refresh user -> sync grader session -> xếp lại lượt lưu.
                     try{
                         if(window.currentUserData?.id){
                             const u=await window.getDoc(window.doc(window.db,'users',window.currentUserData.id));
@@ -2293,25 +2334,15 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                             }
                         }
                         const ok=await window.syncGraderSession(true,'score-permission-recover');
-                        if(ok){
-                            window.refreshAssignedGroupSubscriptions?.();
-                            window._scoreSavePending[cId]={gId,pS};
-                            window.showToast('Đã đồng bộ lại quyền. Hệ thống đang thử lưu điểm lại.');
-                        }else{
-                            window.showToast('Không thể xác nhận phiên giám khảo. Hãy đăng xuất và đăng nhập lại mã BGK.','error');
-                        }
-                    }catch(recoverErr){
-                        console.error('SCORE PERMISSION RECOVERY ERROR:',recoverErr);
-                        window.showToast('Không có quyền lưu điểm. Vui lòng kiểm tra phân quyền nhóm và Firestore Rules V27.','error');
-                    }
-                }else{
-                    window.showToast('Không lưu được điểm: '+(e.code||e.message||'Lỗi hệ thống'),'error');
-                }
+                        if(ok){window.refreshAssignedGroupSubscriptions?.();window._scoreSavePending[cId]={gId,pS};window.showToast('Đã đồng bộ lại quyền. Hệ thống đang thử lưu điểm lại.');}
+                        else window.showToast('Không thể xác nhận phiên giám khảo. Hãy đăng xuất và đăng nhập lại mã BGK.','error');
+                    }catch(_e){window.showToast('Không thể khôi phục quyền lưu điểm. Hãy đăng nhập lại.','error');}
+                }else window.showToast('Không lưu được điểm: '+(e.message||e.code||'Lỗi không xác định'),'error');
                 return false;
             }finally{
-                delete window._scoreSaveInFlight[cId];
+                window._scoreSaveInFlight[cId]=false;
                 const pending=window._scoreSavePending[cId];
-                if(pending){delete window._scoreSavePending[cId];setTimeout(()=>window.saveScoreNow(cId,pending.gId,pending.pS),250);}
+                if(pending){delete window._scoreSavePending[cId];setTimeout(()=>window.saveScoreNow(cId,pending.gId,pending.pS),80);}
             }
         };
 
@@ -2570,31 +2601,114 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             window.showLoading(true,'Đang tạo PDF...');
             try{
                 const groupInfo=window._overviewCache.groupMap[groupId];
+                if(!groupInfo) throw new Error('Không tìm thấy nhóm thi.');
                 let candidates=window._overviewCache.candidates.filter(c=>c.groupId===groupId);
                 if(groupInfo.attendanceEnabled&&attendanceFilter!=='ALL') candidates=candidates.filter(c=>attendanceFilter==='PRESENT'?c.isPresent:!c.isPresent);
-                let allScores=window._overviewCache.allScores.filter(s=>s.groupId===groupId);if(graderCode!=='ALL')allScores=allScores.filter(s=>s.graderCode===graderCode);
-                let signerName=graderCode==='ALL'?'Hội đồng Giám khảo':(graderOptionText||'').split(' - ')[0],isVerified=graderCode==='ALL',signDate=new Date(),signTime='';
+                let allScores=window._overviewCache.allScores.filter(s=>s.groupId===groupId);
+                if(graderCode!=='ALL') allScores=allScores.filter(s=>s.graderCode===graderCode);
+
+                let signerName=graderCode==='ALL'?'Hội đồng Giám khảo':(graderOptionText||'').split(' - ')[0],isVerified=graderCode==='ALL',signDate=new Date();
                 if(graderCode!=='ALL'){
                     const vs=await window.getDocs(window.query(window.collection(window.db,'grader_verifications'),window.where('groupId','==',groupId),window.where('graderCode','==',graderCode)));
-                    if(!vs.empty){const vd=vs.docs[0].data();isVerified=!!vd.isVerified;signerName=vd.graderName||signerName;if(vd.timestamp)signDate=vd.timestamp.toDate?vd.timestamp.toDate():new Date(vd.timestamp.seconds*1000);}
+                    if(!vs.empty){
+                        const vd=vs.docs[0].data(); isVerified=!!vd.isVerified; signerName=vd.graderName||signerName;
+                        if(vd.timestamp){
+                            const ms=window.toMillisSafe?.(vd.timestamp);
+                            if(ms!=null) signDate=new Date(ms);
+                        }
+                    }
                 }
-                signTime=`${String(signDate.getHours()).padStart(2,'0')}:${String(signDate.getMinutes()).padStart(2,'0')} ${String(signDate.getDate()).padStart(2,'0')}/${String(signDate.getMonth()+1).padStart(2,'0')}/${signDate.getFullYear()}`;
+                if(Number.isNaN(signDate.getTime())) signDate=new Date();
+                const signTime=`${String(signDate.getHours()).padStart(2,'0')}:${String(signDate.getMinutes()).padStart(2,'0')} ${String(signDate.getDate()).padStart(2,'0')}/${String(signDate.getMonth()+1).padStart(2,'0')}/${signDate.getFullYear()}`;
                 const dateStr=`ngày ${String(signDate.getDate()).padStart(2,'0')} tháng ${String(signDate.getMonth()+1).padStart(2,'0')} năm ${signDate.getFullYear()}`;
                 const fields=(groupInfo.extraFields||[]).filter(f=>expHidden||f.showToGrader);
-                let ths=`<th>STT</th><th>Mã số</th><th>Họ tên thí sinh</th>`;fields.forEach(f=>ths+=`<th>${window.escapeHtml(f.name)}</th>`);(groupInfo.criteria||[]).forEach(c=>ths+=`<th>${window.escapeHtml(c.name)}<br><span style="font-size:11px">(${c.weight}%)</span></th>`);ths+='<th>Tổng</th><th>Kết quả</th>';
-                let trs='',idx=0;
+                const criteria=groupInfo.criteria||[];
+                const colCount=5+fields.length+criteria.length;
+                const fontSize=colCount>=12?7.2:(colCount>=9?8.2:9.2);
+
+                let ths=`<th class="c-stt">STT</th><th class="c-code">Mã số</th><th class="c-name">Họ tên thí sinh</th>`;
+                fields.forEach(f=>ths+=`<th>${window.escapeHtml(f.name)}</th>`);
+                criteria.forEach(c=>ths+=`<th>${window.escapeHtml(c.name)}<br><span class="weight">${c.weight}%</span></th>`);
+                ths+='<th class="c-total">Tổng</th><th class="c-result">Kết quả</th>';
+
+                const rows=[]; let idx=0;
                 candidates.forEach(cd=>{
-                    const cS=allScores.filter(s=>s.candidateId===cd.id);let total=0,fS={};
-                    if(graderCode==='ALL'){total=cS.length?cS.reduce((a,s)=>a+Number(s.totalScore||0),0)/cS.length:0;(groupInfo.criteria||[]).forEach(c=>{const vals=cS.map(s=>s.scores?.[c.name]).filter(v=>v!==undefined&&v!==null&&v!=='');fS[c.name]=vals.length?(vals.reduce((a,v)=>a+Number(v),0)/vals.length).toFixed(1):'-';});}else{const sd=cS[0]||{};total=Number(sd.totalScore||0);fS=sd.scores||{};}
-                    const pass=total>=Number(groupInfo.passScore);if(rF==='PASS'&&!pass)return;if(rF==='FAIL'&&pass)return;idx++;
-                    const nameStyle=pass?'':'font-weight:800;color:#991b1b;';trs+=`<tr><td>${idx}</td><td>${window.escapeHtml(cd.code||'-')}</td><td style="text-align:left;${nameStyle}">${window.escapeHtml(cd.name||'-')}</td>`;fields.forEach(f=>trs+=`<td>${window.escapeHtml(cd.extraData?.[f.name]||'-')}</td>`);(groupInfo.criteria||[]).forEach(c=>trs+=`<td>${window.escapeHtml(fS[c.name]??'-')}</td>`);trs+=`<td style="font-weight:bold">${Number(total).toFixed(2).replace(/\.00$/,'')}</td><td style="font-weight:bold;color:${pass?'#166534':'#991b1b'}">${pass?'ĐẠT':'TRƯỢT'}</td></tr>`;
+                    let cS=allScores.filter(s=>s.candidateId===cd.id && Object.keys(s.scores||{}).length>0);
+                    let total=null,fS={},hasScore=cS.length>0;
+                    if(graderCode==='ALL'){
+                        if(hasScore) total=cS.reduce((a,s)=>a+Number(s.totalScore||0),0)/cS.length;
+                        criteria.forEach(c=>{const vals=cS.map(s=>s.scores?.[c.name]).filter(v=>v!==undefined&&v!==null&&v!=='');fS[c.name]=vals.length?(vals.reduce((a,v)=>a+Number(v),0)/vals.length).toFixed(1):'-';});
+                    }else{
+                        const sd=cS[0]||{}; total=hasScore?Number(sd.totalScore||0):null; fS=sd.scores||{};
+                    }
+                    const pass=hasScore && total>=Number(groupInfo.passScore);
+                    if(rF==='PASS'&&(!hasScore||!pass)) return;
+                    if(rF==='FAIL'&&(!hasScore||pass)) return;
+                    idx++;
+                    const nameStyle=hasScore&&!pass?'font-weight:800;color:#991b1b;':'';
+                    let tr=`<tr><td>${idx}</td><td>${window.escapeHtml(cd.code||'-')}</td><td class="name-cell" style="${nameStyle}">${window.escapeHtml(cd.name||'-')}</td>`;
+                    fields.forEach(f=>tr+=`<td>${window.escapeHtml(cd.extraData?.[f.name]||'-')}</td>`);
+                    criteria.forEach(c=>tr+=`<td>${window.escapeHtml(fS[c.name]??'-')}</td>`);
+                    tr+=`<td class="total-cell">${hasScore?Number(total).toFixed(2).replace(/\.00$/,''):'-'}</td><td class="result-cell ${!hasScore?'waiting':(pass?'pass':'fail')}">${!hasScore?'CHỜ':(pass?'ĐẠT':'TRƯỢT')}</td></tr>`;
+                    rows.push(tr);
                 });
-                if(!trs)trs=`<tr><td colspan="100" style="padding:20px">Không có kết quả nào khớp với bộ lọc.</td></tr>`;
-                const signature=isVerified?`<div class="signature"><div class="sig-title">Signature Valid</div><div>Bởi: <b>${window.escapeHtml(signerName)}</b></div><div>Lúc: ${signTime}</div></div>`:`<div style="color:#991b1b;font-style:italic;margin-top:12px">(Chưa khóa bảng điểm)</div>`;
-                const htmlContent=`<div class="report"><div class="national"><div>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div><div>Độc lập - Tự do - Hạnh phúc</div><div class="under"></div></div><h1>${window.escapeHtml(docTitle||'BIÊN BẢN CHẤM CASTING')}</h1><div class="meta"><p><b>Nhóm / Cuộc thi:</b> ${window.escapeHtml(title)}</p><p><b>Giám khảo:</b> ${window.escapeHtml(signerName)}</p><p><b>Tiêu chuẩn:</b> >= ${window.escapeHtml(groupInfo.passScore)} điểm</p></div><table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table><div class="sign-wrap"><div class="sign"><div class="date">Cần Thơ, ${dateStr}</div><div class="signer">${window.escapeHtml(signerTitle||'GIÁM KHẢO XÁC NHẬN')}</div>${signature}</div></div></div>`;
-                const style=`<style>@page{size:A4 landscape;margin:0}body{margin:0;background:#fff}.report{font-family:'Times New Roman',serif;color:#000;background:#fff;padding:28px 36px;width:1120px;box-sizing:border-box}.national{text-align:center;font-weight:700;font-size:16px;line-height:1.45}.under{width:210px;border-top:2px solid #000;margin:5px auto 0}.report h1{text-align:center;font-size:25px;margin:22px 0 24px;font-weight:700}.meta{font-size:16px;line-height:1.55;margin-bottom:26px}.meta p{margin:0}.report table{width:100%;border-collapse:collapse;table-layout:auto;font-size:14px}.report th,.report td{border:1.6px solid #222;padding:9px 7px;text-align:center;vertical-align:middle}.report th{background:#eef1f2;font-weight:700}.report th:nth-child(1){width:50px}.report th:nth-child(2){width:120px}.report th:nth-child(3){min-width:210px}.sign-wrap{display:flex;justify-content:flex-end;margin-top:28px}.sign{text-align:center;width:330px;font-size:15px}.date{font-style:italic;margin-bottom:7px}.signer{font-weight:700;margin-bottom:12px}.signature{border:2px solid #16a34a;color:#dc2626;text-align:left;padding:10px 12px;font-size:13px;line-height:1.55}.sig-title{font-weight:700;font-size:17px;margin-bottom:3px}</style>`;
-                const pdfName=window.sanitizeFileName(requestedFileName,`Bien_Ban_${title}_${graderCode==='ALL'?'HoiDong':signerName}`);await window.html2pdf().set({margin:0,filename:pdfName.toLowerCase().endsWith('.pdf')?pdfName:`${pdfName}.pdf`,image:{type:'jpeg',quality:1},html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff'},jsPDF:{unit:'px',format:[1120,792],orientation:'landscape'}}).from(style+htmlContent).save();window.showToast('Đã tải PDF thành công!');
-            }catch(e){window.showToast('Lỗi xuất PDF: '+(e.message||e.code),'error');}finally{window.showLoading(false);}
+                if(!rows.length) rows.push(`<tr><td colspan="${colCount}" class="empty-row">Không có kết quả nào khớp với bộ lọc.</td></tr>`);
+
+                const signature=isVerified
+                    ? `<div class="signature"><div class="sig-title">Signature Valid</div><div>Bởi: <b>${window.escapeHtml(signerName)}</b></div><div>Lúc: ${signTime}</div></div>`
+                    : `<div class="not-verified">(Chưa khóa bảng điểm)</div>`;
+
+                // 8 dòng mỗi trang: ưu tiên tuyệt đối không cắt hàng, đồng thời chừa đủ chỗ chữ ký ở trang cuối.
+                const rowsPerPage=8;
+                const chunks=[];
+                for(let i=0;i<rows.length;i+=rowsPerPage) chunks.push(rows.slice(i,i+rowsPerPage));
+                if(!chunks.length) chunks.push([]);
+                const pages=chunks.map((chunk,pageIndex)=>{
+                    const first=pageIndex===0,last=pageIndex===chunks.length-1;
+                    return `<section class="pdf-page ${last?'last-page':''}">
+                        ${first?`<div class="national"><div>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div><div>Độc lập - Tự do - Hạnh phúc</div><div class="under"></div></div><h1>${window.escapeHtml(docTitle||'BIÊN BẢN CHẤM CASTING')}</h1><div class="meta"><div><b>Nhóm / Cuộc thi:</b> ${window.escapeHtml(title)}</div><div><b>Giám khảo:</b> ${window.escapeHtml(signerName)}</div><div><b>Tiêu chuẩn:</b> ≥ ${window.escapeHtml(groupInfo.passScore)} điểm</div></div>`:''}
+                        ${!first?`<div class="continuation">${window.escapeHtml(docTitle||'BIÊN BẢN CHẤM CASTING')} — ${window.escapeHtml(title)} <span>Trang ${pageIndex+1}/${chunks.length}</span></div>`:''}
+                        <table><thead><tr>${ths}</tr></thead><tbody>${chunk.join('')}</tbody></table>
+                        ${last?`<div class="sign-wrap"><div class="sign"><div class="date">Cần Thơ, ${dateStr}</div><div class="signer">${window.escapeHtml(signerTitle||'GIÁM KHẢO XÁC NHẬN')}</div>${signature}</div></div>`:''}
+                    </section>`;
+                }).join('');
+
+                const style=`<style>
+                    @page{size:A4 landscape;margin:6mm}
+                    *{box-sizing:border-box}
+                    body{margin:0;background:#fff;color:#111;font-family:'Times New Roman',serif}
+                    .pdf-root{width:285mm;margin:0 auto;background:#fff}
+                    .pdf-page{width:285mm;min-height:198mm;padding:0;page-break-after:always;break-after:page;overflow:hidden}
+                    .pdf-page.last-page{page-break-after:auto;break-after:auto}
+                    .national{text-align:center;font-weight:700;font-size:14px;line-height:1.35;margin-top:1mm}
+                    .under{width:48mm;border-top:1.4px solid #111;margin:1.8mm auto 0}
+                    h1{text-align:center;font-size:20px;margin:4mm 0 4mm;font-weight:700}
+                    .meta{display:grid;grid-template-columns:1.7fr 1.6fr 1fr;gap:3mm;font-size:11px;margin-bottom:3mm;padding:2.5mm 3mm;border:1px solid #bbb;background:#fafafa}
+                    .continuation{display:flex;justify-content:space-between;gap:4mm;font-size:10px;font-weight:700;margin:1mm 0 2mm;border-bottom:1px solid #bbb;padding-bottom:1.5mm}
+                    table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:${fontSize}px}
+                    thead{display:table-header-group}
+                    tr{page-break-inside:avoid!important;break-inside:avoid!important}
+                    th,td{border:1px solid #222;padding:2.1mm 1.2mm;text-align:center;vertical-align:middle;line-height:1.18;overflow-wrap:anywhere;word-break:break-word}
+                    th{background:#eceff1;font-weight:700}
+                    .weight{font-size:.88em;font-weight:400}
+                    .c-stt{width:5%}.c-code{width:9%}.c-name{width:17%}.c-total{width:7%}.c-result{width:8%}
+                    .name-cell{text-align:left;font-weight:600}.total-cell{font-weight:700}.result-cell{font-weight:700}.result-cell.pass{color:#166534}.result-cell.fail{color:#991b1b}.result-cell.waiting{color:#6b7280}
+                    .empty-row{padding:8mm!important;color:#6b7280;font-style:italic}
+                    .sign-wrap{display:flex;justify-content:flex-end;margin-top:4mm;page-break-inside:avoid!important;break-inside:avoid!important}
+                    .sign{text-align:center;width:76mm;font-size:11px}.date{font-style:italic;margin-bottom:2mm}.signer{font-weight:700;margin-bottom:2mm}
+                    .signature{border:1.5px solid #16a34a;color:#b91c1c;text-align:left;padding:2.5mm 3mm;font-size:10px;line-height:1.35}.sig-title{font-weight:700;font-size:12px;margin-bottom:1mm}.not-verified{color:#991b1b;font-style:italic;margin-top:3mm}
+                </style>`;
+                const pdfName=window.sanitizeFileName(requestedFileName,`Bien_Ban_${title}_${graderCode==='ALL'?'HoiDong':signerName}`);
+                await window.html2pdf().set({
+                    margin:[6,6,6,6],
+                    filename:pdfName.toLowerCase().endsWith('.pdf')?pdfName:`${pdfName}.pdf`,
+                    image:{type:'jpeg',quality:0.98},
+                    html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff',logging:false},
+                    jsPDF:{unit:'mm',format:'a4',orientation:'landscape'},
+                    pagebreak:{mode:['css','legacy'],avoid:['tr','.sign-wrap']}
+                }).from(style+`<div class="pdf-root">${pages}</div>`).save();
+                window.showToast('Đã tải PDF thành công!');
+            }catch(e){console.error('PDF EXPORT ERROR:',e);window.showToast('Lỗi xuất PDF: '+(e.message||e.code),'error');}finally{window.showLoading(false);}
         };
 
         window.loadAccountManager = async function(container) {
@@ -2887,7 +3001,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             window._gradedDataCache[cand.id] = graded;
             const scoresObj = graded.scores || {};
             const totalScore = Number(graded.totalScore || 0);
-            const hasScore = !!graded.candidateId;
+            const hasScore = !!graded.candidateId && Object.keys(scoresObj).length > 0;
             const isPass = totalScore >= Number(groupInfo.passScore || 0);
             const present = cand.isPresent === true || cand.isPresent === 1 || cand.isPresent === 'true' || cand.isPresent === '1';
             const candInputDisabled = globalDisable || (groupInfo.attendanceEnabled && !present);
@@ -4141,7 +4255,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 
 <script>
 (function(){
-  const BUILD='V29-V27-RESTORED';
+  const BUILD='V29.1-V27-STABLE';
   try {
     const prev=localStorage.getItem('gradeSyncBuild');
     if(prev!==BUILD){
