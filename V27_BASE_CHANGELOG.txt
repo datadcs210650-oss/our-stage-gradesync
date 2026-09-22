@@ -1,0 +1,3 @@
+GradeSync V29 được phục hồi từ GradeSync V27 SYSTEM HARDENED REALTIME.
+Giữ các tính năng V27: Admin/BGK, nhóm, thí sinh, realtime, điểm danh, bảng điểm, tiêu chí/câu hỏi, live monitor, audit, Excel/PDF, phân quyền, session/presence, cascade cleanup.
+Bổ sung: no-cache Vercel + nút reset phiên client an toàn.
