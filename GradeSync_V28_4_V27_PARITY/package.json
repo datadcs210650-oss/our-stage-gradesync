@@ -1,0 +1,13 @@
+{
+  "name": "gradesync-v28-modular",
+  "version": "28.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node scripts-check.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}
