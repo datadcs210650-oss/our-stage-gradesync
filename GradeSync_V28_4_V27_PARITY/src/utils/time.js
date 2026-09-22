@@ -1,3 +1,0 @@
-function millis(v,fallback){if(v==null)return fallback;if(typeof v?.toMillis==='function')return v.toMillis();const d=new Date(v);return Number.isNaN(d.getTime())?fallback:d.getTime()}
-export function groupOpen(g,now=Date.now()){if(!g)return false;if(g.openMode==='manual')return g.isManuallyOpened===true||g.isPublished===true;const start=millis(g.startTime,millis(g.openAt,0));const end=millis(g.endTime,millis(g.closeAt,Infinity));return now>=start&&now<=end}
-export function groupStatus(g){if(groupOpen(g))return{open:true,label:'Đang mở'};if(g?.openMode==='auto')return{open:false,label:'Chờ thời gian mở'};return{open:false,label:'Chưa mở'}}
