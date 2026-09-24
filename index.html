@@ -8,8 +8,8 @@
     <meta http-equiv="Expires" content="0">
     <meta name="gradesync-build" content="V29.1-V27-STABLE">
 
-    <!-- GradeSync V29.1 - V27 STABLE HOTFIX: time/PDF/score-clear -->
-    <title>GradeSync V29.1 - Hệ thống Chấm điểm Live</title>
+    <!-- GradeSync V29.2 - V27 STABLE HOTFIX: time/PDF/score-clear -->
+    <title>GradeSync - Hệ thống Chấm điểm Live</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
@@ -4287,5 +4287,1171 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
   };
 })();
 </script>
+
+<script type="module" id="v29-2-editor-hotfix">
+/* GradeSync V29.2 - Criteria & Interview Editor Hotfix
+   Fixes:
+   - Add/edit/remove group score criteria reliably.
+   - Add/edit/remove scoring-content rows/columns reliably.
+   - Add/edit/remove interview types/questions reliably.
+   - Preserve IDs and field types when saving.
+   - Use direct handlers instead of fragile modal event delegation.
+*/
+(function(){
+  const BUILD='V29.2-EDITOR-FIXED';
+
+  const esc = v => window.escapeHtml ? window.escapeHtml(v == null ? '' : String(v)) : String(v ?? '');
+  const clean = v => window.cleanTextForStore ? window.cleanTextForStore(v) : String(v ?? '').trim();
+
+  function showError(msg){
+    if(window.showToast) window.showToast(msg,'error');
+    else alert(msg);
+  }
+
+  function weightIs100(total){
+    return Math.abs(Number(total || 0) - 100) < 0.01;
+  }
+
+  function localDateToIso(value){
+    if(!value) return null;
+    const d = new Date(value);
+    return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+  }
+
+  // ===== 1) Main score criteria in Group Manager =====
+  window.removeGroupCriteriaRow = function(btn){
+    const row = btn?.closest('.c-r, [data-gs-criteria-row="1"]');
+    if(!row) return;
+    const host = row.parentElement;
+    if(host && host.querySelectorAll('.c-n').length <= 1){
+      row.querySelector('.c-n').value='';
+      row.querySelector('.c-w').value='';
+      return;
+    }
+    row.remove();
+  };
+
+  function criteriaRowHtml(dense=false, name='', weight=''){
+    if(dense){
+      return `
+        <input type="text" value="${esc(name)}" placeholder="Tên tiêu chí"
+          class="c-n border p-1.5 rounded-md text-[11px] font-semibold w-full outline-none focus:border-red-400">
+        <div class="flex items-center bg-gray-50 border rounded-md shrink-0">
+          <input type="number" min="0" max="100" step="0.01" value="${esc(weight)}" placeholder="%"
+            class="c-w p-1.5 text-[11px] font-bold text-red-800 w-14 outline-none text-center bg-transparent">
+          <span class="text-[10px] text-gray-500 pr-2 font-bold">%</span>
+        </div>
+        <button type="button" onclick="window.removeGroupCriteriaRow(this)"
+          class="shrink-0 w-7 h-7 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100"
+          title="Xóa tiêu chí"><i class="fas fa-times"></i></button>`;
+    }
+    return `
+      <input type="text" value="${esc(name)}" placeholder="Tiêu chí"
+        class="c-n border p-2.5 rounded-xl text-xs flex-1 outline-none bg-gray-50">
+      <input type="number" min="0" max="100" step="0.01" value="${esc(weight)}" placeholder="%"
+        class="c-w border p-2.5 rounded-xl text-xs font-bold text-red-800 w-24 outline-none text-center bg-gray-50">
+      <button type="button" onclick="window.removeGroupCriteriaRow(this)"
+        class="shrink-0 w-9 h-9 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100"
+        title="Xóa tiêu chí"><i class="fas fa-times"></i></button>`;
+  }
+
+  window.addCriteriaRow = function(){
+    const host=document.getElementById('c-i-c');
+    if(!host) return showError('Không tìm thấy khu vực tiêu chí.');
+    const row=document.createElement('div');
+    row.className='flex gap-2 c-r animate-fade-up';
+    row.dataset.gsCriteriaRow='1';
+    row.innerHTML=criteriaRowHtml(false);
+    host.appendChild(row);
+    row.querySelector('.c-n')?.focus();
+  };
+
+  window.addEditCriteriaRow = function(id){
+    const host=document.getElementById(`e-c-c-${id}`);
+    if(!host) return showError('Không tìm thấy danh sách tiêu chí của nhóm.');
+    const placeholder=[...host.children].find(x=>x.matches?.('.text-gray-400'));
+    if(placeholder) placeholder.remove();
+    const row=document.createElement('div');
+    row.className=`flex items-center gap-2 mb-1.5 e-c-${id} animate-fade-up`;
+    row.dataset.gsCriteriaRow='1';
+    row.innerHTML=criteriaRowHtml(true);
+    host.appendChild(row);
+    row.querySelector('.c-n')?.focus();
+  };
+
+  window.enhanceGroupCriteriaRowsV292 = function(){
+    const hosts=[
+      document.getElementById('c-i-c'),
+      ...document.querySelectorAll('[id^="e-c-c-"]')
+    ].filter(Boolean);
+    hosts.forEach(host=>{
+      [...host.children].forEach(row=>{
+        if(!row.querySelector?.('.c-n') || !row.querySelector?.('.c-w')) return;
+        row.dataset.gsCriteriaRow='1';
+        const w=row.querySelector('.c-w');
+        if(w){ w.min='0'; w.max='100'; w.step='0.01'; }
+        if(!row.querySelector('[data-v292-remove]')){
+          const b=document.createElement('button');
+          b.type='button';
+          b.dataset.v292Remove='1';
+          b.className='shrink-0 w-7 h-7 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100';
+          b.title='Xóa tiêu chí';
+          b.innerHTML='<i class="fas fa-times"></i>';
+          b.onclick=()=>window.removeGroupCriteriaRow(b);
+          row.appendChild(b);
+        }
+      });
+    });
+  };
+
+  const oldLoadGroupsV292=window.loadGroupsManager;
+  if(oldLoadGroupsV292){
+    window.loadGroupsManager=async function(container){
+      const r=await oldLoadGroupsV292(container);
+      window.enhanceGroupCriteriaRowsV292();
+      return r;
+    };
+  }
+
+  window.updateGroup = async function(id){
+    const nameEl=document.getElementById(`e-gn-${id}`);
+    const passEl=document.getElementById(`e-gp-${id}`);
+    const modeEl=document.getElementById(`e-m-${id}`);
+    const startEl=document.getElementById(`e-s-${id}`);
+    const endEl=document.getElementById(`e-e-${id}`);
+    const attEl=document.getElementById(`e-a-${id}`);
+    if(!nameEl||!passEl||!modeEl||!endEl) return showError('Giao diện nhóm chưa tải đầy đủ. Vui lòng tải lại trang.');
+
+    const n=nameEl.value.trim();
+    const p=Number(passEl.value);
+    const o=modeEl.value;
+    const s=startEl?.value||'';
+    const e=endEl.value;
+    const a=!!attEl?.checked;
+
+    if(!n) return showError('Vui lòng nhập tên nhóm.');
+    if(!Number.isFinite(p)) return showError('Điểm đạt không hợp lệ.');
+    if(o==='auto'&&!s) return showError('Nhóm tự động cần Giờ Mở.');
+    if(!e) return showError('Vui lòng cài Giờ Khóa.');
+
+    const startIso=s?localDateToIso(s):null;
+    const endIso=localDateToIso(e);
+    if(o==='auto'&&!startIso) return showError('Giờ mở không hợp lệ.');
+    if(!endIso) return showError('Giờ khóa không hợp lệ.');
+
+    const criteria=[];
+    let total=0;
+    document.querySelectorAll(`#e-c-c-${CSS.escape(id)} .c-n`).forEach(nameInput=>{
+      const row=nameInput.closest('[data-gs-criteria-row="1"]') || nameInput.parentElement;
+      const weightInput=row?.querySelector('.c-w');
+      const cn=nameInput.value.trim();
+      const cw=Number(weightInput?.value);
+      if(!cn && !weightInput?.value) return;
+      if(!cn) throw new Error('Có tiêu chí chưa nhập tên.');
+      if(!Number.isFinite(cw) || cw<0 || cw>100) throw new Error(`Trọng số của “${cn}” không hợp lệ.`);
+      criteria.push({name:clean(cn),weight:Number(cw.toFixed(2))});
+      total+=cw;
+    });
+    if(!criteria.length) return showError('Nhóm phải có ít nhất 1 tiêu chí chấm.');
+    if(!weightIs100(total)) return showError(`Tổng trọng số hiện tại là ${Number(total.toFixed(2))}%. Tổng phải bằng 100%.`);
+
+    const extraFields=[];
+    document.querySelectorAll(`#e-e-c-${CSS.escape(id)} .e-n`).forEach(input=>{
+      const row=input.closest(`[class*="e-e-${id}"]`) || input.parentElement;
+      const en=input.value.trim();
+      if(en) extraFields.push({name:clean(en),showToGrader:!!row?.querySelector('.e-s')?.checked});
+    });
+
+    window.showLoading?.(true,'Đang lưu nhóm...');
+    try{
+      const ref=window.doc(window.db,'competition_groups',id);
+      const snap=await window.getDoc(ref);
+      const old=snap.exists()?snap.data():{};
+      const update={
+        name:clean(n),
+        criteria,
+        extraFields,
+        passScore:p,
+        openMode:o,
+        startTime:startIso,
+        endTime:endIso,
+        openAt:(o==='auto'&&startIso)?new Date(startIso):null,
+        closeAt:new Date(endIso),
+        attendanceEnabled:a,
+        visibleToGraders:true,
+        publishEnabled:true,
+        visibilityExplicitlySet:false,
+        publishAt:(o==='auto'&&startIso)?new Date(startIso):null,
+        publishUntil:new Date(endIso),
+        publicationUpdatedAt:window.serverTimestamp()
+      };
+      if(o==='auto') update.isManuallyOpened=false;
+      await window.setDoc(ref,update,{merge:true});
+      if(window.syncPublicationIndexForGroup) await window.syncPublicationIndexForGroup(id,{...old,...update,id});
+      window.showToast?.('Đã lưu tiêu chí và cấu hình nhóm.');
+      await window.loadGroupsManager(document.getElementById('main-content'));
+    }catch(err){
+      console.error('V29.2 UPDATE GROUP',err);
+      showError(err?.message||'Không thể lưu nhóm.');
+    }finally{
+      window.showLoading?.(false);
+    }
+  };
+
+  // ===== 2) Scoring content editor =====
+  window.v292ScoringInput=function(col,val){
+    const value=val==null?'':String(val);
+    const key=esc(col.key||'col');
+    const type=col.type||'text';
+    if(type==='textarea'){
+      return `<textarea class="gs-cell" data-col="${key}" rows="2">${esc(value)}</textarea>`;
+    }
+    const htmlType=(type==='number'||type==='percent')?'number':'text';
+    const limits=type==='percent'?' min="0" max="100" step="0.01"':(type==='number'?' step="0.01"':'');
+    return `<input class="gs-cell" data-col="${key}" type="${htmlType}" value="${esc(value)}"${limits}>`;
+  };
+
+  window.renderScoringEditor=function(cfg){
+    const sec=cfg.scoringContent||{};
+    const cols=(sec.columns?.length?sec.columns:window.defaultScoringColumns()).map((c,i)=>({
+      key:c.key||`${window.normalizeKey(c.label||`cot_${i+1}`)}_${i}`,
+      label:c.label||`Cột ${i+1}`,
+      type:c.type||((i===2||i===5)?'textarea':(i===0||i===3||i===4?'number':'text'))
+    }));
+    const rows=Array.isArray(sec.rows)?sec.rows:[];
+    const head=cols.map((c,i)=>`
+      <th class="gs-edit-th" data-col-index="${i}" data-type="${esc(c.type)}">
+        <div class="gs-th-wrap">
+          <input class="gs-col-name" data-index="${i}" data-key="${esc(c.key)}" data-type="${esc(c.type)}" value="${esc(c.label)}">
+          <button type="button" class="gs-icon-btn" onclick="window.v292RemoveScoringColumn(${i})" title="Xóa cột"><i class="fas fa-times"></i></button>
+        </div>
+      </th>`).join('');
+    const body=rows.map((r,ri)=>`
+      <tr class="gs-edit-row" data-id="${esc(r.id||window.contentUid('r'))}">
+        ${cols.map((c,ci)=>`
+          <td>
+            <div class="${ci===0?'gs-stt-wrap':''}">
+              ${window.v292ScoringInput(c,r.cells?.[c.key]??(ci===0?ri+1:''))}
+              ${ci===0?`<button type="button" class="gs-row-delete" onclick="window.v292RemoveScoringRow(this)" title="Xóa dòng"><i class="fas fa-trash"></i></button>`:''}
+            </div>
+          </td>`).join('')}
+      </tr>`).join('');
+    return `
+      <div class="gs-table-toolbar">
+        <div><b>Bảng tiêu chí chấm điểm</b><span id="gs-sc-count"> • ${rows.length} dòng • ${cols.length} cột</span></div>
+        <div class="flex gap-2 flex-wrap">
+          <button type="button" class="gs-mini-btn gs-mini-blue" onclick="window.v292AddScoringColumn()"><i class="fas fa-columns"></i> Thêm cột</button>
+          <button type="button" class="gs-mini-btn gs-mini-red" onclick="window.v292AddScoringRow()"><i class="fas fa-plus"></i> Thêm dòng</button>
+        </div>
+      </div>
+      <div class="overflow-auto border rounded-2xl">
+        <table class="gs-editor-table"><thead><tr>${head}</tr></thead><tbody id="gs-scoring-table-body">${body}</tbody></table>
+      </div>
+      <div class="gs-helper">Bấm trực tiếp vào ô để sửa. Các nút Thêm/Xóa hoạt động độc lập, không phụ thuộc event delegation.</div>`;
+  };
+
+  window.v292GetScoringColumns=function(){
+    return [...document.querySelectorAll('.gs-editor-table thead .gs-col-name')].map((el,i)=>({
+      key:el.dataset.key||`${window.normalizeKey(el.value||`cot_${i+1}`)}_${i}`,
+      label:el.value.trim()||`Cột ${i+1}`,
+      type:el.dataset.type||el.closest('th')?.dataset.type||'text'
+    }));
+  };
+
+  window.v292RefreshScoring=function(){
+    const body=document.getElementById('gs-scoring-table-body');
+    const count=document.getElementById('gs-sc-count');
+    if(count&&body) count.textContent=` • ${body.querySelectorAll('.gs-edit-row').length} dòng • ${window.v292GetScoringColumns().length} cột`;
+    const cols=window.v292GetScoringColumns();
+    const sttIndex=cols.findIndex(c=>/^(stt|số thứ tự)$/i.test(c.label.trim()));
+    if(sttIndex>=0&&body){
+      body.querySelectorAll('.gs-edit-row').forEach((tr,i)=>{
+        const inp=tr.cells[sttIndex]?.querySelector('.gs-cell');
+        if(inp) inp.value=String(i+1);
+      });
+    }
+  };
+
+  window.v292AddScoringRow=function(){
+    const body=document.getElementById('gs-scoring-table-body');
+    if(!body) return showError('Không tìm thấy bảng tiêu chí.');
+    const cols=window.v292GetScoringColumns();
+    if(!cols.length) return showError('Bảng chưa có cột.');
+    const tr=document.createElement('tr');
+    tr.className='gs-edit-row';
+    tr.dataset.id=window.contentUid('r');
+    tr.innerHTML=cols.map((c,ci)=>`
+      <td><div class="${ci===0?'gs-stt-wrap':''}">
+        ${window.v292ScoringInput(c,ci===0?body.querySelectorAll('.gs-edit-row').length+1:'')}
+        ${ci===0?`<button type="button" class="gs-row-delete" onclick="window.v292RemoveScoringRow(this)" title="Xóa dòng"><i class="fas fa-trash"></i></button>`:''}
+      </div></td>`).join('');
+    body.appendChild(tr);
+    window.v292RefreshScoring();
+    tr.querySelector('.gs-cell')?.focus();
+  };
+
+  window.v292RemoveScoringRow=function(btn){
+    const row=btn?.closest('.gs-edit-row');
+    if(!row) return;
+    if(confirm('Xóa dòng tiêu chí này?')){ row.remove(); window.v292RefreshScoring(); }
+  };
+
+  window.v292AddScoringColumn=function(){
+    const table=document.querySelector('.gs-editor-table');
+    if(!table) return showError('Không tìm thấy bảng tiêu chí.');
+    const label=prompt('Tên cột mới:','GHI CHÚ MỚI');
+    if(label===null) return;
+    const name=label.trim()||'Cột mới';
+    const typeChoice=(prompt('Loại cột: text / textarea / number / percent','text')||'text').trim().toLowerCase();
+    const type=['text','textarea','number','percent'].includes(typeChoice)?typeChoice:'text';
+    const index=table.tHead.rows[0].cells.length;
+    const key=`${window.normalizeKey(name)}_${Date.now().toString(36)}`;
+    const th=document.createElement('th');
+    th.className='gs-edit-th';
+    th.dataset.colIndex=String(index);
+    th.dataset.type=type;
+    th.innerHTML=`<div class="gs-th-wrap"><input class="gs-col-name" data-index="${index}" data-key="${esc(key)}" data-type="${esc(type)}" value="${esc(name)}"><button type="button" class="gs-icon-btn" onclick="window.v292RemoveScoringColumn(${index})" title="Xóa cột"><i class="fas fa-times"></i></button></div>`;
+    table.tHead.rows[0].appendChild(th);
+    table.tBodies[0].querySelectorAll('.gs-edit-row').forEach(tr=>{
+      const td=document.createElement('td');
+      td.innerHTML=window.v292ScoringInput({key,type},'');
+      tr.appendChild(td);
+    });
+    window.v292ReindexScoringColumns();
+    window.v292RefreshScoring();
+  };
+
+  window.v292ReindexScoringColumns=function(){
+    const ths=[...document.querySelectorAll('.gs-editor-table thead th')];
+    ths.forEach((th,i)=>{
+      th.dataset.colIndex=String(i);
+      const input=th.querySelector('.gs-col-name');
+      if(input) input.dataset.index=String(i);
+      const button=th.querySelector('.gs-icon-btn');
+      if(button) button.setAttribute('onclick',`window.v292RemoveScoringColumn(${i})`);
+    });
+  };
+
+  window.v292RemoveScoringColumn=function(index){
+    const table=document.querySelector('.gs-editor-table');
+    if(!table) return;
+    if(table.tHead.rows[0].cells.length<=1) return showError('Bảng phải có ít nhất 1 cột.');
+    const th=table.tHead.rows[0].cells[index];
+    if(!th) return;
+    const label=th.querySelector('.gs-col-name')?.value||`cột ${index+1}`;
+    if(!confirm(`Xóa cột “${label}”? Dữ liệu cột này sẽ bị xóa khi bấm Lưu.`)) return;
+    table.querySelectorAll('tr').forEach(tr=>{ if(tr.cells[index]) tr.deleteCell(index); });
+    window.v292ReindexScoringColumns();
+    window.v292RefreshScoring();
+  };
+
+  // Backward-compatible aliases.
+  window.addScoringRow=window.v292AddScoringRow;
+  window.addScoringColumn=window.v292AddScoringColumn;
+  window.removeScoringColumn=window.v292RemoveScoringColumn;
+  window.removeScoringRow=window.v292RemoveScoringRow;
+
+  // ===== 3) Interview editor =====
+  window.renderInterviewEditor=function(cfg){
+    const groups=cfg.interviewContent?.groups||[];
+    const groupHtml=groups.map((g,gi)=>`
+      <section class="gs-interview-type" data-id="${esc(g.id||window.contentUid('type'))}">
+        <div class="gs-type-head">
+          <div class="flex-1">
+            <div class="text-[9px] font-black text-blue-600 uppercase mb-1">DẠNG ${gi+1}</div>
+            <input class="iv-type-title" value="${esc(g.title||`Dạng ${gi+1}`)}" placeholder="Tên dạng câu hỏi">
+            <textarea class="iv-type-desc" rows="2" placeholder="Mô tả / hướng dẫn">${esc(g.description||'')}</textarea>
+          </div>
+          <button type="button" class="gs-danger-btn" onclick="window.v292RemoveInterviewType(this)"><i class="fas fa-trash"></i> Xóa dạng</button>
+        </div>
+        <div class="gs-question-list">
+          ${(g.questions||[]).map((q,qi)=>`
+            <div class="gs-question-row" data-id="${esc(q.id||window.contentUid('q'))}">
+              <div class="gs-q-number">${qi+1}</div>
+              <textarea class="iv-q" rows="2" placeholder="Nhập câu hỏi...">${esc(q.text||q.question||'')}</textarea>
+              <textarea class="iv-note" rows="2" placeholder="Gợi ý / lưu ý (không bắt buộc)">${esc(q.note||'')}</textarea>
+              <button type="button" class="gs-icon-danger" onclick="window.v292RemoveInterviewQuestion(this)" title="Xóa câu hỏi"><i class="fas fa-trash"></i></button>
+            </div>`).join('')}
+        </div>
+        <button type="button" class="gs-mini-btn gs-mini-blue" onclick="window.v292AddInterviewQuestion(this)"><i class="fas fa-plus"></i> Thêm câu hỏi vào dạng này</button>
+      </section>`).join('');
+    return `
+      <div class="gs-table-toolbar">
+        <div><b>Câu hỏi phỏng vấn</b><span id="gs-iv-count"> • ${groups.length} dạng</span></div>
+        <button type="button" class="gs-mini-btn gs-mini-blue" onclick="window.v292AddInterviewType()"><i class="fas fa-layer-group"></i> Thêm dạng</button>
+      </div>
+      <div id="gs-interview-groups" class="space-y-4">${groupHtml}</div>
+      <div class="gs-helper">Bạn có thể sửa trực tiếp tên dạng, mô tả, câu hỏi và gợi ý. Bấm “Lưu tất cả” để đồng bộ cho BGK.</div>`;
+  };
+
+  window.v292RenumberQuestions=function(typeEl){
+    typeEl?.querySelectorAll('.gs-question-row').forEach((row,i)=>{
+      const n=row.querySelector('.gs-q-number'); if(n)n.textContent=String(i+1);
+    });
+  };
+
+  window.v292UpdateInterviewCount=function(){
+    const count=document.getElementById('gs-iv-count');
+    const box=document.getElementById('gs-interview-groups');
+    if(count&&box) count.textContent=` • ${box.querySelectorAll(':scope > .gs-interview-type').length} dạng`;
+  };
+
+  window.v292AddInterviewType=function(){
+    const box=document.getElementById('gs-interview-groups');
+    if(!box) return showError('Không tìm thấy khu vực câu hỏi.');
+    const idx=box.querySelectorAll(':scope > .gs-interview-type').length+1;
+    const el=document.createElement('section');
+    el.className='gs-interview-type';
+    el.dataset.id=window.contentUid('type');
+    el.innerHTML=`
+      <div class="gs-type-head">
+        <div class="flex-1">
+          <div class="text-[9px] font-black text-blue-600 uppercase mb-1">DẠNG ${idx}</div>
+          <input class="iv-type-title" value="Dạng ${idx}" placeholder="Tên dạng câu hỏi">
+          <textarea class="iv-type-desc" rows="2" placeholder="Mô tả / hướng dẫn"></textarea>
+        </div>
+        <button type="button" class="gs-danger-btn" onclick="window.v292RemoveInterviewType(this)"><i class="fas fa-trash"></i> Xóa dạng</button>
+      </div>
+      <div class="gs-question-list"></div>
+      <button type="button" class="gs-mini-btn gs-mini-blue" onclick="window.v292AddInterviewQuestion(this)"><i class="fas fa-plus"></i> Thêm câu hỏi vào dạng này</button>`;
+    box.appendChild(el);
+    window.v292AddInterviewQuestion(el.querySelector('.gs-mini-btn'));
+    window.v292UpdateInterviewCount();
+    el.querySelector('.iv-type-title')?.focus();
+  };
+
+  window.v292AddInterviewQuestion=function(source){
+    const typeEl=source?.closest?.('.gs-interview-type') || (source?.classList?.contains('gs-interview-type')?source:null);
+    if(!typeEl) return showError('Không xác định được dạng câu hỏi.');
+    const list=typeEl.querySelector('.gs-question-list');
+    if(!list) return;
+    const row=document.createElement('div');
+    row.className='gs-question-row';
+    row.dataset.id=window.contentUid('q');
+    row.innerHTML=`
+      <div class="gs-q-number">${list.querySelectorAll('.gs-question-row').length+1}</div>
+      <textarea class="iv-q" rows="2" placeholder="Nhập câu hỏi..."></textarea>
+      <textarea class="iv-note" rows="2" placeholder="Gợi ý / lưu ý (không bắt buộc)"></textarea>
+      <button type="button" class="gs-icon-danger" onclick="window.v292RemoveInterviewQuestion(this)" title="Xóa câu hỏi"><i class="fas fa-trash"></i></button>`;
+    list.appendChild(row);
+    row.querySelector('.iv-q')?.focus();
+  };
+
+  window.v292RemoveInterviewQuestion=function(btn){
+    const type=btn?.closest('.gs-interview-type');
+    const row=btn?.closest('.gs-question-row');
+    if(row&&confirm('Xóa câu hỏi này?')){row.remove();window.v292RenumberQuestions(type);}
+  };
+
+  window.v292RemoveInterviewType=function(btn){
+    const type=btn?.closest('.gs-interview-type');
+    if(!type) return;
+    const title=type.querySelector('.iv-type-title')?.value||'dạng này';
+    if(confirm(`Xóa “${title}”?`)){type.remove();window.v292UpdateInterviewCount();}
+  };
+
+  window.addInterviewType=window.v292AddInterviewType;
+  window.addInterviewQuestion=function(typeEl){
+    const btn=typeEl?.querySelector?.('.gs-mini-btn');
+    if(btn) return window.v292AddInterviewQuestion(btn);
+    return window.v292AddInterviewType();
+  };
+
+  // ===== 4) Rebuilt content modal & save =====
+  window.openGroupContentModal=async function(groupId){
+    window.showLoading?.(true,'Đang mở nội dung...');
+    try{
+      const ref=window.doc(window.db,'competition_groups',groupId);
+      const snap=await window.getDoc(ref);
+      if(!snap.exists()) throw new Error('Không tìm thấy nhóm.');
+      const g={id:snap.id,...snap.data()};
+      window._editingGroupData=g;
+      const cfg=window.normalizeGroupContent(g);
+      const box=document.getElementById('custom-modal-box');
+      if(!box) throw new Error('Không tìm thấy cửa sổ cấu hình.');
+      box.className='bg-white p-0 rounded-3xl shadow-2xl w-[98%] max-w-[1250px] max-h-[94vh] overflow-hidden border border-white/50 animate-scale-in my-auto';
+      box.removeAttribute('data-gs-events');
+      const modeOptions=`
+        <option value="group">Mở khi nhóm chấm mở</option>
+        <option value="before">Mở trước giờ nhóm chấm</option>`;
+      box.innerHTML=`
+        <div class="gs-content-admin">
+          <header class="gs-admin-modal-head">
+            <div>
+              <div class="text-[9px] font-black uppercase tracking-widest text-red-600">CẤU HÌNH NỘI DUNG NHÓM</div>
+              <h3>${esc(g.name||'')}</h3>
+              <p>Tiêu chí hướng dẫn và câu hỏi sẽ đồng bộ cho BGK theo thời gian thực.</p>
+            </div>
+            <button type="button" onclick="window.closeCustomModal()" class="gs-close-btn"><i class="fas fa-times"></i></button>
+          </header>
+          <div class="gs-admin-tabs">
+            <button type="button" class="gs-admin-tab active" data-tab="scoring" onclick="window.switchContentAdminTab('scoring')"><i class="fas fa-table"></i> 1. Tiêu chí chấm</button>
+            <button type="button" class="gs-admin-tab" data-tab="interview" onclick="window.switchContentAdminTab('interview')"><i class="fas fa-file-alt"></i> 2. Câu hỏi phỏng vấn</button>
+          </div>
+          <main class="gs-admin-modal-body">
+            <section id="gs-admin-scoring" class="gs-admin-panel">
+              <div class="gs-setting-card">
+                <div class="flex items-start justify-between gap-3">
+                  <div><h4>Tiêu chí chấm điểm</h4><p>Thêm, sửa hoặc xóa trực tiếp trong bảng.</p></div>
+                  <label class="gs-switch-label"><input id="gs-sc-enabled" type="checkbox" ${cfg.scoringContent.enabled?'checked':''}><span></span> Bật phần này</label>
+                </div>
+                <div class="gs-setting-grid">
+                  <label>Tiêu đề<input id="gs-sc-title" value="${esc(cfg.scoringContent.title)}"></label>
+                  <label>Cách mở<select id="gs-sc-mode">${modeOptions}</select></label>
+                </div>
+              </div>
+              <div class="gs-setting-card"><div id="gs-scoring-editor">${window.renderScoringEditor(cfg)}</div></div>
+            </section>
+            <section id="gs-admin-interview" class="gs-admin-panel hidden">
+              <div class="gs-setting-card">
+                <div class="flex items-start justify-between gap-3">
+                  <div><h4>Câu hỏi phỏng vấn</h4><p>Tạo nhiều dạng và nhiều câu hỏi cho từng dạng.</p></div>
+                  <label class="gs-switch-label"><input id="gs-iv-enabled" type="checkbox" ${cfg.interviewContent.enabled?'checked':''}><span></span> Bật phần này</label>
+                </div>
+                <div class="gs-setting-grid">
+                  <label>Tiêu đề<input id="gs-iv-title" value="${esc(cfg.interviewContent.title)}"></label>
+                  <label>Cách mở<select id="gs-iv-mode">${modeOptions}</select></label>
+                </div>
+              </div>
+              <div class="gs-setting-card"><div id="gs-interview-editor">${window.renderInterviewEditor(cfg)}</div></div>
+            </section>
+          </main>
+          <footer class="gs-admin-modal-foot">
+            <div class="text-[10px] text-gray-500"><i class="fas fa-bolt text-emerald-600 mr-1"></i> Sau khi lưu, BGK đang online sẽ nhận nội dung mới qua realtime.</div>
+            <div class="flex gap-2">
+              <button type="button" onclick="window.closeCustomModal()" class="gs-cancel-btn">Hủy</button>
+              <button type="button" onclick="window.saveGroupContent('${groupId}')" class="gs-save-btn"><i class="fas fa-save mr-1"></i> Lưu tất cả</button>
+            </div>
+          </footer>
+        </div>`;
+      document.getElementById('gs-sc-mode').value=cfg.scoringContent.mode;
+      document.getElementById('gs-iv-mode').value=cfg.interviewContent.mode;
+      window.openModal();
+    }catch(err){
+      console.error('V29.2 OPEN CONTENT',err);
+      showError('Không mở được cấu hình nội dung: '+(err?.message||err));
+    }finally{
+      window.showLoading?.(false);
+    }
+  };
+
+  window.saveGroupContent=async function(groupId){
+    try{
+      const columns=window.v292GetScoringColumns();
+      const rows=[];
+      document.querySelectorAll('#gs-scoring-table-body .gs-edit-row').forEach((tr,ri)=>{
+        const cells={};
+        tr.querySelectorAll('.gs-cell').forEach((el,ci)=>{
+          const col=columns[ci];
+          if(col) cells[col.key]=String(el.value??'').trim();
+        });
+        if(Object.values(cells).some(v=>v!=='')){
+          rows.push({id:tr.dataset.id||window.contentUid('r'),cells});
+        }
+      });
+
+      const groups=[];
+      document.querySelectorAll('#gs-interview-groups > .gs-interview-type').forEach((el,gi)=>{
+        const title=el.querySelector('.iv-type-title')?.value.trim()||`Dạng ${gi+1}`;
+        const description=el.querySelector('.iv-type-desc')?.value.trim()||'';
+        const questions=[];
+        el.querySelectorAll('.gs-question-row').forEach(q=>{
+          const text=q.querySelector('.iv-q')?.value.trim()||'';
+          const note=q.querySelector('.iv-note')?.value.trim()||'';
+          if(text||note) questions.push({id:q.dataset.id||window.contentUid('q'),text,note});
+        });
+        if(title||description||questions.length) groups.push({id:el.dataset.id||window.contentUid('type'),title,description,questions});
+      });
+
+      const scEnabled=!!document.getElementById('gs-sc-enabled')?.checked;
+      const ivEnabled=!!document.getElementById('gs-iv-enabled')?.checked;
+      if(scEnabled&&!rows.length) return showError('Bạn đã bật Tiêu chí chấm nhưng bảng đang trống.');
+      if(ivEnabled&&!groups.some(g=>g.questions.length)) return showError('Bạn đã bật Câu hỏi nhưng chưa có câu hỏi.');
+
+      const payload={
+        contentConfig:{
+          scoringContent:{
+            enabled:scEnabled,
+            mode:document.getElementById('gs-sc-mode')?.value==='before'?'before':'group',
+            title:document.getElementById('gs-sc-title')?.value.trim()||'TIÊU CHÍ CHẤM ĐIỂM',
+            columns,
+            rows
+          },
+          interviewContent:{
+            enabled:ivEnabled,
+            mode:document.getElementById('gs-iv-mode')?.value==='before'?'before':'group',
+            title:document.getElementById('gs-iv-title')?.value.trim()||'CÂU HỎI PHỎNG VẤN',
+            groups
+          }
+        },
+        contentSchemaVersion:3,
+        contentUpdatedAt:window.serverTimestamp()
+      };
+
+      window.showLoading?.(true,'Đang lưu tiêu chí và câu hỏi...');
+      await window.setDoc(window.doc(window.db,'competition_groups',groupId),payload,{merge:true});
+
+      if(window._groupMapCache?.[groupId]){
+        window._groupMapCache[groupId]={...window._groupMapCache[groupId],...payload};
+      }
+      window._editingGroupData={...(window._editingGroupData||{}),...payload,id:groupId};
+      window.closeCustomModal();
+      window.showToast?.('Đã lưu tiêu chí và câu hỏi. BGK sẽ được cập nhật realtime.');
+      await window.loadGroupsManager(document.getElementById('main-content'));
+      window.refreshAssignedGroupSubscriptions?.();
+    }catch(err){
+      console.error('V29.2 SAVE CONTENT',err);
+      showError('Không lưu được tiêu chí/câu hỏi: '+(err?.message||err));
+    }finally{
+      window.showLoading?.(false);
+    }
+  };
+
+  // Build marker so you can confirm the correct file is live.
+  try{
+    document.documentElement.dataset.gradesyncBuild=BUILD;
+    const m=document.querySelector('meta[name="gradesync-build"]');
+    if(m)m.setAttribute('content',BUILD);
+  }catch(_e){}
+})();
+</script>
+
+
+<script type="module" id="gradesync-realtime-10-client-hotfix">
+/*
+  GradeSync realtime stabilization.
+  Mục tiêu: Admin + tối đa 10 BGK chấm đồng thời với listener nhẹ, cập nhật theo docChanges,
+  coalesce render và không ghi grader_sessions trước từng lần lưu điểm.
+*/
+(function(){
+  const INTERNAL_BUILD='REALTIME-10-CLIENT-STABLE';
+
+  // Không hiện số phiên bản trên tên website.
+  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  try{
+    const meta=document.querySelector('meta[name="gradesync-build"]');
+    if(meta) meta.setAttribute('content',INTERNAL_BUILD);
+  }catch(_e){}
+
+  // ---------- Helpers ----------
+  window._gsRt = window._gsRt || {
+    renderTimer:null,
+    graderRepairTimer:null,
+    lastGraderRealtimeAt:Date.now(),
+    lastSessionWriteAt:0,
+    adminGroupUnsubs:[],
+    adminMonitorState:null
+  };
+
+  const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
+  const touchRealtime=()=>{ window._gsRt.lastGraderRealtimeAt=Date.now(); };
+
+  window.scheduleRealtimeRenderFast=function(force=false){
+    if(window._gsRt.renderTimer) return;
+    window._gsRt.renderTimer=setTimeout(()=>{
+      window._gsRt.renderTimer=null;
+      // Khi BGK đang gõ điểm, tránh dựng lại cả bảng làm mất focus.
+      if(!force && window.currentUserData?.role==='Grader' &&
+         document.activeElement?.classList?.contains('score-input')) return;
+      try{
+        if(window.currentUserData?.role==='Grader') window._rerenderGraderRealtime?.();
+        else if(isAdmin() && document.getElementById('grading-tables-container')) window._renderGradingUIInternal?.();
+      }catch(e){ console.warn('FAST REALTIME RENDER:',e); }
+    },16);
+  };
+
+  function upsertArrayById(array,item){
+    const out=Array.isArray(array)?array:[];
+    const idx=out.findIndex(x=>x.id===item.id);
+    if(idx<0) out.push(item);
+    else out[idx]={...out[idx],...item};
+    return out;
+  }
+  function removeArrayById(array,id){
+    return (Array.isArray(array)?array:[]).filter(x=>x.id!==id);
+  }
+
+  // ---------- 1) Không chặn mỗi lần lưu điểm bằng grader_sessions ----------
+  // Rules chỉ cần session tồn tại/hợp lệ; session đã được tạo lúc login.
+  // Heartbeat vẫn duy trì phiên nền, còn score-save được phép đi thẳng tới transaction.
+  const realSyncGraderSession=window.syncGraderSession;
+  if(typeof realSyncGraderSession==='function'){
+    window.syncGraderSession=async function(online=true,state='active'){
+      if(state==='score-save'){
+        const au=window.auth?.currentUser;
+        if(window.currentUserData?.role!=='Grader' || !au?.isAnonymous) return false;
+        const now=Date.now();
+        // Chạm session nền tối đa 1 lần / 8 giây, không await.
+        if(now-Number(window._gsRt.lastSessionWriteAt||0)>8000){
+          window._gsRt.lastSessionWriteAt=now;
+          Promise.resolve(realSyncGraderSession(true,'active')).then(ok=>{
+            if(!ok) window._gsRt.lastSessionWriteAt=0;
+          }).catch(()=>{
+            window._gsRt.lastSessionWriteAt=0;
+          });
+        }
+        return true;
+      }
+      const ok=await realSyncGraderSession(online,state);
+      if(ok) window._gsRt.lastSessionWriteAt=Date.now();
+      return ok;
+    };
+  }
+
+  // Presence nhanh hơn nhưng vẫn nhẹ: 10 BGK ≈ 50 heartbeat writes/phút.
+  window.startGraderPresenceHeartbeat=function(){
+    if(window._presenceHeartbeat) clearInterval(window._presenceHeartbeat);
+    Promise.resolve(window.syncGraderSession(navigator.onLine!==false,'active')).catch(()=>{});
+    window._presenceHeartbeat=setInterval(()=>{
+      if(window.currentUserData?.role==='Grader' && navigator.onLine!==false){
+        Promise.resolve(window.syncGraderSession(true,'active')).catch(()=>{});
+      }
+    },12000);
+  };
+  window.stopGraderPresenceHeartbeat=function(){
+    if(window._presenceHeartbeat) clearInterval(window._presenceHeartbeat);
+    window._presenceHeartbeat=null;
+  };
+
+  // Admin nhận biết mất kết nối sớm hơn.
+  window.getGraderPresenceState=function(code){
+    const p=window._graderPresenceByCode?.[code];
+    if(!p) return {state:'offline',label:'Chưa kết nối'};
+    const age=Date.now()-Number(p.lastSeenMs||0);
+    if(p.online===false) return {state:'offline',label:p.state==='logout'?'Đã đăng xuất':'Ngoại tuyến'};
+    if(age>35000) return {state:'stale',label:'Mất kết nối'};
+    return {state:'online',label:'Đang online'};
+  };
+
+  const oldStartAdminPresenceWatch=window.startAdminPresenceWatch;
+  if(typeof oldStartAdminPresenceWatch==='function'){
+    window.startAdminPresenceWatch=function(){
+      const r=oldStartAdminPresenceWatch.apply(this,arguments);
+      if(window._adminPresenceTimer) clearInterval(window._adminPresenceTimer);
+      window._adminPresenceTimer=setInterval(window.evaluateAdminPresenceAlerts,5000);
+      return r;
+    };
+  }
+
+  // ---------- 2) Lưu điểm nhanh hơn ----------
+  window.autoSaveScore=function(cId,gId,pS){
+    window._scoreSavePending=window._scoreSavePending||{};
+    window._scoreSaveTimers=window._scoreSaveTimers||{};
+    window._scoreSavePending[cId]={gId,pS};
+    clearTimeout(window._scoreSaveTimers[cId]);
+    // Đủ ngắn để Admin nhận gần như tức thời, vẫn tránh ghi từng phím số.
+    window._scoreSaveTimers[cId]=setTimeout(()=>window.saveScoreNow(cId,gId,pS),180);
+  };
+
+  // ---------- 3) Listener BGK tối ưu: docChanges, không quét lại snapshot ----------
+  window._startOpenGroupDataListeners=function(gid){
+    const rt=window._graderRealtime;
+    if(!rt) return;
+    rt.unsubCandidates=rt.unsubCandidates||new Map();
+    rt.unsubAttendance=rt.unsubAttendance||new Map();
+    rt.unsubScores=rt.unsubScores||new Map();
+    rt.unsubVerifications=rt.unsubVerifications||new Map();
+
+    if(!rt.unsubCandidates.has(gid)){
+      const q=window.query(window.collection(window.db,'candidates'),window.where('groupId','==',gid));
+      const u=window.onSnapshot(q,snap=>{
+        touchRealtime();
+        for(const ch of snap.docChanges()){
+          const id=ch.doc.id;
+          if(ch.type==='removed'){
+            window._allCandidatesCache=removeArrayById(window._allCandidatesCache,id);
+            continue;
+          }
+          const incoming={id,...ch.doc.data()};
+          const pending=rt.pendingAttendance?.get?.(id);
+          if(pending){
+            incoming.isPresent=pending.isPresent;
+            incoming.attendanceOrder=pending.attendanceOrder;
+            rt.pendingAttendance.delete(id);
+          }
+          window._allCandidatesCache=upsertArrayById(window._allCandidatesCache,incoming);
+        }
+        window.scheduleRealtimeRenderFast(false);
+      },err=>{
+        console.warn('Realtime candidates error:',gid,err);
+        window.scheduleGraderRealtimeRepairFast?.('candidates',err);
+      });
+      rt.unsubCandidates.set(gid,u);
+    }
+
+    if(!rt.unsubAttendance.has(gid)){
+      const ref=window.doc(window.db,'attendance_realtime',gid);
+      const u=window.onSnapshot(ref,snap=>{
+        touchRealtime();
+        if(snap.exists()) window._consumeAttendanceRealtimeEvent?.({id:snap.id,...snap.data()});
+      },err=>console.warn('Realtime attendance error:',gid,err));
+      rt.unsubAttendance.set(gid,u);
+    }
+
+    if(!rt.unsubScores.has(gid)){
+      const q=window.query(
+        window.collection(window.db,'scores'),
+        window.where('groupId','==',gid),
+        window.where('graderCode','==',window.currentUserData.code)
+      );
+      const u=window.onSnapshot(q,snap=>{
+        touchRealtime();
+        for(const ch of snap.docChanges()){
+          const id=ch.doc.id;
+          if(ch.type==='removed'){
+            window._allScoresCache=removeArrayById(window._allScoresCache,id);
+            continue;
+          }
+          const item={id,...ch.doc.data()};
+          window._allScoresCache=upsertArrayById(window._allScoresCache,item);
+          if(item.candidateId){
+            window._gradedDataCache=window._gradedDataCache||{};
+            window._gradedDataCache[item.candidateId]=item;
+          }
+        }
+        window.scheduleRealtimeRenderFast(false);
+      },err=>{
+        console.warn('Realtime scores error:',gid,err);
+        window.scheduleGraderRealtimeRepairFast?.('scores',err);
+      });
+      rt.unsubScores.set(gid,u);
+    }
+
+    if(!rt.unsubVerifications.has(gid)){
+      const q=window.query(
+        window.collection(window.db,'grader_verifications'),
+        window.where('groupId','==',gid),
+        window.where('graderCode','==',window.currentUserData.code)
+      );
+      const u=window.onSnapshot(q,snap=>{
+        touchRealtime();
+        window._allVerificationsCache=window._allVerificationsCache||{};
+        for(const ch of snap.docChanges()){
+          const d=ch.doc.data()||{};
+          const key=`${d.graderCode||window.currentUserData.code}_${d.groupId||gid}`;
+          if(ch.type==='removed') delete window._allVerificationsCache[key];
+          else window._allVerificationsCache[key]={id:ch.doc.id,...d};
+        }
+        window.scheduleRealtimeRenderFast(true);
+      },err=>console.warn('Realtime verification error:',gid,err));
+      rt.unsubVerifications.set(gid,u);
+    }
+  };
+
+  // ---------- 4) Tự phục hồi listener BGK khi tab/mobile bị ngủ ----------
+  window.scheduleGraderRealtimeRepairFast=function(reason='realtime',err=null){
+    if(window.currentUserData?.role!=='Grader' || navigator.onLine===false) return;
+    if(err?.code==='permission-denied'){
+      // Nếu nhóm thực sự đã đóng thì đây là trạng thái hợp lệ, không spam reconnect.
+      const gid=window._selectedGradingGroupId;
+      const g=window._groupMapCache?.[gid];
+      if(g && !window._isGroupGateOpenLocal?.(g)) return;
+    }
+    clearTimeout(window._gsRt.graderRepairTimer);
+    window._gsRt.graderRepairTimer=setTimeout(async()=>{
+      try{
+        const uid=window.currentUserData?.id;
+        if(uid){
+          const s=await window.getDoc(window.doc(window.db,'users',uid));
+          if(s.exists()){
+            const d=s.data()||{};
+            window.currentUserData={...window.currentUserData,...d,id:s.id,code:window.currentUserData.code||d.code};
+            if(window._graderRealtime) window._graderRealtime.assigned=Array.isArray(d.assignedGroups)?d.assignedGroups:[];
+            try{localStorage.setItem('gradeSyncSession',JSON.stringify(window.currentUserData));}catch(_e){}
+          }
+        }
+        await window.syncGraderSession(true,'realtime-repair');
+        // Restart socket listeners, giữ nguyên cache/UI để không nháy màn hình.
+        window.stopGraderRealtime?.(false);
+        window.startGraderRealtime?.();
+        window.refreshAssignedGroupSubscriptions?.();
+        window.scheduleRealtimeRenderFast(true);
+      }catch(e){
+        console.warn('GRADER REALTIME FAST REPAIR:',reason,e);
+      }
+    },250);
+  };
+
+  const foregroundRepair=()=>{
+    if(window.currentUserData?.role!=='Grader' || navigator.onLine===false) return;
+    const idle=Date.now()-Number(window._gsRt.lastGraderRealtimeAt||0);
+    // Browser mobile/tab nền có thể suspend WebChannel; khi trở lại foreground thì chủ động nối lại.
+    if(idle>15000) window.scheduleGraderRealtimeRepairFast('foreground');
+    else{
+      window.refreshAssignedGroupSubscriptions?.();
+      Promise.resolve(window.syncGraderSession(true,'foreground')).catch(()=>{});
+    }
+  };
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') foregroundRepair(); });
+  window.addEventListener('focus',foregroundRepair);
+  window.addEventListener('online',()=>setTimeout(()=>window.scheduleGraderRealtimeRepairFast('online'),80));
+
+  // ---------- 5) Admin Bảng Điểm Live: chỉ nghe nhóm đang xem + cập nhật incremental ----------
+  window._stopAdminSelectedGroupRealtime=function(){
+    (window._gsRt.adminGroupUnsubs||[]).forEach(u=>{try{u?.();}catch(_e){}});
+    window._gsRt.adminGroupUnsubs=[];
+  };
+
+  window._startAdminSelectedGroupRealtime=function(gid){
+    if(!isAdmin() || !gid || !document.getElementById('grading-tables-container')) return;
+    window._stopAdminSelectedGroupRealtime();
+    window._allCandidatesCache=[];
+    window._allScoresCache=[];
+    window._allVerificationsCache={};
+
+    const candidateMap=new Map();
+    const scoreMap=new Map();
+    const verifyMap=new Map();
+
+    const render=()=>window.scheduleRealtimeRenderFast(true);
+
+    const cq=window.query(window.collection(window.db,'candidates'),window.where('groupId','==',gid));
+    const sq=window.query(window.collection(window.db,'scores'),window.where('groupId','==',gid));
+    const vq=window.query(window.collection(window.db,'grader_verifications'),window.where('groupId','==',gid));
+
+    const uc=window.onSnapshot(cq,snap=>{
+      for(const ch of snap.docChanges()){
+        if(ch.type==='removed') candidateMap.delete(ch.doc.id);
+        else candidateMap.set(ch.doc.id,{id:ch.doc.id,...ch.doc.data()});
+      }
+      window._allCandidatesCache=[...candidateMap.values()];
+      render();
+    },e=>console.warn('ADMIN CANDIDATES REALTIME:',e));
+
+    const us=window.onSnapshot(sq,snap=>{
+      for(const ch of snap.docChanges()){
+        if(ch.type==='removed') scoreMap.delete(ch.doc.id);
+        else scoreMap.set(ch.doc.id,{id:ch.doc.id,...ch.doc.data()});
+      }
+      window._allScoresCache=[...scoreMap.values()];
+      render();
+    },e=>console.warn('ADMIN SCORES REALTIME:',e));
+
+    const uv=window.onSnapshot(vq,snap=>{
+      for(const ch of snap.docChanges()){
+        const d=ch.doc.data()||{};
+        const key=`${d.graderCode}_${d.groupId}`;
+        if(ch.type==='removed') verifyMap.delete(key);
+        else verifyMap.set(key,{id:ch.doc.id,...d});
+      }
+      window._allVerificationsCache=Object.fromEntries(verifyMap.entries());
+      render();
+    },e=>console.warn('ADMIN VERIFY REALTIME:',e));
+
+    window._gsRt.adminGroupUnsubs=[uc,us,uv];
+    // Để navigate() cũng dọn listener đúng cách.
+    window.activeListeners.push(uc,us,uv);
+  };
+
+  const oldChangeGradingGroup=window.changeGradingGroup;
+  window.changeGradingGroup=function(){
+    const r=oldChangeGradingGroup?.apply(this,arguments);
+    if(isAdmin()){
+      const gid=document.getElementById('grading-group-select')?.value||window._selectedGradingGroupId;
+      if(gid) window._startAdminSelectedGroupRealtime(gid);
+    }
+    return r;
+  };
+
+  const oldLoadGradingTable=window.loadGradingTable;
+  window.loadGradingTable=async function(container){
+    if(window.currentUserData?.role==='Grader'){
+      return oldLoadGradingTable(container);
+    }
+    try{
+      window._stopAdminSelectedGroupRealtime();
+      const [gSnap,uSnap]=await Promise.all([
+        window.getDocs(window.collection(window.db,'competition_groups')),
+        window.getDocs(window.query(window.collection(window.db,'users'),window.where('role','==','Grader')))
+      ]);
+
+      window._groupMapCache={};
+      window._allGradersCache=[];
+      const ids=[];
+      gSnap.forEach(ds=>{ const g={id:ds.id,...ds.data()}; window._groupMapCache[ds.id]=g; ids.push(ds.id); });
+      uSnap.forEach(ds=>window._allGradersCache.push({id:ds.id,...ds.data()}));
+      window._allowedGroupIdsCache=ids;
+      window._selectedGradingGroupId=(window._selectedGradingGroupId&&ids.includes(window._selectedGradingGroupId))
+        ? window._selectedGradingGroupId : (ids[0]||null);
+
+      const opts=ids.map(id=>`<option value="${id}">${window.escapeHtml(window._groupMapCache[id]?.name||id)}</option>`).join('');
+      window.renderGradingShell(container,true,opts);
+      const sel=document.getElementById('grading-group-select');
+      if(sel && window._selectedGradingGroupId) sel.value=window._selectedGradingGroupId;
+
+      // Nhóm và danh sách BGK nhỏ: nghe realtime toàn bộ. Dữ liệu nặng chỉ nghe theo nhóm đang chọn.
+      const ug=window.onSnapshot(window.collection(window.db,'competition_groups'),snap=>{
+        const previous=window._selectedGradingGroupId;
+        const map={}; const order=[];
+        snap.forEach(ds=>{map[ds.id]={id:ds.id,...ds.data()};order.push(ds.id);});
+        window._groupMapCache=map;
+        window._allowedGroupIdsCache=order;
+        const s=document.getElementById('grading-group-select');
+        if(s){
+          s.innerHTML=order.map(id=>`<option value="${id}">${window.escapeHtml(map[id]?.name||id)}</option>`).join('');
+          window._selectedGradingGroupId=(previous&&map[previous])?previous:(order[0]||null);
+          s.value=window._selectedGradingGroupId||'';
+        }
+        window.scheduleRealtimeRenderFast(true);
+      },e=>console.warn('ADMIN GROUPS REALTIME:',e));
+
+      const uu=window.onSnapshot(window.query(window.collection(window.db,'users'),window.where('role','==','Grader')),snap=>{
+        const arr=[]; snap.forEach(ds=>arr.push({id:ds.id,...ds.data()}));
+        window._allGradersCache=arr;
+        const gs=document.getElementById('grading-group-select');
+        if(gs) oldChangeGradingGroup?.();
+      },e=>console.warn('ADMIN GRADERS REALTIME:',e));
+
+      window.activeListeners.push(ug,uu);
+      window.startGroupContentClock?.();
+      setTimeout(()=>window.changeGradingGroup(),0);
+    }catch(e){
+      window.renderErrorState(container,e.message||String(e));
+    }
+  };
+
+  // ---------- 6) Admin Live Monitor realtime thật ----------
+  window.loadAdminLiveMonitor=async function(container){
+    if(!isAdmin()) return;
+    container.innerHTML='<div class="bg-white p-8 rounded-3xl border border-gray-100 text-center text-gray-400"><i class="fas fa-circle-notch fa-spin mr-2"></i>Đang kết nối giám sát realtime...</div>';
+
+    const state={
+      groups:new Map(), graders:new Map(), verifications:new Map(),
+      scores:new Map(), candidates:new Map(), renderTimer:null
+    };
+    window._gsRt.adminMonitorState=state;
+
+    const schedule=()=>{
+      if(state.renderTimer) return;
+      state.renderTimer=setTimeout(()=>{
+        state.renderTimer=null;
+        if(!document.getElementById('main-content')?.contains(container)) return;
+
+        const candidateCount={};
+        for(const c of state.candidates.values()){
+          if(c.groupId) candidateCount[c.groupId]=(candidateCount[c.groupId]||0)+1;
+        }
+        const scoreCount={};
+        for(const s of state.scores.values()){
+          const k=`${s.graderCode}|${s.groupId}`;
+          scoreCount[k]=(scoreCount[k]||0)+1;
+        }
+
+        const graders=[...state.graders.values()].sort((a,b)=>String(a.code||'').localeCompare(String(b.code||''),'vi'));
+        let rows='';
+        graders.forEach(gr=>{
+          const assigned=Array.isArray(gr.assignedGroups)?gr.assignedGroups:[];
+          if(!assigned.length){
+            rows+=`<div class="bg-gray-50 p-4 rounded-xl border border-gray-100 text-xs text-gray-400">Giám khảo <b class="text-gray-700">${window.escapeHtml(gr.name||gr.code||'')}</b> chưa được phân công.</div>`;
+            return;
+          }
+          assigned.forEach(gid=>{
+            const g=state.groups.get(gid); if(!g) return;
+            const key=`${gr.code}_${gid}`;
+            const ver=state.verifications.get(key);
+            const locked=ver?.isVerified===true;
+            const total=Number(candidateCount[gid]||0);
+            const done=Math.min(total,Number(scoreCount[`${gr.code}|${gid}`]||0));
+            const pct=total?Math.round(done*100/total):0;
+            rows+=`
+              <div class="bg-white p-4 rounded-xl border ${locked?'border-emerald-200':'border-gray-200'}">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <b class="text-sm text-gray-800">${window.escapeHtml(gr.name||'Giám khảo')}</b>
+                      <span class="text-[10px] font-mono bg-gray-100 px-1.5 py-0.5 rounded">${window.escapeHtml(gr.code||'')}</span>
+                      ${window.presenceBadgeHtml(gr.code)}
+                    </div>
+                    <div class="text-[11px] text-gray-500 mt-1"><i class="fas fa-folder-open mr-1"></i>${window.escapeHtml(g.name||gid)}</div>
+                    <div class="mt-3 max-w-md">
+                      <div class="flex justify-between text-[10px] font-bold text-gray-500 mb-1"><span>Đã có bảng điểm</span><span>${done}/${total} • ${pct}%</span></div>
+                      <div class="h-2 bg-gray-100 rounded-full overflow-hidden"><div class="h-full bg-red-700 rounded-full transition-all" style="width:${pct}%"></div></div>
+                    </div>
+                  </div>
+                  <div class="shrink-0">
+                    ${locked
+                      ? `<button onclick="window.adminUnlockGrader('${gid}','${window.escapeHtml(gr.code)}')" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg font-bold text-xs"><i class="fas fa-unlock-alt mr-1"></i>Mở khóa</button>`
+                      : '<span class="inline-flex items-center gap-1 px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-[10px] font-bold"><i class="fas fa-bolt"></i>Đang nhận realtime</span>'}
+                  </div>
+                </div>
+              </div>`;
+          });
+        });
+
+        container.innerHTML=`
+          <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col h-[75vh]">
+            <div class="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 class="text-base font-black text-gray-800"><i class="fas fa-satellite-dish text-red-700 mr-2"></i>Giám sát trực tiếp</h3>
+                <p class="text-[10px] text-gray-500 mt-1">Điểm, trạng thái nộp và kết nối của BGK được cập nhật tự động.</p>
+              </div>
+              <span class="gs-presence-badge gs-presence-online"><i class="fas fa-circle-check"></i>Realtime</span>
+            </div>
+            <div class="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-2 pb-2">${rows||'<div class="text-center text-gray-400 py-10">Chưa có giám khảo.</div>'}</div>
+          </div>`;
+      },20);
+    };
+
+    const subscribeMap=(q,map,keyFn)=>{
+      const u=window.onSnapshot(q,snap=>{
+        for(const ch of snap.docChanges()){
+          const d={id:ch.doc.id,...ch.doc.data()};
+          const key=keyFn(d,ch.doc.id);
+          if(ch.type==='removed') map.delete(key); else map.set(key,d);
+        }
+        schedule();
+      },e=>console.warn('ADMIN MONITOR REALTIME:',e));
+      window.activeListeners.push(u);
+    };
+
+    subscribeMap(window.collection(window.db,'competition_groups'),state.groups,(d,id)=>id);
+    subscribeMap(window.query(window.collection(window.db,'users'),window.where('role','==','Grader')),state.graders,(d,id)=>id);
+    subscribeMap(window.collection(window.db,'grader_verifications'),state.verifications,d=>`${d.graderCode}_${d.groupId}`);
+    subscribeMap(window.collection(window.db,'scores'),state.scores,(d,id)=>id);
+    subscribeMap(window.collection(window.db,'candidates'),state.candidates,(d,id)=>id);
+  };
+
+  // Mở khóa không reload cả trang; snapshot realtime tự cập nhật.
+  window.adminUnlockGrader=function(groupId,graderCode){
+    window.showCustomConfirm(`Xác nhận MỞ KHÓA cho giám khảo ${graderCode}?`,async()=>{
+      window.showLoading(true,'Đang mở khóa...');
+      try{
+        const q=window.query(
+          window.collection(window.db,'grader_verifications'),
+          window.where('groupId','==',groupId),
+          window.where('graderCode','==',graderCode)
+        );
+        const snap=await window.getDocs(q);
+        for(const d of snap.docs) await window.deleteDoc(d.ref);
+        window.showToast('Đã mở khóa. Giao diện Admin/BGK sẽ tự cập nhật realtime.');
+      }catch(e){
+        window.showToast('Không thể mở khóa: '+(e.message||e.code),'error');
+      }finally{
+        window.showLoading(false);
+      }
+    });
+  };
+
+  // ---------- 7) Khi thoát trang Admin, dọn listener nhóm đang xem ----------
+  const oldClearRealtimeListeners=window.clearRealtimeListeners;
+  window.clearRealtimeListeners=function(){
+    window._stopAdminSelectedGroupRealtime?.();
+    return oldClearRealtimeListeners?.apply(this,arguments);
+  };
+
+  // ---------- 8) Khởi tạo lại heartbeat/realtime nếu patch được nạp khi người dùng đã login ----------
+  setTimeout(()=>{
+    try{
+      if(window.currentUserData?.role==='Grader'){
+        window.startGraderPresenceHeartbeat();
+        window.refreshAssignedGroupSubscriptions?.();
+      }else if(isAdmin()){
+        window.startAdminPresenceWatch();
+      }
+    }catch(e){console.warn('REALTIME HOTFIX INIT:',e);}
+  },0);
+})();
+</script>
+
 </body>
 </html>
