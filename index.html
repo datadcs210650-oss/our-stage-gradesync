@@ -130,6 +130,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 .gs-v27-session-warning{position:fixed;right:24px;bottom:24px;z-index:99999;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px 15px;border-radius:16px;box-shadow:0 12px 32px rgba(15,23,42,.16);font-size:12px;font-weight:800;max-width:320px}
 </style>
 
+<!-- Quota-safe build: autosave 650ms, no per-keystroke audit, local fallback enabled. -->
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex relative selection:bg-red-200 selection:text-red-900">
     <div id="loading-overlay" class="fixed inset-0 bg-white/90 backdrop-blur-sm z-[150] justify-center items-center flex-col gap-3">
@@ -2298,16 +2299,9 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 
                 window._gradedDataCache=window._gradedDataCache||{};
                 window._gradedDataCache[cId]={id:scoreId,candidateId:cId,groupId:gId,graderCode,graderName,scores,totalScore:total,revision:committedRevision,locked:false};
+                // Quota-safe: không ghi audit_logs sau từng lần gõ điểm.
+                // Lịch sử nộp bảng điểm được ghi 1 lần khi BGK bấm Khóa & Nộp.
 
-                if(changes.length || committedRevision===1){
-                    try{
-                        await window.setDoc(window.doc(window.db,'audit_logs',`${scoreId}_${committedRevision}_${Date.now()}`),{
-                            candidateId:cId,candidateName:candidate?.name||'TS',graderCode,graderName,groupId:gId,groupName:groupInfo.name||'',scoreValue:total,
-                            scoreChanged:true,changeContent:changes.length?changes.join(' | '):(hasAnyScore?'Tạo bảng điểm lần đầu':'Xóa toàn bộ điểm hiện tại'),revision:committedRevision,
-                            timestamp:window.serverTimestamp(),schemaVersion:2
-                        });
-                    }catch(e){console.warn('AUDIT LOG SAVE ERROR:',e);}
-                }
 
                 setSaveState('Đã lưu ✓','emerald');
                 setTimeout(()=>{const el=document.getElementById(`save-status-${cId}`);if(el)el.style.opacity='0';},1100);
@@ -2337,6 +2331,12 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                         if(ok){window.refreshAssignedGroupSubscriptions?.();window._scoreSavePending[cId]={gId,pS};window.showToast('Đã đồng bộ lại quyền. Hệ thống đang thử lưu điểm lại.');}
                         else window.showToast('Không thể xác nhận phiên giám khảo. Hãy đăng xuất và đăng nhập lại mã BGK.','error');
                     }catch(_e){window.showToast('Không thể khôi phục quyền lưu điểm. Hãy đăng nhập lại.','error');}
+                }else if(
+                    e?.code==='resource-exhausted' ||
+                    e?.code==='quota-exceeded' ||
+                    /quota exceeded|resource[- ]exhausted/i.test(String(e?.message||''))
+                ){
+                    window.handleGradeSyncQuotaExceeded?.(cId,gId,pS,e);
                 }else window.showToast('Không lưu được điểm: '+(e.message||e.code||'Lỗi không xác định'),'error');
                 return false;
             }finally{
@@ -2370,6 +2370,24 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                         isVerified:true,timestamp:window.serverTimestamp(),schemaVersion:2
                     },{merge:true});
 
+                    try{
+                        await window.setDoc(
+                            window.doc(window.db,'audit_logs',`SUBMIT_${graderCode}_${gId}_${Date.now()}`),
+                            {
+                                graderCode,
+                                graderName:`${window.currentUserData.name||'Giám khảo'} - ${graderCode}`,
+                                groupId:gId,
+                                groupName:groupInfo.name||'',
+                                action:'SUBMIT_GRADING',
+                                changeContent:'Khóa & nộp bảng điểm',
+                                timestamp:window.serverTimestamp(),
+                                schemaVersion:3
+                            }
+                        );
+                    }catch(auditErr){
+                        // Audit là best-effort; không làm hỏng việc nộp điểm nếu quota audit bị đầy.
+                        console.warn('SUBMIT AUDIT SKIPPED:',auditErr);
+                    }
                     window.showToast('Đã khóa và nộp bảng điểm thành công!');
                     window.renderGradingTables();
                 }catch(e){
@@ -5006,7 +5024,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
       if(window.currentUserData?.role==='Grader' && navigator.onLine!==false){
         Promise.resolve(window.syncGraderSession(true,'active')).catch(()=>{});
       }
-    },12000);
+    },30000);
   };
   window.stopGraderPresenceHeartbeat=function(){
     if(window._presenceHeartbeat) clearInterval(window._presenceHeartbeat);
@@ -5019,7 +5037,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
     if(!p) return {state:'offline',label:'Chưa kết nối'};
     const age=Date.now()-Number(p.lastSeenMs||0);
     if(p.online===false) return {state:'offline',label:p.state==='logout'?'Đã đăng xuất':'Ngoại tuyến'};
-    if(age>35000) return {state:'stale',label:'Mất kết nối'};
+    if(age>75000) return {state:'stale',label:'Mất kết nối'};
     return {state:'online',label:'Đang online'};
   };
 
@@ -5028,7 +5046,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
     window.startAdminPresenceWatch=function(){
       const r=oldStartAdminPresenceWatch.apply(this,arguments);
       if(window._adminPresenceTimer) clearInterval(window._adminPresenceTimer);
-      window._adminPresenceTimer=setInterval(window.evaluateAdminPresenceAlerts,5000);
+      window._adminPresenceTimer=setInterval(window.evaluateAdminPresenceAlerts,10000);
       return r;
     };
   }
@@ -5040,7 +5058,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
     window._scoreSavePending[cId]={gId,pS};
     clearTimeout(window._scoreSaveTimers[cId]);
     // Đủ ngắn để Admin nhận gần như tức thời, vẫn tránh ghi từng phím số.
-    window._scoreSaveTimers[cId]=setTimeout(()=>window.saveScoreNow(cId,gId,pS),180);
+    window._scoreSaveTimers[cId]=setTimeout(()=>window.saveScoreNow(cId,gId,pS),650);
   };
 
   // ---------- 3) Listener BGK tối ưu: docChanges, không quét lại snapshot ----------
@@ -5450,6 +5468,186 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
       }
     }catch(e){console.warn('REALTIME HOTFIX INIT:',e);}
   },0);
+})();
+</script>
+
+
+<script type="module" id="gradesync-quota-guard">
+(function(){
+  document.title='GradeSync - Hệ thống Chấm điểm Live';
+
+  const KEY='gradeSyncQuotaDraftsV1';
+  const COOLDOWN_KEY='gradeSyncQuotaCooldownUntil';
+  const FIVE_MIN=5*60*1000;
+
+  function safeJSON(raw,fallback){
+    try{return raw?JSON.parse(raw):fallback;}catch(_e){return fallback;}
+  }
+  function getDrafts(){
+    return safeJSON(localStorage.getItem(KEY),{});
+  }
+  function setDrafts(x){
+    try{localStorage.setItem(KEY,JSON.stringify(x||{}));}catch(e){console.warn('LOCAL DRAFT SAVE:',e);}
+  }
+  function draftKey(cId,gId){
+    return `${window.currentUserData?.code||'BGK'}|${gId}|${cId}`;
+  }
+  function readInputs(cId,gId,pS){
+    const inputs=[...document.querySelectorAll(`input.score-input[data-cand="${cId}"][data-group="${gId}"]`)];
+    const scores={};
+    inputs.forEach(i=>{
+      const crit=i.getAttribute('data-crit');
+      const raw=String(i.value??'').trim();
+      if(raw==='') return;
+      const n=Number(raw);
+      if(Number.isFinite(n)) scores[crit]=Math.max(0,Math.min(100,n));
+    });
+    return {
+      cId,gId,pS,
+      graderCode:window.currentUserData?.code||'',
+      scores,
+      savedAt:Date.now()
+    };
+  }
+  function saveLocalDraft(cId,gId,pS){
+    const drafts=getDrafts();
+    drafts[draftKey(cId,gId)]=readInputs(cId,gId,pS);
+    setDrafts(drafts);
+    return drafts[draftKey(cId,gId)];
+  }
+  function removeLocalDraft(cId,gId){
+    const drafts=getDrafts();
+    delete drafts[draftKey(cId,gId)];
+    setDrafts(drafts);
+  }
+  function setRowState(cId,msg,color='amber'){
+    const el=document.getElementById(`save-status-${cId}`);
+    if(!el) return;
+    el.textContent=msg;
+    el.style.opacity='1';
+    el.className=`absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-[8px] text-${color}-600 font-bold transition-opacity`;
+  }
+  function applyDrafts(){
+    const drafts=getDrafts();
+    Object.values(drafts).forEach(d=>{
+      if(!d || d.graderCode!==window.currentUserData?.code) return;
+      const inputs=[...document.querySelectorAll(`input.score-input[data-cand="${d.cId}"][data-group="${d.gId}"]`)];
+      if(!inputs.length) return;
+      inputs.forEach(i=>{
+        const crit=i.getAttribute('data-crit');
+        if(Object.prototype.hasOwnProperty.call(d.scores||{},crit)){
+          i.value=String(d.scores[crit]);
+        }else{
+          i.value='';
+        }
+      });
+      setRowState(d.cId,'Lưu tạm trên máy','amber');
+    });
+  }
+
+  window.handleGradeSyncQuotaExceeded=function(cId,gId,pS,error){
+    saveLocalDraft(cId,gId,pS);
+    const until=Date.now()+FIVE_MIN;
+    try{localStorage.setItem(COOLDOWN_KEY,String(until));}catch(_e){}
+    window._gradeSyncQuotaCooldownUntil=until;
+    setRowState(cId,'Lưu tạm trên máy','amber');
+
+    const now=Date.now();
+    if(!window._lastQuotaToastAt || now-window._lastQuotaToastAt>12000){
+      window._lastQuotaToastAt=now;
+      window.showToast?.(
+        'Firebase đã chạm hạn mức. Điểm vừa nhập đã được giữ tạm trên thiết bị này; hệ thống sẽ thử đồng bộ lại sau.',
+        'error'
+      );
+    }
+    console.warn('FIRESTORE QUOTA EXCEEDED - local draft kept',error);
+  };
+
+  const baseAutoSave=window.autoSaveScore;
+  window.autoSaveScore=function(cId,gId,pS){
+    // Luôn giữ snapshot cục bộ trước, để quota/server lỗi không làm mất điểm đang nhập.
+    saveLocalDraft(cId,gId,pS);
+
+    const stored=Number(localStorage.getItem(COOLDOWN_KEY)||0);
+    const until=Math.max(Number(window._gradeSyncQuotaCooldownUntil||0),stored);
+    if(Date.now()<until){
+      setRowState(cId,'Lưu tạm trên máy','amber');
+      return;
+    }
+    return baseAutoSave?.(cId,gId,pS);
+  };
+
+  const baseSave=window.saveScoreNow;
+  window.saveScoreNow=async function(cId,gId,pS){
+    const stored=Number(localStorage.getItem(COOLDOWN_KEY)||0);
+    const until=Math.max(Number(window._gradeSyncQuotaCooldownUntil||0),stored);
+    if(Date.now()<until){
+      saveLocalDraft(cId,gId,pS);
+      setRowState(cId,'Lưu tạm trên máy','amber');
+      return false;
+    }
+    const ok=await baseSave(cId,gId,pS);
+    if(ok){
+      removeLocalDraft(cId,gId);
+      setRowState(cId,'Đã lưu ✓','emerald');
+    }
+    return ok;
+  };
+
+  window.retryQuotaDrafts=async function(force=false){
+    if(navigator.onLine===false) return false;
+    const stored=Number(localStorage.getItem(COOLDOWN_KEY)||0);
+    if(!force && Date.now()<stored) return false;
+
+    try{localStorage.removeItem(COOLDOWN_KEY);}catch(_e){}
+    window._gradeSyncQuotaCooldownUntil=0;
+
+    const drafts=getDrafts();
+    const mine=Object.values(drafts)
+      .filter(d=>d?.graderCode===window.currentUserData?.code)
+      .sort((a,b)=>Number(a.savedAt||0)-Number(b.savedAt||0));
+
+    for(const d of mine){
+      // Chỉ retry khi group/candidate đang render để saveScoreNow đọc đúng DOM hiện tại.
+      const visible=document.querySelector(`input.score-input[data-cand="${d.cId}"][data-group="${d.gId}"]`);
+      if(!visible) continue;
+      Object.entries(d.scores||{}).forEach(([crit,val])=>{
+        const input=[...document.querySelectorAll(`input.score-input[data-cand="${d.cId}"][data-group="${d.gId}"]`)]
+          .find(x=>x.getAttribute('data-crit')===crit);
+        if(input) input.value=String(val);
+      });
+      const ok=await baseSave(d.cId,d.gId,d.pS);
+      if(ok) removeLocalDraft(d.cId,d.gId);
+      else break;
+      await new Promise(r=>setTimeout(r,900)); // không dồn request sau khi quota vừa hồi phục
+    }
+    applyDrafts();
+    return true;
+  };
+
+  // Khi render realtime làm lại DOM, khôi phục draft chưa sync.
+  const oldRender=window.renderGradingTables;
+  if(typeof oldRender==='function'){
+    window.renderGradingTables=function(){
+      const r=oldRender.apply(this,arguments);
+      setTimeout(applyDrafts,0);
+      return r;
+    };
+  }
+
+  // Khi mạng trở lại / tab quay lại, thử sync nếu cooldown đã hết.
+  window.addEventListener('online',()=>setTimeout(()=>window.retryQuotaDrafts(false),1500));
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible'){
+      setTimeout(applyDrafts,0);
+      setTimeout(()=>window.retryQuotaDrafts(false),1200);
+    }
+  });
+
+  // Mỗi 60s chỉ kiểm tra điều kiện, không tạo Firestore request nếu vẫn cooldown.
+  setInterval(()=>window.retryQuotaDrafts(false),60000);
+
+  setTimeout(applyDrafts,0);
 })();
 </script>
 
