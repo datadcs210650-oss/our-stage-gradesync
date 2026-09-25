@@ -6266,5 +6266,161 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 })();
 </script>
 
+
+<script type="module" id="gradesync-session-permission-fix">
+(function(){
+  document.title='GradeSync - Hệ thống Chấm điểm Live';
+
+  const isGrader=()=>window.currentUserData?.role==='Grader';
+  const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
+  const getGroup=id=>window._groupMapCache?.[id]||null;
+
+  function isPermissionError(e){
+    return e?.code==='permission-denied'
+      || /missing or insufficient permissions|permission[- ]denied/i.test(String(e?.message||''));
+  }
+
+  async function refreshGraderIdentity(){
+    if(!isGrader()) return true;
+    const uid=window.currentUserData?.id;
+    if(!uid) return false;
+    try{
+      const snap=await window.getDoc(window.doc(window.db,'users',uid));
+      if(!snap.exists()) return false;
+      const d=snap.data()||{};
+      window.currentUserData={
+        ...window.currentUserData,
+        ...d,
+        id:snap.id,
+        code:d.code||window.currentUserData.code
+      };
+      try{localStorage.setItem('gradeSyncSession',JSON.stringify(window.currentUserData));}catch(_e){}
+      if(window._graderRealtime){
+        window._graderRealtime.assigned=Array.isArray(d.assignedGroups)?d.assignedGroups:[];
+      }
+      return await window.syncGraderSession(true,'session-submit-refresh');
+    }catch(e){
+      console.warn('SESSION SUBMIT IDENTITY REFRESH:',e);
+      return false;
+    }
+  }
+
+  async function assertSessionSubmissionReady(groupId){
+    if(!isGrader()) throw new Error('Phiên hiện tại không phải Giám khảo.');
+    const groupRef=window.doc(window.db,'competition_groups',groupId);
+    const groupSnap=await window.getDoc(groupRef);
+    if(!groupSnap.exists()) throw new Error('Nhóm thi không còn tồn tại.');
+
+    const group={id:groupSnap.id,...groupSnap.data()};
+    window._groupMapCache=window._groupMapCache||{};
+    window._groupMapCache[groupId]=group;
+
+    if(group.sessionSubmitMode!==true){
+      throw new Error('Admin chưa bật Chấm theo phiên cho nhóm này.');
+    }
+    const assigned=Array.isArray(window.currentUserData?.assignedGroups)
+      ? window.currentUserData.assignedGroups : [];
+    if(!assigned.includes(groupId)){
+      throw new Error('Giám khảo không còn được phân quyền vào nhóm này.');
+    }
+
+    // Nếu đã khóa/nộp trước đó thì không ghi đè bảng đã khóa.
+    const graderCode=window.currentUserData.code;
+    const verifyId=`${graderCode}_${groupId}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+    const verifySnap=await window.getDoc(window.doc(window.db,'grader_verifications',verifyId));
+    if(verifySnap.exists() && verifySnap.data()?.isVerified===true){
+      throw new Error('Bảng điểm này đã được Khóa Nộp. Nếu cần nộp lại, Admin phải Mở khóa BGK trước.');
+    }
+    return group;
+  }
+
+  // Override submitSessionGrading để tự làm mới quyền/session trước khi batch commit.
+  const previousSubmitSession=window.submitSessionGrading;
+  window.submitSessionGrading=async function(groupId){
+    const refreshed=await refreshGraderIdentity();
+    if(!refreshed){
+      throw new Error('Không thể xác nhận phiên giám khảo. Hãy đăng xuất và đăng nhập lại mã BGK.');
+    }
+
+    let group;
+    try{
+      group=await assertSessionSubmissionReady(groupId);
+    }catch(e){
+      if(isPermissionError(e)){
+        const err=new Error('PERMISSION_RULES_OUTDATED');
+        err.cause=e;
+        throw err;
+      }
+      throw e;
+    }
+
+    // Gọi implementation hiện tại sau khi đã refresh quyền.
+    try{
+      return await previousSubmitSession(groupId);
+    }catch(e){
+      if(isPermissionError(e)){
+        const err=new Error('PERMISSION_RULES_OUTDATED');
+        err.cause=e;
+        throw err;
+      }
+      throw e;
+    }
+  };
+
+  // Thay thông báo lỗi bằng hướng dẫn chính xác.
+  const oldVerify=window.verifyGroupGrading;
+  window.verifyGroupGrading=function(groupId){
+    const group=getGroup(groupId);
+    if(!isGrader() || group?.sessionSubmitMode!==true){
+      return oldVerify?.(groupId);
+    }
+
+    const graderCode=window.currentUserData?.code;
+    if(!graderCode) return window.showToast?.('Thiếu thông tin giám khảo.','error');
+
+    window.showCustomConfirm(
+      'KHÓA & NỘP BẢNG ĐIỂM? Toàn bộ điểm đang lưu trong phiên trên thiết bị này sẽ được gửi cho Admin một lần và bảng điểm sẽ bị khóa.',
+      async()=>{
+        window.showLoading?.(true,'Đang xác nhận quyền và gửi phiên chấm...');
+        try{
+          Object.values(window._scoreSaveTimers||{}).forEach(t=>clearTimeout(t));
+          const count=await window.submitSessionGrading(groupId);
+          window.showToast?.(`Đã gửi ${count} bảng điểm cho Admin và khóa bảng điểm.`);
+          window.scheduleRealtimeRenderFast?.(true);
+        }catch(e){
+          console.error('SESSION SUBMIT PERMISSION FIX:',e,e?.cause);
+          let msg='Không thể gửi phiên chấm: '+(e.message||e.code||'Lỗi không xác định');
+          if(e.message==='PERMISSION_RULES_OUTDATED'){
+            msg='Firestore Rules chưa đúng cho Chấm theo phiên. Hãy Publish file Rules mới đi kèm bản này rồi đăng nhập lại BGK.';
+          }else if(e?.code==='resource-exhausted'||/quota exceeded|resource[- ]exhausted/i.test(String(e?.message||''))){
+            msg='Firebase đang chạm hạn mức. Điểm phiên vẫn được giữ trên thiết bị; hãy thử nộp lại khi quota hoạt động.';
+          }
+          window.showToast?.(msg,'error');
+        }finally{
+          window.showLoading?.(false);
+        }
+      }
+    );
+  };
+  window.vGG=window.verifyGroupGrading;
+
+  // Admin: hiển thị cảnh báo rõ nếu Rules chưa publish.
+  const oldAdminEditTime=window.adminEditSubmissionTime;
+  if(typeof oldAdminEditTime==='function'){
+    window.adminEditSubmissionTime=async function(groupId,graderCode){
+      try{
+        return await oldAdminEditTime(groupId,graderCode);
+      }catch(e){
+        if(isPermissionError(e)){
+          window.showToast?.('Admin chưa có quyền sửa giờ ký. Hãy Publish Firestore Rules mới đi kèm bản hiện tại.','error');
+          return;
+        }
+        throw e;
+      }
+    };
+  }
+})();
+</script>
+
 </body>
 </html>
