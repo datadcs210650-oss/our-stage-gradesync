@@ -5651,5 +5651,620 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 })();
 </script>
 
+
+<script type="module" id="gradesync-session-submit-mode">
+(function(){
+  /*
+    GradeSync - Chế độ chấm theo phiên.
+    Khi Admin bật sessionSubmitMode cho nhóm:
+    - BGK chấm và lưu trên thiết bị.
+    - Không ghi scores lên Firestore trong lúc chấm.
+    - Listener realtime của scores phía BGK tạm tắt.
+    - Chỉ khi "Khóa Nộp" mới upload toàn bộ điểm + khóa bảng điểm.
+    - Admin chỉ xem điểm của BGK đã khóa/nộp trong nhóm đang bật chế độ này.
+  */
+
+  document.title='GradeSync - Hệ thống Chấm điểm Live';
+
+  const SESSION_KEY='gradeSyncJudgingSessionDraftsV1';
+  const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
+  const isGrader=()=>window.currentUserData?.role==='Grader';
+  const esc=v=>window.escapeHtml?window.escapeHtml(v==null?'':String(v)):String(v??'');
+
+  function safeJSON(raw,fallback){
+    try{return raw?JSON.parse(raw):fallback;}catch(_e){return fallback;}
+  }
+  function allDrafts(){
+    return safeJSON(localStorage.getItem(SESSION_KEY),{});
+  }
+  function saveAllDrafts(x){
+    try{localStorage.setItem(SESSION_KEY,JSON.stringify(x||{}));}
+    catch(e){console.warn('SESSION DRAFT LOCAL SAVE:',e);}
+  }
+  function sessionDraftKey(groupId,candidateId,graderCode=window.currentUserData?.code||'BGK'){
+    return `${graderCode}|${groupId}|${candidateId}`;
+  }
+  function getGroup(groupId){
+    return window._groupMapCache?.[groupId]||null;
+  }
+  function sessionModeOn(groupId){
+    return getGroup(groupId)?.sessionSubmitMode===true;
+  }
+  function scoreInputs(candidateId,groupId){
+    return [...document.querySelectorAll(`input.score-input[data-cand="${candidateId}"][data-group="${groupId}"]`)];
+  }
+  function calculateDraft(candidateId,groupId,passScore){
+    const inputs=scoreInputs(candidateId,groupId);
+    const scores={};
+    let total=0;
+    inputs.forEach(input=>{
+      const key=input.getAttribute('data-crit');
+      const weight=Number(input.getAttribute('data-weight')||0);
+      const raw=String(input.value??'').trim();
+      if(raw==='') return;
+      let value=Number(raw);
+      if(!Number.isFinite(value)) return;
+      value=Math.max(0,Math.min(100,value));
+      input.value=String(value);
+      scores[key]=value;
+      total+=(value*weight)/100;
+    });
+    total=Number(total.toFixed(2));
+    return {
+      candidateId,groupId,
+      graderCode:window.currentUserData?.code||'',
+      graderName:`${window.currentUserData?.name||'Giám khảo'} - ${window.currentUserData?.code||''}`,
+      scores,totalScore:total,
+      passScore:Number(passScore||0),
+      savedAt:Date.now()
+    };
+  }
+  function setSessionRowState(candidateId,text,color='blue'){
+    const el=document.getElementById(`save-status-${candidateId}`);
+    if(!el) return;
+    el.textContent=text;
+    el.style.opacity='1';
+    el.className=`absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-[8px] text-${color}-600 font-bold transition-opacity`;
+  }
+  function updateTotalUI(draft){
+    const totalEl=document.getElementById(`tot-${draft.candidateId}`);
+    const statusEl=document.getElementById(`status-container-${draft.candidateId}`);
+    if(totalEl){
+      totalEl.textContent=String(draft.totalScore);
+      totalEl.className=`font-bold text-base ${draft.totalScore>=draft.passScore?'text-emerald-600':'text-rose-600'}`;
+    }
+    if(statusEl){
+      if(!Object.keys(draft.scores||{}).length){
+        statusEl.innerHTML='<span class="bg-gray-50 text-gray-500 border-gray-200 px-2 py-1 rounded text-[10px] font-bold border">CHỜ</span>';
+      }else{
+        const passed=draft.totalScore>=draft.passScore;
+        statusEl.innerHTML=`<span class="${passed?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-rose-50 text-rose-600 border-rose-200'} px-2 py-1 rounded text-[10px] font-bold border">${passed?'PASS':'FAIL'}</span>`;
+      }
+    }
+  }
+  function saveSessionDraft(candidateId,groupId,passScore){
+    const draft=calculateDraft(candidateId,groupId,passScore);
+    const data=allDrafts();
+    data[sessionDraftKey(groupId,candidateId)]=draft;
+    saveAllDrafts(data);
+
+    // Cache local để renderer cũ vẫn hiển thị đúng dữ liệu phiên.
+    window._gradedDataCache=window._gradedDataCache||{};
+    window._gradedDataCache[candidateId]={
+      id:`SESSION_${draft.graderCode}_${candidateId}`,
+      candidateId,groupId,
+      graderCode:draft.graderCode,
+      graderName:draft.graderName,
+      scores:{...draft.scores},
+      totalScore:draft.totalScore,
+      revision:0,
+      locked:false,
+      __sessionDraft:true
+    };
+    updateTotalUI(draft);
+    setSessionRowState(candidateId,'Đã lưu trong phiên','blue');
+    return draft;
+  }
+  function groupDrafts(groupId,graderCode=window.currentUserData?.code){
+    return Object.values(allDrafts())
+      .filter(x=>x?.groupId===groupId && x?.graderCode===graderCode)
+      .sort((a,b)=>Number(a.savedAt||0)-Number(b.savedAt||0));
+  }
+  function clearGroupDrafts(groupId,graderCode=window.currentUserData?.code){
+    const data=allDrafts();
+    Object.keys(data).forEach(k=>{
+      const d=data[k];
+      if(d?.groupId===groupId && d?.graderCode===graderCode) delete data[k];
+    });
+    saveAllDrafts(data);
+  }
+  function applySessionDrafts(groupId){
+    if(!isGrader() || !sessionModeOn(groupId)) return;
+    const drafts=groupDrafts(groupId);
+    drafts.forEach(d=>{
+      const inputs=scoreInputs(d.candidateId,d.groupId);
+      if(!inputs.length) return;
+      inputs.forEach(input=>{
+        const key=input.getAttribute('data-crit');
+        input.value=Object.prototype.hasOwnProperty.call(d.scores||{},key)?String(d.scores[key]):'';
+      });
+      window._gradedDataCache=window._gradedDataCache||{};
+      window._gradedDataCache[d.candidateId]={
+        id:`SESSION_${d.graderCode}_${d.candidateId}`,
+        candidateId:d.candidateId,
+        groupId:d.groupId,
+        graderCode:d.graderCode,
+        graderName:d.graderName,
+        scores:{...(d.scores||{})},
+        totalScore:Number(d.totalScore||0),
+        revision:0,
+        locked:false,
+        __sessionDraft:true
+      };
+      updateTotalUI(d);
+      setSessionRowState(d.candidateId,'Đã lưu trong phiên','blue');
+    });
+  }
+
+  // ---------- Banner / Admin toggle ----------
+  function ensureSessionBanner(){
+    const panel=document.getElementById('grading-score-panel');
+    if(!panel) return null;
+    let el=document.getElementById('gs-session-mode-banner');
+    if(!el){
+      el=document.createElement('div');
+      el.id='gs-session-mode-banner';
+      el.className='mx-1 mt-1 mb-2 px-4 py-3 rounded-2xl border text-xs font-bold flex items-center justify-between gap-3';
+      panel.prepend(el);
+    }
+    return el;
+  }
+  function ensureAdminSessionToggle(){
+    if(!isAdmin()) return null;
+    const top=document.querySelector('#grading-group-select')?.closest('.bg-white');
+    if(!top) return null;
+    let box=document.getElementById('gs-admin-session-toggle');
+    if(!box){
+      box=document.createElement('label');
+      box.id='gs-admin-session-toggle';
+      box.className='flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-800 px-3 py-2 rounded-xl text-[10px] font-black cursor-pointer whitespace-nowrap';
+      box.innerHTML='<input id="gs-session-toggle-input" type="checkbox" class="accent-indigo-700 w-4 h-4"><span><i class="fas fa-shield-alt mr-1"></i>Chấm theo phiên</span>';
+      top.appendChild(box);
+      box.querySelector('input').addEventListener('change',async e=>{
+        const gid=document.getElementById('grading-group-select')?.value||window._selectedGradingGroupId;
+        if(!gid){e.target.checked=false;return;}
+        const enabled=!!e.target.checked;
+        window.showLoading?.(true,enabled?'Đang bật chấm theo phiên...':'Đang bật đồng bộ điểm trực tiếp...');
+        try{
+          await window.setDoc(
+            window.doc(window.db,'competition_groups',gid),
+            {sessionSubmitMode:enabled,sessionSubmitModeUpdatedAt:window.serverTimestamp()},
+            {merge:true}
+          );
+          if(window._groupMapCache?.[gid]) window._groupMapCache[gid].sessionSubmitMode=enabled;
+          window.showToast?.(
+            enabled
+              ? 'Đã bật Chấm theo phiên: điểm BGK chỉ gửi khi Khóa Nộp.'
+              : 'Đã tắt Chấm theo phiên: điểm trở lại đồng bộ trực tiếp.'
+          );
+          window.refreshSessionModeUI?.();
+        }catch(err){
+          e.target.checked=!enabled;
+          window.showToast?.('Không đổi được chế độ: '+(err.message||err.code),'error');
+        }finally{
+          window.showLoading?.(false);
+        }
+      });
+    }
+    return box;
+  }
+  window.refreshSessionModeUI=function(){
+    const gid=document.getElementById('grading-group-select')?.value||window._selectedGradingGroupId;
+    if(!gid) return;
+    const enabled=sessionModeOn(gid);
+
+    const toggle=ensureAdminSessionToggle();
+    if(toggle){
+      const input=toggle.querySelector('input');
+      if(input) input.checked=enabled;
+    }
+
+    const banner=ensureSessionBanner();
+    if(banner){
+      if(enabled){
+        banner.className='mx-1 mt-1 mb-2 px-4 py-3 rounded-2xl border border-indigo-200 bg-indigo-50 text-indigo-800 text-xs font-bold flex items-center justify-between gap-3';
+        banner.innerHTML=`
+          <div><i class="fas fa-laptop-file mr-2"></i><b>Chế độ chấm theo phiên đang bật.</b>
+          ${isGrader()?'Điểm chỉ được lưu trên thiết bị này và chỉ gửi cho Admin khi bạn bấm Khóa Nộp.':'Admin chưa nhận điểm nháp của BGK; chỉ nhận sau khi BGK Khóa Nộp.'}</div>
+          <span class="text-[9px] bg-white border border-indigo-200 px-2 py-1 rounded-lg whitespace-nowrap">Realtime điểm: TẮT</span>`;
+      }else{
+        banner.className='mx-1 mt-1 mb-2 px-4 py-3 rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-700 text-xs font-bold flex items-center justify-between gap-3';
+        banner.innerHTML='<div><i class="fas fa-bolt mr-2"></i>Điểm đang đồng bộ trực tiếp theo thời gian thực.</div><span class="text-[9px] bg-white border border-emerald-200 px-2 py-1 rounded-lg">Realtime điểm: BẬT</span>';
+      }
+    }
+
+    if(isGrader()){
+      window.enforceSessionModeScoreListener?.();
+      setTimeout(()=>applySessionDrafts(gid),0);
+    }
+  };
+
+  // ---------- Realtime score listener on/off ----------
+  window.enforceSessionModeScoreListener=function(){
+    if(!isGrader()) return;
+    const rt=window._graderRealtime;
+    if(!rt) return;
+    const assigned=rt.assigned||window.currentUserData?.assignedGroups||[];
+    assigned.forEach(gid=>{
+      const enabled=sessionModeOn(gid);
+      if(enabled){
+        // Import cache cũ vào phiên một lần để không mất điểm vừa chấm trước lúc Admin bật chế độ.
+        const existing=(window._allScoresCache||[]).filter(s=>s.groupId===gid && s.graderCode===window.currentUserData.code);
+        if(existing.length){
+          const drafts=allDrafts();
+          existing.forEach(s=>{
+            const key=sessionDraftKey(gid,s.candidateId);
+            if(!drafts[key]){
+              drafts[key]={
+                candidateId:s.candidateId,groupId:gid,
+                graderCode:s.graderCode,graderName:s.graderName,
+                scores:{...(s.scores||{})},totalScore:Number(s.totalScore||0),
+                passScore:Number(getGroup(gid)?.passScore||0),savedAt:Date.now()
+              };
+            }
+          });
+          saveAllDrafts(drafts);
+        }
+        if(rt.unsubScores?.has(gid)){
+          try{rt.unsubScores.get(gid)?.();}catch(_e){}
+          rt.unsubScores.delete(gid);
+        }
+        window._allScoresCache=(window._allScoresCache||[]).filter(s=>!(s.groupId===gid&&s.graderCode===window.currentUserData.code));
+      }else{
+        // Nếu tắt chế độ phiên thì bật lại listener score bình thường.
+        const g=getGroup(gid);
+        if(g && window._isGroupGateOpenLocal?.(g) && !rt.unsubScores?.has(gid)){
+          window._startOpenGroupDataListeners?.(gid);
+        }
+      }
+    });
+  };
+
+  const oldSyncGroups=window._syncGraderRealtimeGroups;
+  if(typeof oldSyncGroups==='function'){
+    window._syncGraderRealtimeGroups=function(){
+      const r=oldSyncGroups.apply(this,arguments);
+      setTimeout(()=>{
+        window.enforceSessionModeScoreListener?.();
+        window.refreshSessionModeUI?.();
+      },0);
+      return r;
+    };
+  }
+
+  // ---------- Save: local only in session mode ----------
+  const liveAutoSave=window.autoSaveScore;
+  const liveSaveNow=window.saveScoreNow;
+
+  window.autoSaveScore=function(candidateId,groupId,passScore){
+    if(isGrader() && sessionModeOn(groupId)){
+      window._scoreSaveTimers=window._scoreSaveTimers||{};
+      clearTimeout(window._scoreSaveTimers[candidateId]);
+      window._scoreSaveTimers[candidateId]=setTimeout(()=>{
+        saveSessionDraft(candidateId,groupId,passScore);
+      },120);
+      return;
+    }
+    return liveAutoSave?.(candidateId,groupId,passScore);
+  };
+
+  window.saveScoreNow=async function(candidateId,groupId,passScore){
+    if(isGrader() && sessionModeOn(groupId)){
+      saveSessionDraft(candidateId,groupId,passScore);
+      return true;
+    }
+    return liveSaveNow?.(candidateId,groupId,passScore);
+  };
+
+  // Không cho quota retry ghi ngầm score trong lúc Chấm theo phiên.
+  const liveRetryQuota=window.retryQuotaDrafts;
+  if(typeof liveRetryQuota==='function'){
+    window.retryQuotaDrafts=async function(force=false){
+      const gid=window._selectedGradingGroupId||document.getElementById('grading-group-select')?.value;
+      if(isGrader() && gid && sessionModeOn(gid)) return false;
+      return liveRetryQuota(force);
+    };
+  }
+
+  // ---------- Renderer: local drafts cho BGK; Admin chỉ xem BGK đã nộp ----------
+  const originalRenderGradingTables=window.renderGradingTables;
+  if(typeof originalRenderGradingTables==='function'){
+    window.renderGradingTables=function(){
+      const gid=window._selectedGradingGroupId||document.getElementById('grading-group-select')?.value;
+      if(isGrader() && gid && sessionModeOn(gid)){
+        // Inject pseudo scores vào cache local trước render.
+        groupDrafts(gid).forEach(d=>{
+          window._gradedDataCache=window._gradedDataCache||{};
+          window._gradedDataCache[d.candidateId]={
+            id:`SESSION_${d.graderCode}_${d.candidateId}`,
+            candidateId:d.candidateId,groupId:d.groupId,
+            graderCode:d.graderCode,graderName:d.graderName,
+            scores:{...(d.scores||{})},totalScore:Number(d.totalScore||0),
+            revision:0,locked:false,__sessionDraft:true
+          };
+        });
+      }
+
+      if(isAdmin() && gid && sessionModeOn(gid)){
+        const original=window._allScoresCache||[];
+        const verifiedCodes=new Set(
+          Object.values(window._allVerificationsCache||{})
+            .filter(v=>v?.groupId===gid&&v?.isVerified===true)
+            .map(v=>v.graderCode)
+        );
+        window._allScoresCache=original.filter(s=>s.groupId!==gid||verifiedCodes.has(s.graderCode));
+        try{
+          const r=originalRenderGradingTables.apply(this,arguments);
+          setTimeout(()=>window.refreshSessionModeUI?.(),0);
+          return r;
+        }finally{
+          window._allScoresCache=original;
+        }
+      }
+
+      const r=originalRenderGradingTables.apply(this,arguments);
+      setTimeout(()=>{
+        window.refreshSessionModeUI?.();
+        if(isGrader()&&gid&&sessionModeOn(gid)) applySessionDrafts(gid);
+      },0);
+      return r;
+    };
+  }
+
+  // renderGradingShell captures the current render function.
+  const oldRenderShell=window.renderGradingShell;
+  if(typeof oldRenderShell==='function'){
+    window.renderGradingShell=function(){
+      const r=oldRenderShell.apply(this,arguments);
+      window._renderGradingUIInternal=window.renderGradingTables;
+      setTimeout(()=>window.refreshSessionModeUI?.(),0);
+      return r;
+    };
+  }
+
+  const oldChangeGroup=window.changeGradingGroup;
+  if(typeof oldChangeGroup==='function'){
+    window.changeGradingGroup=function(){
+      const r=oldChangeGroup.apply(this,arguments);
+      setTimeout(()=>window.refreshSessionModeUI?.(),0);
+      return r;
+    };
+  }
+
+  // ---------- Upload toàn bộ phiên khi Khóa Nộp ----------
+  async function existingScoreRevisionMap(groupId,graderCode){
+    const q=window.query(
+      window.collection(window.db,'scores'),
+      window.where('groupId','==',groupId),
+      window.where('graderCode','==',graderCode)
+    );
+    const snap=await window.getDocs(q);
+    const m=new Map();
+    snap.forEach(ds=>m.set(ds.data()?.candidateId,{id:ds.id,...ds.data()}));
+    return m;
+  }
+
+  window.submitSessionGrading=async function(groupId){
+    const group=getGroup(groupId);
+    const graderCode=window.currentUserData?.code;
+    if(!group||!graderCode) throw new Error('Thiếu thông tin nhóm hoặc giám khảo.');
+
+    // Chốt mọi ô đang hiển thị vào localStorage trước khi upload.
+    const visibleCandidates=[...new Set(
+      [...document.querySelectorAll(`input.score-input[data-group="${groupId}"]`)]
+        .map(i=>i.dataset.cand).filter(Boolean)
+    )];
+    visibleCandidates.forEach(cid=>saveSessionDraft(cid,groupId,group.passScore));
+
+    const drafts=groupDrafts(groupId,graderCode).filter(d=>Object.keys(d.scores||{}).length>0);
+    if(!drafts.length) throw new Error('Chưa có điểm nào trong phiên chấm để nộp.');
+
+    const existing=await existingScoreRevisionMap(groupId,graderCode);
+
+    // Dùng batch; nếu nhiều hơn giới hạn Firestore thì chia lô, verification chỉ nằm ở lô cuối.
+    const chunkSize=400;
+    for(let start=0;start<drafts.length;start+=chunkSize){
+      const chunk=drafts.slice(start,start+chunkSize);
+      const batch=window.writeBatch(window.db);
+
+      chunk.forEach(d=>{
+        const old=existing.get(d.candidateId);
+        const revision=Number(old?.revision||0)+1;
+        const scoreId=`${graderCode}_${d.candidateId}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+        batch.set(window.doc(window.db,'scores',scoreId),{
+          candidateId:d.candidateId,
+          groupId,
+          graderCode,
+          graderName:d.graderName||`${window.currentUserData.name||'Giám khảo'} - ${graderCode}`,
+          scores:{...(d.scores||{})},
+          totalScore:Number(d.totalScore||0),
+          revision,
+          schemaVersion:2,
+          locked:false,
+          timestamp:window.serverTimestamp(),
+          updatedAt:window.serverTimestamp()
+        });
+      });
+
+      const isLast=start+chunkSize>=drafts.length;
+      if(isLast){
+        const verifyId=`${graderCode}_${groupId}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+        batch.set(window.doc(window.db,'grader_verifications',verifyId),{
+          groupId,
+          graderCode,
+          graderName:`${window.currentUserData.name||'Giám khảo'} - ${graderCode}`,
+          isVerified:true,
+          timestamp:window.serverTimestamp(),
+          schemaVersion:2
+        },{merge:true});
+      }
+      await batch.commit();
+    }
+
+    // Giữ local draft để BGK vẫn nhìn thấy bảng điểm sau khi khóa.
+    try{
+      await window.syncGraderSession(true,'submit-grading');
+    }catch(_e){}
+    return drafts.length;
+  };
+
+  const normalVerifyGroupGrading=window.verifyGroupGrading;
+  window.verifyGroupGrading=function(groupId){
+    if(!isGrader() || !sessionModeOn(groupId)){
+      return normalVerifyGroupGrading?.(groupId);
+    }
+    const graderCode=window.currentUserData?.code;
+    if(!graderCode) return window.showToast?.('Thiếu thông tin giám khảo.','error');
+
+    window.showCustomConfirm(
+      'KHÓA & NỘP BẢNG ĐIỂM? Toàn bộ điểm đang lưu trong phiên trên thiết bị này sẽ được gửi cho Admin một lần và bảng điểm sẽ bị khóa.',
+      async()=>{
+        window.showLoading?.(true,'Đang gửi toàn bộ phiên chấm...');
+        try{
+          Object.values(window._scoreSaveTimers||{}).forEach(t=>clearTimeout(t));
+          const count=await window.submitSessionGrading(groupId);
+          window.showToast?.(`Đã gửi ${count} bảng điểm trong phiên cho Admin và khóa bảng điểm.`);
+          // Listener verification của BGK sẽ tự nhận trạng thái khóa.
+          window.scheduleRealtimeRenderFast?.(true);
+        }catch(e){
+          console.error('SESSION SUBMIT ERROR:',e);
+          const quota=e?.code==='resource-exhausted'||/quota exceeded|resource[- ]exhausted/i.test(String(e?.message||''));
+          window.showToast?.(
+            quota
+              ? 'Firebase đang chạm hạn mức. Điểm trong phiên vẫn còn nguyên trên thiết bị; hãy thử Khóa Nộp lại khi quota hoạt động.'
+              : 'Không thể gửi phiên chấm: '+(e.message||e.code||'Lỗi không xác định'),
+            'error'
+          );
+        }finally{
+          window.showLoading?.(false);
+        }
+      }
+    );
+  };
+  window.vGG=window.verifyGroupGrading;
+
+  // ---------- Admin sửa thời gian ký/khóa nộp ----------
+  function toDatetimeLocal(value){
+    if(!value) return '';
+    let d;
+    if(typeof value.toDate==='function') d=value.toDate();
+    else if(typeof value.seconds==='number') d=new Date(value.seconds*1000);
+    else d=new Date(value);
+    if(!Number.isFinite(d.getTime())) return '';
+    const z=n=>String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;
+  }
+
+  window.adminEditSubmissionTime=async function(groupId,graderCode){
+    if(!isAdmin()) return;
+    window.showLoading?.(true,'Đang đọc thời gian nộp...');
+    try{
+      const q=window.query(
+        window.collection(window.db,'grader_verifications'),
+        window.where('groupId','==',groupId),
+        window.where('graderCode','==',graderCode)
+      );
+      const snap=await window.getDocs(q);
+      if(snap.empty) throw new Error('BGK chưa khóa/nộp bảng điểm.');
+      const docSnap=snap.docs[0];
+      const current=toDatetimeLocal(docSnap.data()?.timestamp);
+      const box=document.getElementById('custom-modal-box');
+      if(!box) throw new Error('Không mở được cửa sổ chỉnh sửa.');
+      box.className='bg-white p-6 rounded-3xl shadow-2xl w-[92%] max-w-md border border-white/50 animate-scale-in';
+      box.innerHTML=`
+        <div class="flex items-start justify-between gap-3 mb-5">
+          <div>
+            <div class="text-[9px] uppercase font-black text-red-700 tracking-widest">ĐIỀU CHỈNH THỜI GIAN KÝ</div>
+            <h3 class="text-base font-black text-gray-800 mt-1">BGK ${esc(graderCode)}</h3>
+            <p class="text-[10px] text-gray-500 mt-1">Dùng khi thời gian hệ thống bị sai hoặc BGK gặp lỗi lúc nộp.</p>
+          </div>
+          <button onclick="window.closeCustomModal()" class="w-8 h-8 rounded-xl bg-gray-100 text-gray-500"><i class="fas fa-times"></i></button>
+        </div>
+        <label class="block text-[10px] font-black text-gray-500 uppercase mb-2">Thời gian ký / khóa nộp</label>
+        <input id="gs-admin-submit-time" type="datetime-local" value="${esc(current)}"
+          class="w-full border border-gray-200 p-3 rounded-xl text-sm font-bold outline-none focus:border-red-500">
+        <div class="mt-5 flex justify-end gap-2">
+          <button onclick="window.closeCustomModal()" class="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold">Hủy</button>
+          <button id="gs-save-submit-time" class="px-4 py-2 rounded-xl bg-red-800 text-white text-xs font-bold"><i class="fas fa-save mr-1"></i>Lưu thời gian</button>
+        </div>`;
+      window.openModal();
+      document.getElementById('gs-save-submit-time').onclick=async()=>{
+        const raw=document.getElementById('gs-admin-submit-time')?.value;
+        const d=new Date(raw);
+        if(!raw||!Number.isFinite(d.getTime())) return window.showToast?.('Thời gian không hợp lệ.','error');
+        window.showLoading?.(true,'Đang cập nhật...');
+        try{
+          await window.setDoc(docSnap.ref,{
+            timestamp:d,
+            adminAdjustedAt:window.serverTimestamp(),
+            adminAdjustedBy:window.currentUserData?.email||window.currentUserData?.name||'Admin'
+          },{merge:true});
+          window.closeCustomModal();
+          window.showToast?.('Đã cập nhật thời gian ký/khóa nộp.');
+        }catch(e){
+          window.showToast?.('Không sửa được thời gian: '+(e.message||e.code),'error');
+        }finally{
+          window.showLoading?.(false);
+        }
+      };
+    }catch(e){
+      window.showToast?.('Không mở được thời gian nộp: '+(e.message||e.code),'error');
+    }finally{
+      window.showLoading?.(false);
+    }
+  };
+
+  // Gắn nút chỉnh thời gian vào Live Monitor hiện tại mà không phá realtime monitor.
+  function enhanceMonitor(container){
+    if(!container) return;
+    container.querySelectorAll('button[onclick*="adminUnlockGrader"]').forEach(btn=>{
+      const onclick=btn.getAttribute('onclick')||'';
+      const m=onclick.match(/adminUnlockGrader\('([^']+)','([^']+)'\)/);
+      if(!m) return;
+      const [_,groupId,graderCode]=m;
+      const parent=btn.parentElement;
+      if(!parent||parent.querySelector(`[data-edit-submit="${CSS.escape(groupId)}_${CSS.escape(graderCode)}"]`)) return;
+      const edit=document.createElement('button');
+      edit.type='button';
+      edit.dataset.editSubmit=`${groupId}_${graderCode}`;
+      edit.className='ml-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-100 px-3 py-2 rounded-lg font-bold text-[10px]';
+      edit.innerHTML='<i class="fas fa-clock mr-1"></i>Sửa giờ ký';
+      edit.onclick=()=>window.adminEditSubmissionTime(groupId,graderCode);
+      parent.appendChild(edit);
+    });
+  }
+
+  const oldLoadMonitor=window.loadAdminLiveMonitor;
+  if(typeof oldLoadMonitor==='function'){
+    window.loadAdminLiveMonitor=async function(container){
+      const r=await oldLoadMonitor(container);
+      enhanceMonitor(container);
+      const ob=new MutationObserver(()=>enhanceMonitor(container));
+      ob.observe(container,{childList:true,subtree:true});
+      window.activeListeners=window.activeListeners||[];
+      window.activeListeners.push(()=>ob.disconnect());
+      return r;
+    };
+  }
+
+  // ---------- Khi Admin bật/tắt mode, BGK nhận ngay qua group listener ----------
+  setTimeout(()=>{
+    try{
+      if(document.getElementById('grading-group-select')) window.refreshSessionModeUI?.();
+    }catch(e){console.warn('SESSION MODE INIT:',e);}
+  },0);
+})();
+</script>
+
 </body>
 </html>
