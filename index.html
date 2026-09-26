@@ -164,6 +164,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
             </div>
             <div id="form-code" class="space-y-3 hidden animate-fade-up">
                 <input type="text" id="login-code" placeholder="Mã số thẻ (VD: GS-... Hoặc TEST)" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs font-mono outline-none input-focus-effect text-center uppercase font-bold tracking-widest bg-gray-50">
+                <input type="password" id="login-grader-password" placeholder="Mật khẩu giám khảo" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs outline-none input-focus-effect bg-gray-50">
                 <button onclick="window.handleLoginCode()" class="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl shadow-md btn-press mt-2 text-xs transition">Vào Chấm Điểm</button>
             </div>
         </div>
@@ -209,18 +210,141 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
       <div class="pt-3 text-[10px] text-slate-400">Thiết lập được lưu trên trình duyệt này.</div>
     </div>
 <script type="module">
-        import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getFirestore, collection, getDocs, getDoc, addDoc, setDoc, doc, query, where, deleteDoc, onSnapshot, runTransaction, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-        // SheetJS is loaded by a normal script tag; expose it consistently for module code.
-        if (typeof XLSX !== "undefined") window.XLSX = XLSX;
-
-        const fCfg = { apiKey: "AIzaSyDwH3O5e4BQFcXouq-O_q2qs2xqbIwSK7s", authDomain: "grading-management-software.firebaseapp.com", projectId: "grading-management-software", storageBucket: "grading-management-software.firebasestorage.app", messagingSenderId: "470253933713", appId: "1:470253933713:web:17d27fe21def1fc3449b30" };
-        const app = !getApps().length ? initializeApp(fCfg) : getApp();
         
-        window.db = getFirestore(app); window.auth = getAuth(app);
-        window.collection = collection; window.getDocs = getDocs; window.getDoc = getDoc; window.addDoc = addDoc; window.setDoc = setDoc; window.doc = doc; window.query = query; window.where = where; window.deleteDoc = deleteDoc; window.onSnapshot = onSnapshot; window.runTransaction = runTransaction; window.serverTimestamp = serverTimestamp; window.writeBatch = writeBatch;
-        window.signInWithEmailAndPassword = signInWithEmailAndPassword; window.createUserWithEmailAndPassword = createUserWithEmailAndPassword; window.signInAnonymously = signInAnonymously; window.signOut = signOut;
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+if (typeof XLSX !== "undefined") window.XLSX = XLSX;
+
+const SUPABASE_URL="https://nkpfzjhqtdjcfypkishv.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="sb_publishable_tdThu4m1zvDazd6j3raL_g_TK1OwOrD";
+const supabase=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{
+  auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}
+});
+window.supabase=supabase;
+window.db={provider:"supabase"};
+
+class CompatTimestamp{
+  constructor(value){const d=value instanceof Date?value:new Date(value);this._d=Number.isFinite(d.getTime())?d:new Date();this.seconds=Math.floor(this._d.getTime()/1000);this.nanoseconds=(this._d.getTime()%1000)*1000000}
+  toDate(){return new Date(this._d.getTime())}
+  toMillis(){return this._d.getTime()}
+  valueOf(){return this._d.getTime()}
+  toString(){return this._d.toISOString()}
+  toJSON(){return this._d.toISOString()}
+}
+const tableMap={users:"profiles"};
+const maps={
+ profiles:{assignedGroups:"assigned_groups",allowedMenus:"allowed_menus",assignedGroupMeta:"assigned_group_meta",assignedGroupNames:"assigned_group_names",permissionsVersion:"permissions_version",permissionsUpdatedAt:"permissions_updated_at",updatedAt:"updated_at",createdAt:"created_at"},
+ competition_groups:{passScore:"pass_score",openMode:"open_mode",isOpen:"is_open",sessionSubmitMode:"session_submit_mode",scoringContent:"scoring_content",interviewContent:"interview_content",openAt:"open_at",closeAt:"close_at",updatedAt:"updated_at",createdAt:"created_at"},
+ candidates:{groupId:"group_id",isPresent:"is_present",customFields:"custom_fields",attendanceOrder:"attendance_order",attendanceUpdatedAt:"attendance_updated_at",updatedAt:"updated_at",createdAt:"created_at"},
+ scores:{candidateId:"candidate_id",groupId:"group_id",graderId:"grader_id",graderCode:"grader_code",graderName:"grader_name",totalScore:"total_score",timestamp:"submitted_at",updatedAt:"updated_at",createdAt:"created_at"},
+ grader_verifications:{groupId:"group_id",graderId:"grader_id",graderCode:"grader_code",graderName:"grader_name",isVerified:"is_verified",signatureImage:"signature_image",timestamp:"signed_at",updatedAt:"updated_at",createdAt:"created_at"},
+ audit_logs:{groupId:"group_id",graderId:"grader_id",graderCode:"grader_code",candidateId:"candidate_id",timestamp:"created_at",createdAt:"created_at"},
+ attendance_realtime:{groupId:"group_id",candidateId:"candidate_id",isPresent:"is_present",attendanceOrder:"attendance_order",eventId:"event_id",updatedAt:"updated_at"},
+ group_publication_index:{groupId:"group_id",openAt:"open_at",closeAt:"close_at",updatedAt:"updated_at"},
+ grader_sessions:{userId:"user_id",authUid:"auth_uid",graderCode:"grader_code",assignedGroups:"assigned_groups",lastSeen:"last_seen",updatedAt:"updated_at"},
+ admin_sessions:{profileId:"profile_id",authUid:"auth_uid",updatedAt:"updated_at"},
+ submission_notifications:{groupId:"group_id",graderId:"grader_id",graderCode:"grader_code",graderName:"grader_name",timestamp:"created_at",createdAt:"created_at"}
+};
+const cols={
+ profiles:new Set(["id","code","name","email","role","status","assigned_groups","allowed_menus","assigned_group_meta","assigned_group_names","permissions_version","permissions_updated_at","updated_at","created_at","extra_data"]),
+ competition_groups:new Set(["id","name","pass_score","open_mode","is_open","open_at","close_at","session_submit_mode","criteria","scoring_content","interview_content","updated_at","created_at","extra_data"]),
+ grader_assignments:new Set(["id","grader_id","group_id","created_at"]),
+ candidates:new Set(["id","group_id","code","name","is_present","custom_fields","attendance_order","attendance_updated_at","updated_at","created_at","extra_data"]),
+ scores:new Set(["id","candidate_id","group_id","grader_id","grader_code","grader_name","scores","total_score","revision","locked","submitted_at","updated_at","created_at","extra_data"]),
+ grader_verifications:new Set(["id","group_id","grader_id","grader_code","grader_name","is_verified","signed_at","signature_image","updated_at","created_at","extra_data"]),
+ attendance_realtime:new Set(["id","group_id","candidate_id","is_present","attendance_order","event_id","updated_at","extra_data"]),
+ group_publication_index:new Set(["group_id","open_at","close_at","updated_at","extra_data"]),
+ grader_sessions:new Set(["id","user_id","auth_uid","grader_code","assigned_groups","online","state","last_seen","updated_at","extra_data"]),
+ admin_sessions:new Set(["id","profile_id","auth_uid","email","updated_at","extra_data"]),
+ submission_notifications:new Set(["id","group_id","grader_id","grader_code","grader_name","type","created_at","extra_data"]),
+ audit_logs:new Set(["id","group_id","grader_id","grader_code","candidate_id","action","details","created_at","extra_data"])
+};
+const T=n=>tableMap[n]||n;
+const F=(t,k)=>maps[T(t)]?.[k]||k;
+const unwrap=v=>v instanceof CompatTimestamp?v.toDate().toISOString():v&&typeof v.toDate==="function"?v.toDate().toISOString():v instanceof Date?v.toISOString():v;
+const timeKey=k=>/(^|_)(created|updated|submitted|signed|open|close|last_seen|attendance_updated)_at$/.test(k);
+const wrap=v=>{if(v==null||v instanceof CompatTimestamp||v&&typeof v.toDate==="function")return v;const d=new Date(v);return Number.isFinite(d.getTime())?new CompatTimestamp(d):v};
+
+function revMap(table){return Object.fromEntries(Object.entries(maps[T(table)]||{}).map(([a,b])=>[b,a]))}
+function fromRow(table,row){
+  if(!row)return null;
+  const rev=revMap(table),out={...(row.extra_data||{})};
+  for(const [k,v] of Object.entries(row)){if(k==="extra_data")continue;out[rev[k]||k]=timeKey(k)?wrap(v):v}
+  if(table==="users"){out.assignedGroups=Array.isArray(out.assignedGroups)?out.assignedGroups:[];out.allowedMenus=Array.isArray(out.allowedMenus)?out.allowedMenus:[]}
+  return out;
+}
+async function graderId(code){
+  if(!code)return null;
+  const {data,error}=await supabase.from("profiles").select("id").eq("code",code).maybeSingle();if(error)throw error;return data?.id||null
+}
+async function toRow(table,data,existing){
+  const t=T(table),fm=maps[t]||{},known=cols[t]||new Set(),row={},extra={...((existing?.extra_data&&typeof existing.extra_data==="object")?existing.extra_data:{})};
+  for(const [k,v0] of Object.entries(data||{})){const v=unwrap(v0),sk=fm[k]||k;if(known.has(sk))row[sk]=v;else extra[k]=v}
+  if(known.has("extra_data"))row.extra_data=extra;
+  if(t==="scores"&&!row.grader_id)row.grader_id=await graderId(row.grader_code||data?.graderCode)||window.auth?.currentUser?.uid||null;
+  if(["grader_verifications","submission_notifications","audit_logs"].includes(t)&&!row.grader_id&&(row.grader_code||data?.graderCode))row.grader_id=await graderId(row.grader_code||data?.graderCode);
+  return row;
+}
+class DS{
+  constructor(table,row,id){this._table=table;this._row=row||null;this.id=id||row?.id||row?.group_id||null;this.ref={kind:"doc",table,id:this.id}}
+  exists(){return!!this._row} data(){return fromRow(this._table,this._row)}
+}
+class QS{
+  constructor(table,rows=[],changes=null){this._table=table;this.docs=rows.map(r=>new DS(table,r));this.empty=!this.docs.length;this.size=this.docs.length;this._changes=changes}
+  forEach(cb){this.docs.forEach(cb)} docChanges(){return this._changes||this.docs.map(doc=>({type:"added",doc}))}
+}
+function collection(_db,table){return{kind:"collection",table}}
+function doc(_db,table,id){return{kind:"doc",table,id}}
+function where(field,op,value){return{kind:"where",field,op,value}}
+function query(ref,...filters){return{...ref,filters}}
+function clientPass(table,row,f){const d=fromRow(table,row),v=d?.[f.field];if(f.op==="==")return v===f.value;if(f.op==="array-contains")return Array.isArray(v)&&v.includes(f.value);return true}
+async function getDocs(ref){
+  const table=ref.table,t=T(table);let q=supabase.from(t).select("*"),client=[];
+  for(const f of ref.filters||[]){const sf=F(table,f.field),v=unwrap(f.value);if((cols[t]||new Set()).has(sf)){if(f.op==="==")q=q.eq(sf,v);else if(f.op==="array-contains")q=q.contains(sf,[v]);else client.push(f)}else client.push(f)}
+  const {data,error}=await q;if(error)throw error;let rows=data||[];if(client.length)rows=rows.filter(r=>client.every(f=>clientPass(table,r,f)));return new QS(table,rows)
+}
+async function getDoc(ref){
+  const table=ref.table,t=T(table),key=t==="group_publication_index"?"group_id":"id";
+  const {data,error}=await supabase.from(t).select("*").eq(key,ref.id).maybeSingle();if(error)throw error;return new DS(table,data,ref.id)
+}
+async function syncAssignments(uid,groups){
+  let {error}=await supabase.from("grader_assignments").delete().eq("grader_id",uid);if(error)throw error;
+  const rows=(groups||[]).map(group_id=>({grader_id:uid,group_id}));if(rows.length){({error}=await supabase.from("grader_assignments").insert(rows));if(error)throw error}
+}
+async function setDoc(ref,data,options={}){
+  const table=ref.table,t=T(table),key=t==="group_publication_index"?"group_id":"id";let existing=null;
+  if(options.merge){try{const r=await supabase.from(t).select("*").eq(key,ref.id).maybeSingle();existing=r.data||null}catch(_e){}}
+  const row=await toRow(table,data,existing);row[key]=ref.id;
+  const {data:out,error}=await supabase.from(t).upsert(row).select().single();if(error)throw error;
+  if(table==="users"&&Array.isArray(data?.assignedGroups))await syncAssignments(ref.id,data.assignedGroups);
+  return new DS(table,out,ref.id)
+}
+async function addDoc(ref,data){
+  if(ref.table==="users")throw Object.assign(new Error("Tạo BGK phải qua Supabase Auth API."),{code:"supabase/auth-required"});
+  const t=T(ref.table),row=await toRow(ref.table,data,null),r=await supabase.from(t).insert(row).select().single();if(r.error)throw r.error;return{id:r.data.id,ref:{kind:"doc",table:ref.table,id:r.data.id}}
+}
+async function deleteDoc(ref){const t=T(ref.table),key=t==="group_publication_index"?"group_id":"id",r=await supabase.from(t).delete().eq(key,ref.id);if(r.error)throw r.error}
+function onSnapshot(ref,next,errorCb){
+  let active=true,prev=new Map(),table=ref.table,t=T(table);
+  const emit=async(initial=false)=>{try{if(!active)return;if(ref.kind==="doc"){next?.(await getDoc(ref));return}const s=await getDocs(ref),now=new Map(s.docs.map(d=>[d.id,d])),changes=[];if(initial)s.docs.forEach(d=>changes.push({type:"added",doc:d}));else{prev.forEach((d,id)=>{if(!now.has(id))changes.push({type:"removed",doc:d})});now.forEach((d,id)=>changes.push({type:prev.has(id)?"modified":"added",doc:d}))}prev=now;next?.(new QS(table,s.docs.map(d=>d._row),changes))}catch(e){errorCb?.(e)}};
+  emit(true);const ch=supabase.channel("gs_"+t+"_"+Math.random().toString(36).slice(2)).on("postgres_changes",{event:"*",schema:"public",table:t},()=>emit(false)).subscribe();
+  return()=>{active=false;try{supabase.removeChannel(ch)}catch(_e){}}
+}
+async function runTransaction(_db,fn){return fn({get:getDoc,set:(r,d,o)=>setDoc(r,d,o),delete:deleteDoc})}
+function writeBatch(_db){const ops=[];return{set(r,d,o){ops.push(["s",r,d,o]);return this},delete(r){ops.push(["d",r]);return this},async commit(){for(const o of ops)o[0]==="s"?await setDoc(o[1],o[2],o[3]||{}):await deleteDoc(o[1])}}}
+function serverTimestamp(){return new CompatTimestamp(new Date())}
+
+const auth={currentUser:null};window.auth=auth;
+async function fireUser(u){if(!u)return null;let role=null;try{const r=await supabase.from("profiles").select("role").eq("id",u.id).maybeSingle();role=r.data?.role||null}catch(_e){}return{uid:u.id,email:u.email||null,isAnonymous:role==="Grader",_supabase:u}}
+async function signInWithEmailAndPassword(_a,email,password){const r=await supabase.auth.signInWithPassword({email,password});if(r.error){const e=new Error(r.error.message);e.code="auth/invalid-credential";throw e}const u=await fireUser(r.data.user);auth.currentUser=u;return{user:u}}
+async function signInAnonymously(){const e=new Error("Supabase BGK cần mã + mật khẩu.");e.code="supabase/grader-password-required";throw e}
+async function signOut(){const r=await supabase.auth.signOut();if(r.error)throw r.error;auth.currentUser=null}
+async function createUserWithEmailAndPassword(_a,email,password){const temp=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}}),r=await temp.auth.signUp({email,password});if(r.error)throw r.error;return{user:await fireUser(r.data.user)}}
+function onAuthStateChanged(_a,cb){let stopped=false;supabase.auth.getSession().then(async r=>{if(!stopped){const u=await fireUser(r.data.session?.user||null);auth.currentUser=u;cb(u)}});const r=supabase.auth.onAuthStateChange(async(_e,s)=>{if(!stopped){const u=await fireUser(s?.user||null);auth.currentUser=u;cb(u)}});return()=>{stopped=true;r.data.subscription.unsubscribe()}}
+async function setPersistence(){return true}
+const browserLocalPersistence={type:"LOCAL"};
+
+Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,deleteDoc,onSnapshot,runTransaction,serverTimestamp,writeBatch,signInWithEmailAndPassword,createUserWithEmailAndPassword,signInAnonymously,signOut,_syncSupabaseAssignments:syncAssignments});
+
 
         window.currentUserData = null; window.activeListeners = [];
 
@@ -6888,6 +7012,507 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
     if(document.visibilityState==='visible') setTimeout(healthRepair,200);
   });
   window.addEventListener('online',()=>setTimeout(healthRepair,200));
+})();
+</script>
+
+
+<script type="module" id="gradesync-admin-excel-pdf-manager">
+(function(){
+  document.title='GradeSync - Hệ thống Chấm điểm Live';
+
+  const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
+  const esc=v=>window.escapeHtml?window.escapeHtml(v==null?'':String(v)):String(v??'');
+  const norm=v=>String(v??'').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+
+  function tsToText(v){
+    if(!v) return '';
+    let d;
+    if(typeof v.toDate==='function') d=v.toDate();
+    else if(typeof v.seconds==='number') d=new Date(v.seconds*1000);
+    else d=new Date(v);
+    if(!Number.isFinite(d.getTime())) return '';
+    return d.toLocaleString('vi-VN');
+  }
+
+  async function fetchAdminData(groupId,graderCode){
+    const [gSnap,uSnap,cSnap,sSnap,vSnap]=await Promise.all([
+      window.getDoc(window.doc(window.db,'competition_groups',groupId)),
+      window.getDocs(window.query(window.collection(window.db,'users'),window.where('code','==',graderCode))),
+      window.getDocs(window.query(window.collection(window.db,'candidates'),window.where('groupId','==',groupId))),
+      window.getDocs(window.query(window.collection(window.db,'scores'),window.where('groupId','==',groupId),window.where('graderCode','==',graderCode))),
+      window.getDocs(window.query(window.collection(window.db,'grader_verifications'),window.where('groupId','==',groupId),window.where('graderCode','==',graderCode)))
+    ]);
+    if(!gSnap.exists()) throw new Error('Không tìm thấy nhóm thi.');
+    const group={id:gSnap.id,...gSnap.data()};
+    const graderDoc=uSnap.docs[0];
+    const grader=graderDoc?{id:graderDoc.id,...graderDoc.data()}:{code:graderCode,name:'Giám khảo'};
+    const candidates=cSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const scores=sSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const verification=vSnap.docs[0]?{id:vSnap.docs[0].id,...vSnap.docs[0].data()}:null;
+    return {group,grader,candidates,scores,verification};
+  }
+
+  function headerValue(row, aliases){
+    const entries=Object.entries(row||{});
+    for(const [k,v] of entries){
+      const nk=norm(k);
+      if(aliases.some(a=>nk===norm(a))) return v;
+    }
+    return '';
+  }
+
+  function scoreFromRow(row, criterion){
+    const target=norm(criterion.name);
+    for(const [k,v] of Object.entries(row||{})){
+      let nk=norm(k);
+      nk=nk.replace(/\s+\d+\s*%?\s*$/,'').trim();
+      if(nk===target){
+        const n=Number(String(v).replace(',','.'));
+        return Number.isFinite(n)?n:null;
+      }
+    }
+    return null;
+  }
+
+  function compressSignature(file){
+    return new Promise((resolve,reject)=>{
+      if(!file) return resolve(null);
+      const img=new Image();
+      const url=URL.createObjectURL(file);
+      img.onload=()=>{
+        try{
+          const maxW=520,maxH=220;
+          const scale=Math.min(1,maxW/img.width,maxH/img.height);
+          const canvas=document.createElement('canvas');
+          canvas.width=Math.max(1,Math.round(img.width*scale));
+          canvas.height=Math.max(1,Math.round(img.height*scale));
+          const ctx=canvas.getContext('2d');
+          ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+          ctx.drawImage(img,0,0,canvas.width,canvas.height);
+          const data=canvas.toDataURL('image/jpeg',0.78);
+          URL.revokeObjectURL(url);
+          if(data.length>180000) throw new Error('Ảnh chữ ký quá lớn. Hãy dùng ảnh nhỏ hơn.');
+          resolve(data);
+        }catch(e){URL.revokeObjectURL(url);reject(e);}
+      };
+      img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Không đọc được ảnh chữ ký.'));};
+      img.src=url;
+    });
+  }
+
+  window.downloadGraderImportTemplate=async function(groupId){
+    if(!isAdmin()) return;
+    const gSnap=await window.getDoc(window.doc(window.db,'competition_groups',groupId));
+    if(!gSnap.exists()) return window.showToast?.('Không tìm thấy nhóm.','error');
+    const g=gSnap.data();
+    const cSnap=await window.getDocs(window.query(window.collection(window.db,'candidates'),window.where('groupId','==',groupId)));
+    const rows=[['SBD','Họ tên',...(g.criteria||[]).map(c=>`${c.name} (${c.weight}%)`),'Tổng','Kết quả']];
+    cSnap.docs.forEach(d=>{
+      const c=d.data();
+      rows.push([c.code||'',c.name||'',...(g.criteria||[]).map(()=>''),'','']);
+    });
+    const ws=window.XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:14},{wch:30},...(g.criteria||[]).map(()=>({wch:18})),{wch:12},{wch:12}];
+    const wb=window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb,ws,'KetQua');
+    window.XLSX.writeFile(wb,window.sanitizeFileName(`Mau_KetQua_${g.name||groupId}`)+'.xlsx');
+  };
+
+  window.openAdminImportGraderExcel=async function(groupId,graderCode){
+    if(!isAdmin()) return;
+    const {group,grader}=await fetchAdminData(groupId,graderCode);
+    const box=document.getElementById('custom-modal-box');
+    if(!box) return;
+
+    box.className='bg-white p-6 rounded-3xl shadow-2xl w-[94%] max-w-2xl border border-white/50 animate-scale-in';
+    box.innerHTML=`
+      <div class="flex justify-between items-start gap-3 mb-5">
+        <div>
+          <div class="text-[9px] uppercase font-black text-emerald-700 tracking-widest">NHẬP KẾT QUẢ BGK</div>
+          <h3 class="text-lg font-black text-gray-800 mt-1">${esc(grader.name||'Giám khảo')} - ${esc(graderCode)}</h3>
+          <p class="text-[10px] text-gray-500 mt-1">Nhóm: ${esc(group.name||groupId)}. Excel có thể dùng file mẫu hoặc file đã xuất từ GradeSync.</p>
+        </div>
+        <button onclick="window.closeCustomModal()" class="w-8 h-8 rounded-xl bg-gray-100 text-gray-500"><i class="fas fa-times"></i></button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-[10px] uppercase font-black text-gray-500 mb-2">File Excel kết quả</label>
+          <input id="gs-import-excel-file" type="file" accept=".xlsx,.xls"
+            class="w-full border border-gray-200 rounded-xl p-3 text-xs bg-gray-50">
+          <button type="button" id="gs-download-template" class="mt-2 text-[10px] font-bold text-emerald-700 hover:underline">
+            <i class="fas fa-download mr-1"></i>Tải Excel mẫu cho nhóm này
+          </button>
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase font-black text-gray-500 mb-2">Ảnh chữ ký BGK (không bắt buộc)</label>
+          <input id="gs-import-signature" type="file" accept="image/png,image/jpeg,image/webp"
+            class="w-full border border-gray-200 rounded-xl p-3 text-xs bg-gray-50">
+          <p class="text-[9px] text-gray-400 mt-2">Nếu không có ảnh, PDF vẫn hiển thị chữ ký số: tên BGK + thời gian khóa/nộp.</p>
+        </div>
+        <div>
+          <label class="block text-[10px] uppercase font-black text-gray-500 mb-2">Thời gian khóa/nộp</label>
+          <input id="gs-import-submit-time" type="datetime-local"
+            class="w-full border border-gray-200 rounded-xl p-3 text-xs font-bold">
+        </div>
+        <div class="flex items-end">
+          <label class="flex gap-2 items-start text-[10px] text-gray-600 bg-amber-50 border border-amber-100 rounded-xl p-3 w-full">
+            <input id="gs-import-lock" type="checkbox" checked class="mt-0.5 accent-red-800">
+            <span>Sau khi nhập, đánh dấu bảng điểm của BGK là <b>Đã khóa/nộp</b>.</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="gs-import-preview" class="mt-4 hidden"></div>
+
+      <div class="mt-5 flex flex-wrap justify-end gap-2">
+        <button onclick="window.closeCustomModal()" class="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-bold">Hủy</button>
+        <button id="gs-preview-import" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold"><i class="fas fa-eye mr-1"></i>Xem trước</button>
+        <button id="gs-confirm-import" disabled class="px-4 py-2 rounded-xl bg-emerald-700 disabled:bg-gray-300 text-white text-xs font-bold"><i class="fas fa-file-import mr-1"></i>Nhập vào hệ thống</button>
+      </div>`;
+
+    window.openModal();
+    document.getElementById('gs-download-template').onclick=()=>window.downloadGraderImportTemplate(groupId);
+
+    let parsed=null;
+    document.getElementById('gs-preview-import').onclick=async()=>{
+      const file=document.getElementById('gs-import-excel-file')?.files?.[0];
+      if(!file) return window.showToast?.('Hãy chọn file Excel.','error');
+      try{
+        const buf=await file.arrayBuffer();
+        const wb=window.XLSX.read(buf,{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=window.XLSX.utils.sheet_to_json(ws,{defval:''});
+
+        const data=await fetchAdminData(groupId,graderCode);
+        const byCode=new Map(data.candidates.map(c=>[norm(c.code),c]));
+        const criteria=data.group.criteria||[];
+        const valid=[],errors=[];
+
+        rows.forEach((row,idx)=>{
+          const code=headerValue(row,['SBD','Mã SBD','Ma SBD','Mã số','Ma so','Code','Candidate Code']);
+          if(!String(code).trim()) return;
+          const cand=byCode.get(norm(code));
+          if(!cand){ errors.push(`Dòng ${idx+2}: không tìm thấy SBD "${code}"`); return; }
+
+          const scores={},missing=[];
+          criteria.forEach(cr=>{
+            const v=scoreFromRow(row,cr);
+            if(v===null) missing.push(cr.name);
+            else if(v<0||v>100) missing.push(`${cr.name} (ngoài 0–100)`);
+            else scores[cr.name]=v;
+          });
+          if(missing.length){
+            errors.push(`Dòng ${idx+2} - ${code}: thiếu/sai ${missing.join(', ')}`);
+            return;
+          }
+          const total=Number(criteria.reduce((sum,cr)=>sum+(Number(scores[cr.name]||0)*Number(cr.weight||0)/100),0).toFixed(2));
+          valid.push({candidate:cand,scores,total});
+        });
+
+        if(!valid.length) throw new Error('Không tìm thấy dòng điểm hợp lệ.');
+        parsed={valid,errors,data};
+
+        const p=document.getElementById('gs-import-preview');
+        p.classList.remove('hidden');
+        p.innerHTML=`
+          <div class="rounded-2xl border ${errors.length?'border-amber-200 bg-amber-50':'border-emerald-200 bg-emerald-50'} p-4">
+            <div class="flex flex-wrap gap-4 text-xs font-bold">
+              <span class="text-emerald-700"><i class="fas fa-circle-check mr-1"></i>${valid.length} thí sinh hợp lệ</span>
+              <span class="${errors.length?'text-amber-700':'text-gray-400'}"><i class="fas fa-triangle-exclamation mr-1"></i>${errors.length} dòng lỗi</span>
+            </div>
+            ${errors.length?`<div class="mt-3 max-h-28 overflow-y-auto text-[10px] text-amber-800 space-y-1">${errors.slice(0,20).map(x=>`<div>• ${esc(x)}</div>`).join('')}${errors.length>20?`<div>... và ${errors.length-20} lỗi khác</div>`:''}</div>`:''}
+          </div>`;
+        document.getElementById('gs-confirm-import').disabled=false;
+      }catch(e){
+        parsed=null;
+        document.getElementById('gs-confirm-import').disabled=true;
+        window.showToast?.('Không đọc được Excel: '+(e.message||e),'error');
+      }
+    };
+
+    document.getElementById('gs-confirm-import').onclick=async()=>{
+      if(!parsed) return;
+      window.showLoading?.(true,'Đang nhập kết quả Excel...');
+      try{
+        const signFile=document.getElementById('gs-import-signature')?.files?.[0]||null;
+        const signatureImage=await compressSignature(signFile);
+        const submitRaw=document.getElementById('gs-import-submit-time')?.value;
+        const submitDate=submitRaw?new Date(submitRaw):new Date();
+        if(!Number.isFinite(submitDate.getTime())) throw new Error('Thời gian khóa/nộp không hợp lệ.');
+
+        const lock=document.getElementById('gs-import-lock')?.checked!==false;
+        const existingMap=new Map(parsed.data.scores.map(s=>[s.candidateId,s]));
+        const batchSize=300;
+
+        for(let start=0;start<parsed.valid.length;start+=batchSize){
+          const chunk=parsed.valid.slice(start,start+batchSize);
+          const batch=window.writeBatch(window.db);
+          chunk.forEach(item=>{
+            const old=existingMap.get(item.candidate.id);
+            const revision=Number(old?.revision||0)+1;
+            const id=`${graderCode}_${item.candidate.id}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+            batch.set(window.doc(window.db,'scores',id),{
+              candidateId:item.candidate.id,
+              groupId,
+              graderCode,
+              graderName:`${grader.name||'Giám khảo'} - ${graderCode}`,
+              scores:item.scores,
+              totalScore:item.total,
+              revision,
+              schemaVersion:2,
+              locked:lock,
+              timestamp:submitDate,
+              updatedAt:window.serverTimestamp(),
+              importedByAdmin:true,
+              importSource:'EXCEL'
+            },{merge:false});
+          });
+          await batch.commit();
+        }
+
+        const verifyId=`${graderCode}_${groupId}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+        const verifyPayload={
+          groupId,
+          graderCode,
+          graderName:`${grader.name||'Giám khảo'} - ${graderCode}`,
+          isVerified:lock,
+          timestamp:submitDate,
+          schemaVersion:2,
+          source:'ADMIN_EXCEL_IMPORT',
+          adminImportedAt:window.serverTimestamp(),
+          adminImportedBy:window.currentUserData?.email||window.currentUserData?.name||'Admin'
+        };
+        if(signatureImage) verifyPayload.signatureImage=signatureImage;
+
+        await window.setDoc(window.doc(window.db,'grader_verifications',verifyId),verifyPayload,{merge:true});
+        window.closeCustomModal();
+        window.showToast?.(`Đã nhập ${parsed.valid.length} kết quả của BGK ${graderCode}.`);
+        if(document.getElementById('main-content') && typeof window.loadAdminLiveMonitor==='function'){
+          await window.loadAdminLiveMonitor(document.getElementById('main-content'));
+        }
+      }catch(e){
+        console.error('ADMIN EXCEL IMPORT:',e);
+        window.showToast?.('Không thể nhập Excel: '+(e.message||e.code||'Lỗi không xác định'),'error');
+      }finally{
+        window.showLoading?.(false);
+      }
+    };
+  };
+
+  window.adminUploadGraderSignature=async function(groupId,graderCode){
+    if(!isAdmin()) return;
+    const input=document.createElement('input');
+    input.type='file';
+    input.accept='image/png,image/jpeg,image/webp';
+    input.onchange=async()=>{
+      const file=input.files?.[0]; if(!file) return;
+      window.showLoading?.(true,'Đang lưu chữ ký...');
+      try{
+        const data=await fetchAdminData(groupId,graderCode);
+        const signatureImage=await compressSignature(file);
+        const verifyId=`${graderCode}_${groupId}`.replace(/[^a-zA-Z0-9_-]/g,'_');
+        await window.setDoc(window.doc(window.db,'grader_verifications',verifyId),{
+          groupId,graderCode,
+          graderName:`${data.grader.name||'Giám khảo'} - ${graderCode}`,
+          signatureImage,
+          signatureUpdatedAt:window.serverTimestamp(),
+          signatureUpdatedBy:window.currentUserData?.email||window.currentUserData?.name||'Admin'
+        },{merge:true});
+        window.showToast?.('Đã lưu ảnh chữ ký BGK.');
+      }catch(e){
+        window.showToast?.('Không lưu được chữ ký: '+(e.message||e.code),'error');
+      }finally{window.showLoading?.(false);}
+    };
+    input.click();
+  };
+
+  window.adminExportGraderPDF=async function(groupId,graderCode){
+    if(!isAdmin()) return;
+    window.showLoading?.(true,'Đang tạo PDF kết quả BGK...');
+    try{
+      const {group,grader,candidates,scores,verification}=await fetchAdminData(groupId,graderCode);
+      const scoreMap=new Map(scores.map(s=>[s.candidateId,s]));
+      const criteria=group.criteria||[];
+      const rows=candidates.map((c,index)=>{
+        const s=scoreMap.get(c.id);
+        if(!s) return '';
+        const result=Number(s.totalScore||0)>=Number(group.passScore||0)?'ĐẠT':'TRƯỢT';
+        return `<tr>
+          <td>${index+1}</td>
+          <td>${esc(c.code||'-')}</td>
+          <td class="name">${esc(c.name||'-')}</td>
+          ${criteria.map(cr=>`<td>${esc(s.scores?.[cr.name]??'-')}</td>`).join('')}
+          <td><b>${esc(Number(s.totalScore||0).toFixed(2).replace(/\.00$/,''))}</b></td>
+          <td><b>${result}</b></td>
+        </tr>`;
+      }).filter(Boolean).join('');
+
+      if(!rows) throw new Error('BGK chưa có kết quả để xuất.');
+
+      const signed=verification?.isVerified===true;
+      const signTime=tsToText(verification?.timestamp)||'Chưa ghi nhận';
+      const signatureBlock=verification?.signatureImage
+        ? `<img src="${verification.signatureImage}" class="sig-img"><div class="sig-name">${esc(grader.name||'Giám khảo')}</div>`
+        : signed
+          ? `<div class="digital-sign"><div class="valid">✓ SIGNATURE VALID</div><div><b>${esc(grader.name||'Giám khảo')}</b> - ${esc(graderCode)}</div><div>${esc(signTime)}</div></div>`
+          : `<div class="unsigned">Chưa có chữ ký / chưa khóa nộp</div>`;
+
+      const th=criteria.map(cr=>`<th>${esc(cr.name)}<br><small>${esc(cr.weight)}%</small></th>`).join('');
+      const htmlPdf=`
+      <style>
+        @page{size:A4 landscape;margin:8mm}
+        body{font-family:"Times New Roman",serif;color:#111;background:#fff}
+        .page{width:280mm;margin:auto}
+        .national{text-align:center;font-weight:700;font-size:14px;line-height:1.4}
+        .line{width:48mm;border-top:1px solid #111;margin:3px auto 10px}
+        h1{text-align:center;font-size:18px;margin:8px 0 14px}
+        .meta{font-size:12px;line-height:1.6;margin-bottom:10px}
+        table{width:100%;border-collapse:collapse;font-size:10px;table-layout:auto}
+        th,td{border:1px solid #222;padding:5px;text-align:center;vertical-align:middle}
+        th{background:#f3f4f6;font-weight:700}
+        td.name{text-align:left;min-width:38mm}
+        small{font-size:8px}
+        .footer{display:flex;justify-content:flex-end;margin-top:14px;page-break-inside:avoid}
+        .sign{text-align:center;width:80mm;font-size:11px}
+        .sig-title{font-weight:700;margin-bottom:6px}
+        .sig-img{max-width:58mm;max-height:25mm;object-fit:contain;display:block;margin:4px auto}
+        .sig-name{font-weight:700;margin-top:4px}
+        .digital-sign{border:1.5px solid #16a34a;padding:7px;text-align:left;display:inline-block;min-width:55mm}
+        .digital-sign .valid{font-weight:700;color:#15803d;margin-bottom:3px}
+        .unsigned{color:#991b1b;font-style:italic}
+      </style>
+      <div class="page">
+        <div class="national">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM<br>Độc lập - Tự do - Hạnh phúc<div class="line"></div></div>
+        <h1>BIÊN BẢN KẾT QUẢ CHẤM CỦA GIÁM KHẢO</h1>
+        <div class="meta">
+          <div><b>Nhóm:</b> ${esc(group.name||groupId)}</div>
+          <div><b>Giám khảo:</b> ${esc(grader.name||'Giám khảo')} - ${esc(graderCode)}</div>
+          <div><b>Điểm đạt:</b> ≥ ${esc(group.passScore||0)}</div>
+          <div><b>Thời gian khóa/nộp:</b> ${esc(signTime)}</div>
+        </div>
+        <table>
+          <thead><tr><th>STT</th><th>SBD</th><th>Họ tên</th>${th}<th>Tổng</th><th>Kết quả</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="footer"><div class="sign">
+          <div class="sig-title">GIÁM KHẢO XÁC NHẬN</div>
+          ${signatureBlock}
+        </div></div>
+      </div>`;
+
+      const filename=window.sanitizeFileName(`KetQua_${group.name||groupId}_${graderCode}`)+'.pdf';
+      await window.html2pdf().set({
+        margin:[8,8,8,8],
+        filename,
+        image:{type:'jpeg',quality:0.98},
+        html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff',logging:false},
+        jsPDF:{unit:'mm',format:'a4',orientation:'landscape'},
+        pagebreak:{mode:['css','legacy'],avoid:['tr','.footer']}
+      }).from(htmlPdf).save();
+      window.showToast?.('Đã xuất PDF kết quả BGK.');
+    }catch(e){
+      console.error('ADMIN GRADER PDF:',e);
+      window.showToast?.('Không thể xuất PDF: '+(e.message||e.code),'error');
+    }finally{
+      window.showLoading?.(false);
+    }
+  };
+
+  function enhanceAdminMonitor(container){
+    if(!container||!isAdmin()) return;
+    container.querySelectorAll('button[onclick*="adminUnlockGrader"]').forEach(unlockBtn=>{
+      const onclick=unlockBtn.getAttribute('onclick')||'';
+      const m=onclick.match(/adminUnlockGrader\('([^']+)','([^']+)'\)/);
+      if(!m) return;
+      const groupId=m[1],graderCode=m[2];
+      const parent=unlockBtn.parentElement;
+      if(!parent||parent.querySelector(`[data-admin-result-tools="${CSS.escape(groupId)}_${CSS.escape(graderCode)}"]`)) return;
+
+      const wrap=document.createElement('div');
+      wrap.dataset.adminResultTools=`${groupId}_${graderCode}`;
+      wrap.className='mt-2 flex flex-wrap gap-1.5 justify-end';
+      wrap.innerHTML=`
+        <button class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold">
+          <i class="fas fa-file-import mr-1"></i>Nhập Excel
+        </button>
+        <button class="bg-red-50 hover:bg-red-100 text-red-700 border border-red-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold">
+          <i class="fas fa-file-pdf mr-1"></i>PDF
+        </button>
+        <button class="bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold">
+          <i class="fas fa-signature mr-1"></i>Chữ ký
+        </button>`;
+      const [importBtn,pdfBtn,sigBtn]=wrap.querySelectorAll('button');
+      importBtn.onclick=()=>window.openAdminImportGraderExcel(groupId,graderCode);
+      pdfBtn.onclick=()=>window.adminExportGraderPDF(groupId,graderCode);
+      sigBtn.onclick=()=>window.adminUploadGraderSignature(groupId,graderCode);
+      parent.appendChild(wrap);
+    });
+  }
+
+  const oldLoadMonitor=window.loadAdminLiveMonitor;
+  if(typeof oldLoadMonitor==='function'){
+    window.loadAdminLiveMonitor=async function(container){
+      const r=await oldLoadMonitor(container);
+      enhanceAdminMonitor(container);
+      const ob=new MutationObserver(()=>enhanceAdminMonitor(container));
+      ob.observe(container,{childList:true,subtree:true});
+      window.activeListeners=window.activeListeners||[];
+      window.activeListeners.push(()=>ob.disconnect());
+      return r;
+    };
+  }
+
+  // Nếu monitor đã mở trước khi patch nạp.
+  setTimeout(()=>enhanceAdminMonitor(document.getElementById('main-content')),0);
+})();
+</script>
+
+
+<script type="module" id="gradesync-supabase-controller">
+(function(){
+ const sb=window.supabase,isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
+ const mail=c=>`${String(c||'').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'')}@gradesync.local`;
+ const rand=()=>{const a='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$',x=new Uint32Array(10);crypto.getRandomValues(x);return'Gs!'+[...x].map(n=>a[n%a.length]).join('')};
+ async function profile(uid){const r=await sb.from('profiles').select('*').eq('id',uid).maybeSingle();if(r.error)throw r.error;if(!r.data)return null;const d=r.data;return{...(d.extra_data||{}),id:d.id,code:d.code,name:d.name,email:d.email,role:d.role,status:d.status||'Active',assignedGroups:d.assigned_groups||[],allowedMenus:d.allowed_menus||[]}}
+
+ window.handleLoginCode=async function(){
+  const c=String(document.getElementById('login-code')?.value||'').trim().toUpperCase(),p=String(document.getElementById('login-grader-password')?.value||'');
+  if(!c||!p)return window.showToast('Nhập mã giám khảo và mật khẩu!','error');
+  window._authFlow='grader-login';window.showLoading(true,'Đang đăng nhập giám khảo...');
+  try{
+   try{await sb.auth.signOut()}catch(_e){}
+   const r=await sb.auth.signInWithPassword({email:mail(c),password:p});if(r.error)throw r.error;
+   const u=await profile(r.data.user.id);if(!u)throw new Error('GRADER_NOT_FOUND');if(u.role!=='Grader')throw new Error('NOT_GRADER');if(String(u.status).toLowerCase()==='inactive')throw new Error('GRADER_DISABLED');if(String(u.code).toUpperCase()!==c)throw new Error('CODE_MISMATCH');
+   window.auth.currentUser={uid:r.data.user.id,email:r.data.user.email,isAnonymous:true,_supabase:r.data.user};window.currentUserData=u;localStorage.setItem('gradeSyncSession',JSON.stringify(u));
+   window._seedAssignedGroupNamesFromUser?.();await window._preloadGraderAssignedGroups?.();window._lastInitAuthUid=r.data.user.id;window.initApp();window.showToast('Đăng nhập giám khảo thành công!');
+  }catch(e){console.error(e);let m=/invalid login/i.test(e.message||'')?'Mã BGK hoặc mật khẩu không đúng.':e.message==='GRADER_DISABLED'?'Tài khoản BGK đang bị khóa.':'Không đăng nhập được BGK: '+(e.message||e);window.showToast(m,'error');window.showLoading(false);try{await sb.auth.signOut()}catch(_e){}}
+  finally{window._authFlow=null}
+ };
+ document.getElementById('login-grader-password')?.addEventListener('keydown',e=>{if(e.key==='Enter')window.handleLoginCode()});
+
+ window.createAccountByCode=async function(){
+  if(!isAdmin())return window.showToast('Bạn không có quyền.','error');
+  const name=document.getElementById('acc-name')?.value.trim(),code=document.getElementById('acc-code')?.value.trim().toUpperCase();if(!name||!code)return window.showToast('Thiếu tên/mã BGK.','error');
+  const assignedGroups=[...document.querySelectorAll('.acc-group-chk:checked')].map(x=>x.value),password=rand();window.showLoading(true,'Đang tạo BGK...');
+  try{const token=(await sb.auth.getSession()).data.session?.access_token,r=await fetch('/api/create-grader',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token||''}`},body:JSON.stringify({code,name,password,assignedGroups})}),b=await r.json().catch(()=>({}));if(!r.ok)throw new Error(b.error||`HTTP ${r.status}`);await navigator.clipboard?.writeText?.(password).catch(()=>{});window.showToast(`Đã tạo ${code}. Mật khẩu tạm đã copy: ${password}`);await window.loadAccountManager(document.getElementById('main-content'))}
+  catch(e){window.showToast('Không tạo được BGK: '+(e.message||e),'error')}finally{window.showLoading(false)}
+ };
+
+ window.saveGraderEdit=async function(uid){
+  const name=document.getElementById('edit-grader-name-modal')?.value.trim();if(!name)return window.showToast('Tên không được trống!','error');const groups=[...document.querySelectorAll('.grader-edit-chk-modal:checked')].map(x=>x.value);window.closeCustomModal();window.showLoading(true,'Đang cập nhật...');
+  try{await window.setDoc(window.doc(window.db,'users',uid),{name,assignedGroups:groups,updatedAt:window.serverTimestamp()},{merge:true});await window._syncSupabaseAssignments(uid,groups);window.showToast('Đã cập nhật BGK.');await window.loadAccountManager(document.getElementById('main-content'))}catch(e){window.showToast('Lỗi cập nhật: '+(e.message||e),'error')}finally{window.showLoading(false)}
+ };
+
+ window.deleteAccount=function(uid){window.showCustomConfirm('Xóa vĩnh viễn BGK này?',async()=>{window.showLoading(true,'Đang xóa...');try{const token=(await sb.auth.getSession()).data.session?.access_token,r=await fetch('/api/delete-grader',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token||''}`},body:JSON.stringify({userId:uid})}),b=await r.json().catch(()=>({}));if(!r.ok)throw new Error(b.error||`HTTP ${r.status}`);window.showToast('Đã xóa BGK.');await window.loadAccountManager(document.getElementById('main-content'))}catch(e){window.showToast('Không xóa được: '+(e.message||e),'error')}finally{window.showLoading(false)}})};
+
+ window.resetGraderPassword=async function(uid,code){const p=rand();window.showLoading(true,'Đang reset mật khẩu...');try{const token=(await sb.auth.getSession()).data.session?.access_token,r=await fetch('/api/reset-grader-password',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token||''}`},body:JSON.stringify({userId:uid,password:p})}),b=await r.json().catch(()=>({}));if(!r.ok)throw new Error(b.error||`HTTP ${r.status}`);await navigator.clipboard?.writeText?.(p).catch(()=>{});window.showToast(`Mật khẩu mới ${code} đã copy: ${p}`)}catch(e){window.showToast('Không reset được: '+(e.message||e),'error')}finally{window.showLoading(false)}};
+
+ const oldLAM=window.loadAccountManager;if(typeof oldLAM==='function')window.loadAccountManager=async function(c){const r=await oldLAM(c);setTimeout(()=>c?.querySelectorAll('button[onclick*="openEditGraderModal"]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/openEditGraderModal\('([^']+)',\s*'[^']*',\s*'([^']+)'/);if(!m)return;const row=b.parentElement;if(!row||row.querySelector(`[data-rp="${CSS.escape(m[1])}"]`))return;const x=document.createElement('button');x.dataset.rp=m[1];x.className='bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold px-3 py-2.5 rounded-xl text-xs border border-violet-100';x.innerHTML='<i class="fas fa-key"></i>';x.title='Đặt lại mật khẩu';x.onclick=()=>window.resetGraderPassword(m[1],m[2]);row.insertBefore(x,row.lastElementChild)}),0);return r};
+
+ const oldCAL=window.completeAdminLogin;if(typeof oldCAL==='function')window.completeAdminLogin=async function(user,fromButton){try{const uid=user?.uid||user?._supabase?.id;if(uid){const p=await profile(uid);if(!p)throw new Error('Tài khoản chưa có profile Supabase.');if(!['Admin','SuperAdmin'].includes(p.role))throw new Error('ADMIN_ROLE_INVALID');if(String(p.status).toLowerCase()==='inactive')throw new Error('ADMIN_DISABLED');window.currentUserData={...p,code:p.code||'ADMIN'};localStorage.setItem('gradeSyncSession',JSON.stringify(window.currentUserData));window._lastInitAuthUid=uid;window.initApp();window.startAdminSubmissionNotifications?.();window.showLoading(false);if(fromButton)window.showToast('Đăng nhập quản trị thành công!');return true}}catch(e){window.showToast(e.message||'Không xác nhận được Admin.','error');try{await sb.auth.signOut()}catch(_e){}window.showLoading(false);return false}return oldCAL(user,fromButton)};
 })();
 </script>
 
