@@ -334,12 +334,12 @@ function writeBatch(_db){const ops=[];return{set(r,d,o){ops.push(["s",r,d,o]);re
 function serverTimestamp(){return new CompatTimestamp(new Date())}
 
 const auth={currentUser:null};window.auth=auth;
-async function fireUser(u){if(!u)return null;let role=null;try{const r=await supabase.from("profiles").select("role").eq("id",u.id).maybeSingle();role=r.data?.role||null}catch(_e){}return{uid:u.id,email:u.email||null,isAnonymous:role==="Grader",_supabase:u}}
+async function fireUser(u){if(!u)return null;const email=String(u.email||"").toLowerCase();return{uid:u.id,email:u.email||null,isAnonymous:email.endsWith("@gradesync.local"),_supabase:u}}
 async function signInWithEmailAndPassword(_a,email,password){const r=await supabase.auth.signInWithPassword({email,password});if(r.error){const e=new Error(r.error.message);e.code="auth/invalid-credential";throw e}const u=await fireUser(r.data.user);auth.currentUser=u;return{user:u}}
 async function signInAnonymously(){const e=new Error("Supabase BGK cần mã + mật khẩu.");e.code="supabase/grader-password-required";throw e}
 async function signOut(){const r=await supabase.auth.signOut();if(r.error)throw r.error;auth.currentUser=null}
 async function createUserWithEmailAndPassword(_a,email,password){const temp=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}}),r=await temp.auth.signUp({email,password});if(r.error)throw r.error;return{user:await fireUser(r.data.user)}}
-function onAuthStateChanged(_a,cb){let stopped=false;supabase.auth.getSession().then(async r=>{if(!stopped){const u=await fireUser(r.data.session?.user||null);auth.currentUser=u;cb(u)}});const r=supabase.auth.onAuthStateChange(async(_e,s)=>{if(!stopped){const u=await fireUser(s?.user||null);auth.currentUser=u;cb(u)}});return()=>{stopped=true;r.data.subscription.unsubscribe()}}
+function onAuthStateChanged(_a,cb){let stopped=false;const deliver=async(raw)=>{if(stopped)return;const u=await fireUser(raw||null);auth.currentUser=u;setTimeout(()=>{if(!stopped)cb(u)},0)};supabase.auth.getSession().then(r=>deliver(r.data.session?.user||null)).catch(()=>deliver(null));const r=supabase.auth.onAuthStateChange((_e,s)=>{setTimeout(()=>deliver(s?.user||null),0)});return()=>{stopped=true;r.data.subscription.unsubscribe()}}
 async function setPersistence(){return true}
 const browserLocalPersistence={type:"LOCAL"};
 
@@ -575,6 +575,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         ];
 
         window.onload = function() { window.showLoading(true, "Đang kiểm tra bảo mật..."); };
+        setTimeout(()=>{ if(!window.currentUserData && document.getElementById('login-view')) { window.showLoading(false); document.getElementById('app-view').style.display='none'; document.getElementById('login-view').style.display='flex'; } }, 8000);
         setPersistence(window.auth, browserLocalPersistence).catch(()=>{});
         window.waitForAuthUser = async function(timeoutMs=5000){ const started=Date.now(); while(!window.auth.currentUser && Date.now()-started<timeoutMs){ await new Promise(r=>setTimeout(r,80)); } return window.auth.currentUser; };
 
