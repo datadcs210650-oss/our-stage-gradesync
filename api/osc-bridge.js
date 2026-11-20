@@ -4,7 +4,7 @@
  * the Supabase service key. Graders continue to sign into Supabase Auth on the
  * separate GradeSync website with their own code and password.
  */
-const crypto=require("node:crypto");
+import crypto from "node:crypto";
 const sendJson=(res,status,payload)=>{res.statusCode=status;res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");res.end(JSON.stringify(payload))};
 const readJsonBody=req=>typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
 const handleError=(res,error)=>{console.error("OSC GradeSync bridge exception",error?.code);return sendJson(res,500,{ok:false,error:"Lỗi máy chủ GrandeSync."})};
@@ -25,7 +25,7 @@ async function supa(path,{method="GET",body,headers={}}={}){
   fail("API GrandeSync không được cho phép.","osc/gradesync-forbidden");
  const timeout=AbortSignal.timeout(12000);
  const response=await fetch(origin()+path,{method,redirect:"error",signal:timeout,
-  headers:{"apikey":key(),"Authorization":"Bearer "+key(),
+  headers:{"apikey":key(),...(key().startsWith("eyJ")?{"Authorization":"Bearer "+key()}:{}),
    "Content-Type":"application/json",...headers},
   ...(body!==undefined?{body:JSON.stringify(body)}:{})});
  const content=await response.text();let result;
@@ -185,5 +185,5 @@ async function handle(req,res){
   return handleError(res,err);
  }
 }
-module.exports=handle;
-module.exports._test={CODE,ID,safeText,ALLOWED_ACTIONS,groupSummary,hideProfile,origin};
+export default handle;
+export const _test={CODE,ID,safeText,ALLOWED_ACTIONS,groupSummary,hideProfile,origin};
