@@ -11,7 +11,7 @@ const handleError=(res,error)=>{console.error("OSC GradeSync bridge exception",e
 const GRADER_PORTAL="https://gradesyncfinal.vercel.app/";
 const ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE=/^[A-Z][A-Z0-9_-]{2,19}$/;
-const ALLOWED_ACTIONS=new Set(["overview","group-detail","create-grader","update-grader","lock-grader","reset-grader-password"]);
+const ALLOWED_ACTIONS=new Set(["overview","group-detail","create-grader","update-grader","lock-grader","reset-grader-password","create-group","toggle-group","add-candidate","mark-attendance"]);
 function fail(message,code="osc/gradesync-invalid"){const e=new Error(message);e.code=code;throw e}
 function safeText(x,max=120){return String(x??"").trim().replace(/\s+/g," ").slice(0,max)}
 function key(){const k=process.env.SUPABASE_SECRET_KEY||"";if(!k)fail("Chưa cấu hình khóa kết nối GrandeSync trên máy chủ OSC.","osc/gradesync-config");return k}
@@ -158,6 +158,72 @@ async function requireOscManager(req){
   fail("Phiên quyền OSC không hợp lệ.","osc/gradesync-forbidden");
  return {decoded:{uid:actor.uid},profile:{role:actor.role}};
 }
+
+function validGroupName(v){const x=safeText(v,120);if(x.length<2)fail("Tên nhóm thi tối thiểu 2 ký tự.");return x}
+function validateCriteria(value){
+ if(!Array.isArray(value)||value.length<1||value.length>12)fail("Cần từ 1 đến 12 tiêu chí.");
+ const names=new Set(),out=[];
+ for(const v of value){
+  const name=safeText(v?.name,80),weight=Number(v?.weight);
+  if(!name||names.has(name.toLowerCase())||!Number.isFinite(weight)||weight<=0||weight>100)
+   fail("Tên hoặc trọng số tiêu chí không hợp lệ.");
+  names.add(name.toLowerCase());out.push({name,weight});
+ }
+ if(Math.abs(out.reduce((sum,c)=>sum+c.weight,0)-100)>0.01)
+  fail("Tổng trọng số phải bằng 100%.");
+ return out;
+}
+async function createGroup(actor,body){
+ const name=validGroupName(body.name),criteria=validateCriteria(body.criteria);
+ const pass=Number(body.passScore);
+ if(!Number.isFinite(pass)||pass<0||pass>10)fail("Điểm đạt phải trong khoảng 0–10.");
+ const row={name,criteria,pass_score:pass,is_open:false,open_mode:"manual"};
+ const data=await supa("/rest/v1/competition_groups",{method:"POST",body:row,
+  headers:{Prefer:"return=representation"}});
+ if(!Array.isArray(data)||!data[0]?.id)fail("Chưa xác nhận được nhóm thi mới.","osc/gradesync-upstream");
+ await audit(actor,"group-created",data[0].id);
+ return{ok:true,group:groupSummary(data[0])};
+}
+async function toggleGroup(actor,body){
+ const id=String(body.groupId||"");if(!ID.test(id)||typeof body.open!=="boolean")
+  fail("Nhóm hoặc trạng thái không hợp lệ.");
+ const found=await supa(url("competition_groups",{id:"eq."+id,select:"id",limit:"1"}));
+ if(!found?.length)fail("Nhóm thi không tồn tại.");
+ await supa("/rest/v1/competition_groups?id=eq."+id,{method:"PATCH",
+  body:{is_open:body.open,open_mode:"manual"},
+  headers:{Prefer:"return=minimal"}});
+ await audit(actor,body.open?"group-opened":"group-closed",id);
+ return{ok:true};
+}
+async function addCandidate(actor,body){
+ const group=String(body.groupId||""),name=safeText(body.name,120),
+  code=safeText(body.code,40).toUpperCase();
+ if(!ID.test(group)||name.length<2||!/^[A-Z0-9_-]{2,40}$/.test(code))
+  fail("Nhóm, tên hoặc mã thí sinh không hợp lệ.");
+ const found=await supa(url("competition_groups",{id:"eq."+group,select:"id",limit:"1"}));
+ if(!found?.length)fail("Nhóm không tồn tại.");
+ const existing=await supa(url("candidates",{group_id:"eq."+group,code:"eq."+code,select:"id",limit:"1"}));
+ if(existing?.length)fail("Mã thí sinh đã tồn tại trong nhóm.","osc/gradesync-conflict");
+ const data=await supa("/rest/v1/candidates",{method:"POST",
+  body:{group_id:group,code,name,is_present:false},
+  headers:{Prefer:"return=representation"}});
+ if(!data?.[0]?.id)fail("Chưa xác nhận được thí sinh mới.","osc/gradesync-upstream");
+ await audit(actor,"candidate-created",data[0].id);
+ return{ok:true};
+}
+async function markAttendance(actor,body){
+ const group=String(body.groupId||""),candidate=String(body.candidateId||"");
+ if(!ID.test(group)||!ID.test(candidate)||typeof body.present!=="boolean")
+  fail("Thông tin điểm danh không hợp lệ.");
+ const found=await supa(url("candidates",{id:"eq."+candidate,group_id:"eq."+group,select:"id",limit:"1"}));
+ if(!found?.length)fail("Thí sinh không thuộc nhóm đã chọn.");
+ await supa("/rest/v1/candidates?id=eq."+candidate+"&group_id=eq."+group,{
+  method:"PATCH",body:{is_present:body.present,attendance_updated_at:new Date().toISOString()},
+  headers:{Prefer:"return=minimal"}});
+ await audit(actor,body.present?"candidate-present":"candidate-absent",candidate);
+ return{ok:true};
+}
+
 async function handle(req,res){
  if(req.method!=="POST")return sendJson(res,405,{ok:false,error:"Chỉ hỗ trợ POST."});
  if((Number(req.headers["content-length"]||0)>16000))return sendJson(res,413,{ok:false,error:"Yêu cầu quá lớn."});
@@ -175,6 +241,10 @@ async function handle(req,res){
   else if(action==="update-grader")result=await updateGrader(actor,b);
   else if(action==="lock-grader")result=await lockGrader(actor,b);
   else if(action==="reset-grader-password")result=await resetGraderPassword(actor,b);
+  else if(action==="create-group")result=await createGroup(actor,b);
+  else if(action==="toggle-group")result=await toggleGroup(actor,b);
+  else if(action==="add-candidate")result=await addCandidate(actor,b);
+  else if(action==="mark-attendance")result=await markAttendance(actor,b);
   return sendJson(res,200,result);
  }catch(err){
   if(err?.code?.startsWith("osc/gradesync-")){
