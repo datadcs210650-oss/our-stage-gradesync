@@ -7513,7 +7513,22 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 
  const oldLAM=window.loadAccountManager;if(typeof oldLAM==='function')window.loadAccountManager=async function(c){const r=await oldLAM(c);setTimeout(()=>c?.querySelectorAll('button[onclick*="openEditGraderModal"]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/openEditGraderModal\('([^']+)',\s*'[^']*',\s*'([^']+)'/);if(!m)return;const row=b.parentElement;if(!row||row.querySelector(`[data-rp="${CSS.escape(m[1])}"]`))return;const x=document.createElement('button');x.dataset.rp=m[1];x.className='bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold px-3 py-2.5 rounded-xl text-xs border border-violet-100';x.innerHTML='<i class="fas fa-key"></i>';x.title='Đặt lại mật khẩu';x.onclick=()=>window.resetGraderPassword(m[1],m[2]);row.insertBefore(x,row.lastElementChild)}),0);return r};
 
- const oldCAL=window.completeAdminLogin;if(typeof oldCAL==='function')window.completeAdminLogin=async function(user,fromButton){try{const uid=user?.uid||user?._supabase?.id;if(uid){const p=await profile(uid);if(!p)throw new Error('Tài khoản chưa có profile Supabase.');if(!['Admin','SuperAdmin'].includes(p.role))throw new Error('ADMIN_ROLE_INVALID');if(String(p.status).toLowerCase()==='inactive')throw new Error('ADMIN_DISABLED');window.currentUserData={...p,code:p.code||'ADMIN'};localStorage.setItem('gradeSyncSession',JSON.stringify(window.currentUserData));window._lastInitAuthUid=uid;window.initApp();window.startAdminSubmissionNotifications?.();window.showLoading(false);if(fromButton)window.showToast('Đăng nhập quản trị thành công!');return true}}catch(e){window.showToast(e.message||'Không xác nhận được Admin.','error');try{await sb.auth.signOut()}catch(_e){}window.showLoading(false);return false}return oldCAL(user,fromButton)};
+ // OSC Management is now the ONLY GradeSync administration entry point.
+ // Keep the Supabase Auth grader-by-code login intact.
+ window.completeAdminLogin=async function(){
+  window.currentUserData=null;
+  try{await sb.auth.signOut()}catch(_e){}
+  window.showLoading?.(false);
+  window.showToast?.("Quản trị GrandeSync đã chuyển sang OSC Management. Vui lòng đăng nhập bằng tài khoản BCN tại admin.ourstage.io.vn.","error");
+  return false;
+ };
+ window.handleLoginEmail=async function(){
+  window.showToast?.("Chỉ quản trị qua OSC Management.","error");
+ };
+ const legacyTab=document.getElementById("tab-email"),legacyForm=document.getElementById("form-email");
+ if(legacyTab){legacyTab.hidden=true;legacyTab.style.display="none"}
+ if(legacyForm){legacyForm.hidden=true;legacyForm.style.display="none"}
+ try{window.switchLoginTab?.("code")}catch(_e){}
 })();
 </script>
 

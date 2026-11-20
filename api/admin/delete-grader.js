@@ -1,2 +1,6 @@
-import {adminAuth,adminDb,requireAdmin} from '../_firebaseAdmin.js';
-export default async function handler(req,res){if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});try{await requireAdmin(req);const{uid}=req.body||{};if(!uid)return res.status(400).json({error:'Thiếu UID'});await Promise.allSettled([adminAuth.deleteUser(uid),adminDb.collection('users').doc(uid).delete(),adminDb.collection('grading_presence').doc(uid).delete()]);res.json({ok:true})}catch(e){res.status(e.message==='UNAUTHORIZED'?401:e.message==='FORBIDDEN'?403:500).json({error:e.message||'Delete failed'})}}
+// Legacy Firebase-based grader management is retired.
+// All administrative changes must be authenticated through OSC Management.
+export default function handler(_req,res){
+ res.setHeader("Cache-Control","no-store");
+ return res.status(410).json({ok:false,error:"Quản trị GrandeSync đã chuyển sang OSC Management."});
+}
