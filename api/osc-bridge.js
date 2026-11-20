@@ -5,6 +5,7 @@
  * separate GradeSync website with their own code and password.
  */
 import crypto from "node:crypto";
+import {createClient} from "@supabase/supabase-js";
 const sendJson=(res,status,payload)=>{res.statusCode=status;res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");res.end(JSON.stringify(payload))};
 const readJsonBody=req=>typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
 const handleError=(res,error)=>{console.error("OSC GradeSync bridge exception",error?.code);return sendJson(res,500,{ok:false,error:"Lỗi máy chủ GrandeSync."})};
@@ -14,6 +15,7 @@ const CODE=/^[A-Z][A-Z0-9_-]{2,19}$/;
 const ALLOWED_ACTIONS=new Set(["overview","group-detail","create-grader","update-grader","lock-grader","reset-grader-password","create-group","toggle-group","add-candidate","mark-attendance"]);
 function fail(message,code="osc/gradesync-invalid"){const e=new Error(message);e.code=code;throw e}
 function safeText(x,max=120){return String(x??"").trim().replace(/\s+/g," ").slice(0,max)}
+function sb(){return createClient(origin(),key(),{auth:{persistSession:false,autoRefreshToken:false}})}
 function key(){const k=process.env.SUPABASE_SECRET_KEY||"";if(!k)fail("Chưa cấu hình khóa kết nối GrandeSync trên máy chủ OSC.","osc/gradesync-config");return k}
 function origin(){
  const u=process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co";
@@ -98,16 +100,17 @@ async function createGrader(actor,body){
  const found=await supa(url("profiles",{code:"eq."+code,select:"id",limit:"1"}));
  if(found?.length)fail("Mã giám khảo đã tồn tại.","osc/gradesync-conflict");
  const email=code.toLowerCase()+"@gradesync.local",pass=password();
- const created=await supa("/auth/v1/admin/users",{method:"POST",body:{
-  email,password:pass,email_confirm:true,user_metadata:{display_name:name}}});
- const id=created?.id||created?.user?.id;
+ const created=await sb().auth.admin.createUser({
+  email,password:pass,email_confirm:true,user_metadata:{display_name:name}});
+ if(created.error)fail("Không thể tạo tài khoản giám khảo trên Supabase.","osc/gradesync-upstream");
+ const id=created.data?.user?.id;
  if(!ID.test(String(id||"")))fail("Không tạo được UID giám khảo trên Supabase.","osc/gradesync-upstream");
  try{
   const profile={id,code,name,email,role:"Grader",status:"Active",
    assigned_groups:groupIds,allowed_menus:["grading_table"],extra_data:{}};
   await supa("/rest/v1/profiles",{method:"POST",body:profile,headers:{Prefer:"return=minimal"}});
   await audit(actor,"grader-created",id);
- }catch(e){await supa("/auth/v1/admin/users/"+id,{method:"DELETE"}).catch(()=>{});throw e}
+ }catch(e){await sb().auth.admin.deleteUser(id).catch(()=>{});throw e}
  // Temporary password is returned once, only over the authenticated OSC manager response.
  return{ok:true,code,name,temporaryPassword:pass,portal:GRADER_PORTAL};
 }
@@ -130,7 +133,8 @@ async function lockGrader(actor,body){
  const docs=await supa(url("profiles",{id:"eq."+id,role:"eq.Grader",select:"id",limit:"1"}));
  if(!docs?.length)fail("Không tìm thấy giám khảo.");
  const active=body.active===true;
- await supa("/auth/v1/admin/users/"+id,{method:"PUT",body:{ban_duration:active?"none":"876000h"}});
+ const authUpdate=await sb().auth.admin.updateUserById(id,{ban_duration:active?"none":"876000h"});
+ if(authUpdate.error)fail("Không thể cập nhật khóa tài khoản Supabase.","osc/gradesync-upstream");
  await supa("/rest/v1/profiles?id=eq."+id,{method:"PATCH",body:{status:active?"Active":"Inactive"},headers:{Prefer:"return=minimal"}});
  await audit(actor,active?"grader-unlocked":"grader-locked",id);
  return{ok:true};
@@ -140,7 +144,8 @@ async function resetGraderPassword(actor,body){
  const docs=await supa(url("profiles",{id:"eq."+id,role:"eq.Grader",select:"id,code",limit:"1"}));
  if(!docs?.length)fail("Không tìm thấy giám khảo.");
  const pass=password();
- await supa("/auth/v1/admin/users/"+id,{method:"PUT",body:{password:pass}});
+ const changed=await sb().auth.admin.updateUserById(id,{password:pass});
+ if(changed.error)fail("Không thể thay đổi mật khẩu Supabase.","osc/gradesync-upstream");
  await audit(actor,"grader-password-reset",id);
  return{ok:true,code:docs[0].code,temporaryPassword:pass};
 }
