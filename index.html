@@ -164,9 +164,10 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 <button onclick="window.handleLoginEmail()" class="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl shadow-md btn-press mt-2 text-xs transition">Đăng Nhập Quản Trị</button>
             </div>
             <div id="form-code" class="space-y-3 animate-fade-up">
-                <p class="text-xs text-gray-600 text-center">Chỉ tài khoản Google đã được BCN cấp quyền mới có thể vào chấm điểm.</p>
-                <button type="button" id="login-google" onclick="window.handleGoogleGraderLogin()" class="w-full bg-white hover:bg-gray-50 border-2 border-red-200 text-gray-900 font-bold py-3 rounded-xl shadow-sm text-xs transition"><i class="fab fa-google text-red-700 mr-2"></i> Đăng nhập bằng Google</button>
-            </div>
+                <input type="text" id="login-code" placeholder="Mã số thẻ (VD: GS-... Hoặc TEST)" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs font-mono outline-none input-focus-effect text-center uppercase font-bold tracking-widest bg-gray-50">
+                <input type="password" id="login-grader-password" placeholder="Mật khẩu giám khảo" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs outline-none input-focus-effect bg-gray-50">
+                <button onclick="window.handleLoginCode()" class="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl shadow-md btn-press mt-2 text-xs transition">Vào Chấm Điểm</button>
+            <div class="border-t border-red-100 pt-3 mt-3"><p class="text-xs text-gray-500 mb-2 text-center">Hoặc đăng nhập bằng tài khoản Google đã được cấp quyền</p><button type="button" id="login-google" onclick="window.handleGoogleGraderLogin()" class="w-full bg-white hover:bg-gray-50 border-2 border-red-200 text-gray-900 font-bold py-3 rounded-xl shadow-sm text-xs transition"><i class="fab fa-google text-red-700 mr-2"></i> Đăng nhập bằng Google</button></div></div>
         </div>
     </div>
 
@@ -7574,7 +7575,6 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
      if(r.error)throw r.error;
    }catch(e){window.showToast("Không thể bắt đầu đăng nhập Google: "+(e.message||"Chưa cấu hình OAuth"),"error")}
  };
- window.handleLoginCode=window.handleGoogleGraderLogin;
  document.getElementById('login-grader-password')?.addEventListener('keydown',e=>{if(e.key==='Enter')window.handleLoginCode()});
 
  window.createAccountByCode=async function(){
