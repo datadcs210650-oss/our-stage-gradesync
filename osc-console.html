@@ -157,6 +157,8 @@ html,body{background:#fff!important;background-image:none!important}
 .gsx-judge-access a:hover,.gsx-judge-access a:focus-visible{background:var(--osc-wine-deep)}
 @media(max-width:700px){#main-content{padding:0 0 20px!important}.gsx-judge-access{padding:14px}}
 </style>
+<style id="cast-ui-cleanup">#app-view header.gs-topbar{display:none!important}#gs-settings{display:none!important}</style>
+<link rel="stylesheet" href="./live-grid-layout.css">
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex relative selection:bg-red-200 selection:text-red-900">
     <div id="loading-overlay" class="fixed inset-0 bg-white/90 backdrop-blur-sm z-[150] justify-center items-center flex-col gap-3">
@@ -1045,7 +1047,7 @@ window.currentUserData = null; window.activeListeners = [];
             setTimeout(async () => {
                 const w = document.createElement('div'); w.className = 'animate-fade-up h-full flex flex-col min-w-0'; mc.innerHTML = ''; mc.appendChild(w);
                 try { 
-                    const mFn = { 'dashboard': window.loadDashboard, 'statistics': window.loadStatistics, 'groups_manager': window.loadGroupsManager, 'student_list': window.loadStudentList, 'grading_table': window.loadGradingTable, 'admin_live_monitor': window.loadAdminLiveMonitor, 'audit_logs': window.loadAuditLogs, 'admin_overview_scores': window.loadAdminOverviewScores, 'account_manager': window.loadAccountManager }; 
+                    const mFn = { 'dashboard': window.loadDashboard, 'statistics': window.loadStatistics, 'groups_manager': window.loadGroupsManager, 'student_list': window.loadStudentList, 'grading_table': window.loadGradingTable, 'admin_live_monitor': window.loadAdminLiveMonitor, 'audit_logs': window.loadAuditLogs, 'admin_overview_scores': window.loadAdminOverviewScores, 'account_manager': window.loadAccountManager, 'casting_hub': window.loadCastingHub }; 
                     if(mFn[vId]) await mFn[vId](w); 
                 } catch(e) { window.renderErrorState(w, e.message); }
             }, 50);
@@ -7539,6 +7541,8 @@ window.currentUserData = null; window.activeListeners = [];
 
 
 <script type="module">
+import "./casting-hub.js";
+import "./candidate-editor.js";
 const call=window.oscGradingCall;
 const renderExports=window.loadAdminOverviewScores;
 window.loadAdminOverviewScores=async function(container){
@@ -7639,7 +7643,8 @@ try{
  const actor=await call("console-identity");
  window.auth.currentUser={uid:actor.uid,isAnonymous:false};
  window.currentUserData={id:actor.uid,name:actor.name,code:"OSC",role:actor.role==="superadmin"?"SuperAdmin":"Admin",allowedMenus:window.MENU_CONFIG.filter(m=>m.roles.includes("Admin")).map(m=>m.id)};
- window.MENU_CONFIG.find(m=>m.id==="groups_manager").label="Phiên chấm & cài đặt điểm";
+ window.MENU_CONFIG.push({id:"casting_hub",label:"Quản lý casting học kỳ",icon:"fa-calendar-check",roles:["SuperAdmin","Admin"]});
+  window.MENU_CONFIG.find(m=>m.id==="groups_manager").label="Phiên chấm & cài đặt điểm";
  window.MENU_CONFIG.find(m=>m.id==="student_list").label="Danh sách thí sinh";
  if(actor.externalMenu){
   const allowed=window.MENU_CONFIG.filter(m=>m.roles.includes(window.currentUserData.role)&&
@@ -7653,4 +7658,5 @@ try{
  window.initApp();window.startAdminSubmissionNotifications?.();
  if(actor.externalMenu)await call("console-ready");
 }catch(e){document.body.textContent=e.message}
-</script></body></html>
+</script><script src="./live-grid-layout.js" defer></script>
+</body></html>

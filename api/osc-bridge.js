@@ -6,6 +6,7 @@
  */
 import crypto from "node:crypto";
 import {createClient} from "@supabase/supabase-js";
+import {CAST_ACTIONS,handleCastingAction} from "../lib/casting-manager.js";
 const sendJson=(res,status,payload)=>{res.statusCode=status;res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");res.end(JSON.stringify(payload))};
 const readJsonBody=req=>typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
 const handleError=(res,error)=>{console.error("OSC GradeSync bridge exception",error?.code);return sendJson(res,500,{ok:false,error:"Lỗi máy chủ GrandeSync."})};
@@ -249,9 +250,10 @@ async function handle(req,res){
   return sendJson(res,403,{ok:false,error:"Nguồn yêu cầu không hợp lệ."});
  try{
   const actor=await requireOscManager(req);const b=readJsonBody(req),action=String(b.action||"");
-  if(!ALLOWED_ACTIONS.has(action))fail("Tác vụ không được cho phép.");
+  if(!ALLOWED_ACTIONS.has(action)&&!CAST_ACTIONS.has(action))fail("Tác vụ không được cho phép.");
   let result;
-  if(action==="overview")result=await overview();
+  if(CAST_ACTIONS.has(action))result=await handleCastingAction(action,b,actor);
+  else if(action==="overview")result=await overview();
   else if(action==="group-detail")result=await groupDetail(b);
   else if(action==="console-documents"){
    if(!Array.isArray(b.ops)||b.ops.length<1||b.ops.length>1000)fail("Lô dữ liệu không hợp lệ.");

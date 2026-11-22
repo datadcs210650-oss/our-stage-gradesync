@@ -131,6 +131,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 </style>
 
 <!-- Quota-safe build: autosave 650ms, no per-keystroke audit, local fallback enabled. -->
+<link rel="stylesheet" href="./live-grid-layout.css">
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex relative selection:bg-red-200 selection:text-red-900">
     <div id="loading-overlay" class="fixed inset-0 bg-white/90 backdrop-blur-sm z-[150] justify-center items-center flex-col gap-3">
@@ -162,11 +163,16 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 <input type="password" id="login-password" placeholder="Mật khẩu (Từ 6 ký tự)" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs outline-none input-focus-effect bg-gray-50">
                 <button onclick="window.handleLoginEmail()" class="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl shadow-md btn-press mt-2 text-xs transition">Đăng Nhập Quản Trị</button>
             </div>
-            <div id="form-code" class="space-y-3 hidden animate-fade-up">
-                <input type="text" id="login-code" placeholder="Mã số thẻ (VD: GS-... Hoặc TEST)" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs font-mono outline-none input-focus-effect text-center uppercase font-bold tracking-widest bg-gray-50">
-                <input type="password" id="login-grader-password" placeholder="Mật khẩu giám khảo" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs outline-none input-focus-effect bg-gray-50">
-                <button onclick="window.handleLoginCode()" class="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl shadow-md btn-press mt-2 text-xs transition">Vào Chấm Điểm</button>
-            </div>
+            <div id="form-code" class="space-y-3 animate-fade-up">
+ <p class="text-xs text-gray-600 text-center">Giám khảo đăng nhập bằng mã/mật khẩu được BCN cấp, hoặc Google nếu đã được cấp quyền email.</p>
+ <label for="login-code" class="block text-[11px] font-bold text-gray-700">Mã giám khảo</label>
+ <input id="login-code" type="text" autocomplete="username" maxlength="30" placeholder="Mã BGK" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs outline-none input-focus-effect bg-gray-50">
+ <label for="login-grader-password" class="block text-[11px] font-bold text-gray-700">Mật khẩu BGK</label>
+ <input id="login-grader-password" type="password" autocomplete="current-password" placeholder="Mật khẩu đã được cấp" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs outline-none input-focus-effect bg-gray-50">
+ <button type="button" id="login-grader-submit" onclick="window.handleLoginCode()" class="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl shadow-md btn-press mt-2 text-xs transition">Đăng nhập BGK</button>
+ <div class="text-xs text-gray-500 text-center">hoặc</div>
+ <button type="button" id="login-google" onclick="window.handleGoogleGraderLogin()" class="w-full bg-white hover:bg-gray-50 border-2 border-red-200 text-gray-900 font-bold py-3 rounded-xl shadow-sm text-xs transition"><i class="fab fa-google text-red-700 mr-2"></i> Đăng nhập bằng Google</button>
+ </div></div>
         </div>
     </div>
 
@@ -381,7 +387,7 @@ function writeBatch(_db){const ops=[];return{set(r,d,o){ops.push(["s",r,d,o]);re
 function serverTimestamp(){return new CompatTimestamp(new Date())}
 
 const auth={currentUser:null};window.auth=auth;
-async function fireUser(u){if(!u)return null;const email=String(u.email||"").toLowerCase();return{uid:u.id,email:u.email||null,isAnonymous:email.endsWith("@gradesync.local"),_supabase:u}}
+async function fireUser(u){if(!u)return null;const email=String(u.email||"").toLowerCase(),google=u.app_metadata?.provider==="google"||(u.identities||[]).some(x=>x.provider==="google");return{uid:u.id,email:u.email||null,isAnonymous:email.endsWith("@gradesync.local")||google,googleGrader:google,_supabase:u}}
 async function signInWithEmailAndPassword(_a,email,password){const r=await supabase.auth.signInWithPassword({email,password});if(r.error){const e=new Error(r.error.message);e.code="auth/invalid-credential";throw e}const u=await fireUser(r.data.user);auth.currentUser=u;return{user:u}}
 async function signInAnonymously(){const e=new Error("Supabase BGK cần mã + mật khẩu.");e.code="supabase/grader-password-required";throw e}
 async function signOut(){const r=await supabase.auth.signOut();if(r.error)throw r.error;auth.currentUser=null}
@@ -810,8 +816,36 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
             }
         };
 
+        window.restoreGoogleGrader = async function(user){
+            if(!user?.googleGrader)return false;
+            try{
+                const result=await supabase.rpc("gs_claim_google_grader");
+                if(result.error)throw result.error;
+                const p=result.data;
+                if(p?.role!=="Grader"||p?.status!=="Active"||!p.code)throw Error("EMAIL_NOT_AUTHORIZED");
+                window.currentUserData={...p,role:"Grader",assignedGroups:p.assignedGroups||[],allowedMenus:["grading_table"]};
+                localStorage.setItem("gradeSyncSession",JSON.stringify(window.currentUserData));
+                const scopes=await supabase.from("gs_criterion_grants")
+                    .select("group_id,criterion").eq("grader_id",p.id);
+                if(scopes.error)throw scopes.error;
+                window._gsCriterionRestrictions={};
+                for(const row of scopes.data||[]){
+                    (window._gsCriterionRestrictions[row.group_id] ||= []).push(row.criterion);
+                }
+                window._lastInitAuthUid=user.uid;
+                window._seedAssignedGroupNamesFromUser?.();
+                await window._preloadGraderAssignedGroups?.();
+                window.initApp();
+                return true;
+            }catch(error){
+                console.warn("Grader Google authorization denied:",error.code||"denied");
+                window.showToast("Email Google chưa được cấp quyền hoặc tài khoản BGK đã bị khóa.","error");
+                return false;
+            }
+        };
         window.restoreGraderSession = async function(user){
             if(!user?.isAnonymous) return false;
+            if(user.googleGrader)return window.restoreGoogleGrader(user);
             const s=localStorage.getItem('gradeSyncSession');
             if(!s) return false;
             try{
@@ -2374,8 +2408,13 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 if(window.currentUserData?.role==='Grader'){
                     const au=window.auth?.currentUser;
                     if(!au?.isAnonymous) throw Object.assign(new Error('GRADER_AUTH_MISSING'),{code:'grader-auth-missing'});
-                    const sessionOK=await window.syncGraderSession(true,'score-save');
-                    if(!sessionOK) throw Object.assign(new Error('GRADER_SESSION_SYNC_FAILED'),{code:'grader-session-sync-failed'});
+                    // A Google grader's Supabase auth UID differs from the assigned profile UUID.
+                    // Score authorization is enforced by gradesync_save_score + RLS, not by
+                    // the legacy presence-session document.
+                    if(!au.googleGrader){
+                        const sessionOK=await window.syncGraderSession(true,'score-save');
+                        if(!sessionOK) throw Object.assign(new Error('GRADER_SESSION_SYNC_FAILED'),{code:'grader-session-sync-failed'});
+                    }
                 }
 
                 const inputs=[...document.querySelectorAll(`input.score-input[data-cand="${cId}"][data-group="${gId}"]`)];
@@ -2387,6 +2426,9 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 inputs.forEach(i=>{
                     const crit=i.getAttribute('data-crit'),weight=parseFloat(i.getAttribute('data-weight'))||0;
                     const raw=String(i.value??'').trim();
+                    const assigned=window.auth?.currentUser?.googleGrader
+                       ?window._gsCriterionRestrictions?.[gId]:null;
+                    if(Array.isArray(assigned)&&assigned.length&&!assigned.includes(crit))return;
                     if(raw==='') return; // ô bị xóa => tiêu chí đó bị xóa khỏi Firestore
                     let v=parseFloat(raw);
                     if(Number.isNaN(v)) return;
@@ -7539,6 +7581,13 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
   }catch(e){console.error(e);let m=/invalid login/i.test(e.message||'')?'Mã BGK hoặc mật khẩu không đúng.':e.message==='GRADER_DISABLED'?'Tài khoản BGK đang bị khóa.':'Không đăng nhập được BGK: '+(e.message||e);window.showToast(m,'error');window.showLoading(false);try{await sb.auth.signOut()}catch(_e){}}
   finally{window._authFlow=null}
  };
+ window.handleGoogleGraderLogin=async function(){
+   if(navigator.onLine===false)return window.showToast("Cần kết nối mạng để đăng nhập Google.","error");
+   try{
+     const r=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:"https://gradesyncfinal.vercel.app/"}});
+     if(r.error)throw r.error;
+   }catch(e){window.showToast("Không thể bắt đầu đăng nhập Google: "+(e.message||"Chưa cấu hình OAuth"),"error")}
+ };
  document.getElementById('login-grader-password')?.addEventListener('keydown',e=>{if(e.key==='Enter')window.handleLoginCode()});
 
  window.createAccountByCode=async function(){
@@ -7579,5 +7628,8 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 })();
 </script>
 
+<script type="module" src="./grader-google-ui.js"></script>
+<script defer src="./offline-score-recovery.js"></script>
+<script src="./live-grid-layout.js" defer></script>
 </body>
 </html>
