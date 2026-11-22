@@ -42,7 +42,7 @@ async function showResults(){
  head.append(hr);t.append(head);const body=document.createElement("tbody");
  for(const r of result.rows||[]){
   const tr=el("tr","border-t"),td=document.createElement("td"),checkbox=document.createElement("input");
-  checkbox.type="checkbox";checkbox.value=r.id;checkbox.className="cast-chosen";checkbox.disabled=r.outcome!=="passed"||r.incomplete;
+  checkbox.type="checkbox";checkbox.value=r.id;checkbox.className="cast-chosen";checkbox.disabled=r.outcome==="pending"||r.incomplete;
   td.className="p-3";td.append(checkbox);tr.append(td);
   for(const item of [r.mssv||r.code,r.name,r.groupName,r.score==null?"—":Number(r.score).toFixed(2),
     r.judges+"/"+r.expectedJudges,r.incomplete?"Thiếu điểm":r.outcome.toUpperCase(),r.review])tr.append(el("td","p-3",String(item||"")));
@@ -90,7 +90,7 @@ async function loadCastingHub(parent){
  table=el("div","text-xs text-gray-500");table.textContent="Bấm Tải bảng điểm để kiểm tra.";
  review.append(button("Tải bảng điểm",showResults),table);
  const actions=el("div","flex flex-wrap gap-2 mt-3");
- actions.append(button("Duyệt PASSED được chọn",async()=>{
+ actions.append(button("Duyệt kết quả đã chọn",async()=>{
   const ids=[...table.querySelectorAll(".cast-chosen:checked")].slice(0,40).map(x=>x.value);
   if(!ids.length)throw Error("Chưa chọn thí sinh đủ điều kiện.");
   await action("casting-review",{castingId:current,decisions:ids.map(candidateId=>({candidateId,review:"approved"}))});
@@ -118,7 +118,7 @@ async function loadCastingHub(parent){
   let addresses;
   if(mail.value==="publication"){
    const rows=(await api("casting-results",{castingId:current})).rows||[];
-   addresses=rows.filter(x=>x.outcome==="passed"&&x.review==="approved"&&x.fields?.castingEmailConsent===true)
+   addresses=rows.filter(x=>x.outcome!=="pending"&&x.review==="approved"&&x.fields?.castingEmailConsent===true)
     .map(x=>x.email).filter(Boolean);
   }else addresses=(all.graders||[]).map(g=>g.email).filter(Boolean);
   if(!addresses.length)throw Error("Không có địa chỉ email đủ quyền/đồng ý nhận thư.");
