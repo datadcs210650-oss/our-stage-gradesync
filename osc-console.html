@@ -136,6 +136,27 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 </style>
 
 <!-- Quota-safe build: autosave 650ms, no per-keystroke audit, local fallback enabled. -->
+<style id="osc-gradesync-native-ui">
+/* The OSC site owns navigation and the page title. Keep this cross-origin console
+   visually integrated; authorization stays on the existing authenticated bridge. */
+:root{--osc-wine:#7a1837;--osc-wine-deep:#431629;--osc-border:#e8dce4}
+html,body{background:#fff!important;background-image:none!important}
+#app-view{background:#fff!important}
+#app-view>.sidebar-gradient,#app-view header.gs-topbar{display:none!important}
+#app-view>div.flex-1{background:#fff!important;box-shadow:none!important}
+#main-content{padding:0 4px 24px!important;background:#fff!important;scrollbar-gutter:stable}
+#main-content .rounded-3xl{border-radius:16px}
+#main-content .bg-white{border-color:var(--osc-border)}
+#main-content .bg-red-800,#main-content .bg-red-900{background-color:var(--osc-wine)!important}
+#main-content .text-red-800,#main-content .text-red-900{color:var(--osc-wine)!important}
+#gs-settings,#gs-mobile-backdrop{display:none!important}
+.gsx-judge-access{background:linear-gradient(110deg,#fff8fa,#fff);border:1px solid #ecd6df;border-radius:16px;padding:16px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap}
+.gsx-judge-access h3{font-size:15px;font-weight:800;color:#431629;margin:0 0 3px}
+.gsx-judge-access p{font-size:12px;color:#78636d;margin:0}
+.gsx-judge-access a{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;text-decoration:none;background:var(--osc-wine);color:#fff;font-size:12px;font-weight:750}
+.gsx-judge-access a:hover,.gsx-judge-access a:focus-visible{background:var(--osc-wine-deep)}
+@media(max-width:700px){#main-content{padding:0 0 20px!important}.gsx-judge-access{padding:14px}}
+</style>
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex relative selection:bg-red-200 selection:text-red-900">
     <div id="loading-overlay" class="fixed inset-0 bg-white/90 backdrop-blur-sm z-[150] justify-center items-center flex-col gap-3">
@@ -7595,6 +7616,22 @@ window.deleteAccount=graderId=>window.showCustomConfirm("Xóa vĩnh viễn giám
  const oldLAM=window.loadAccountManager;if(typeof oldLAM==='function')window.loadAccountManager=async function(c){const r=await oldLAM(c);setTimeout(()=>c?.querySelectorAll('button[onclick*="openEditGraderModal"]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/openEditGraderModal\('([^']+)',\s*'[^']*',\s*'([^']+)'/);if(!m)return;const row=b.parentElement;if(!row||row.querySelector(`[data-rp="${CSS.escape(m[1])}"]`))return;const x=document.createElement('button');x.dataset.rp=m[1];x.className='bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold px-3 py-2.5 rounded-xl text-xs border border-violet-100';x.innerHTML='<i class="fas fa-key"></i>';x.title='Đặt lại mật khẩu';x.onclick=()=>window.resetGraderPassword(m[1],m[2]);row.insertBefore(x,row.lastElementChild)}),0);return r};
 
 
+// BGK login belongs to Account Management, not the OSC dashboard.
+const loadAccountsWithPassword=window.loadAccountManager;
+window.loadAccountManager=async function(container){
+  const result=await loadAccountsWithPassword?.(container);
+  if(container&&!container.querySelector("#gsx-judge-access")){
+    const section=document.createElement("section");
+    section.id="gsx-judge-access";section.className="gsx-judge-access";
+    const info=document.createElement("div"),title=document.createElement("h3"),description=document.createElement("p"),link=document.createElement("a");
+    title.textContent="Cổng truy cập dành cho Giám khảo";
+    description.textContent="Giám khảo dùng mã BGK và mật khẩu đã được cấp để đăng nhập và chấm điểm.";
+    link.href="https://gradesyncfinal.vercel.app/";link.target="_blank";link.rel="noopener noreferrer";
+    link.textContent="Mở trang đăng nhập BGK";
+    info.append(title,description);section.append(info,link);container.prepend(section);
+  }
+  return result;
+};
 window.handleLogout=()=>call("exit");
 window.repairPublicationIndexes=()=>{};
 window.repairLegacyEncodedTextV27=()=>{};
