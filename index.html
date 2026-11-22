@@ -302,19 +302,51 @@ async function getDocs(ref){
   for(const f of ref.filters||[]){const sf=F(table,f.field),v=unwrap(f.value);if((cols[t]||new Set()).has(sf)){if(f.op==="==")q=q.eq(sf,v);else if(f.op==="array-contains")q=q.contains(sf,[v]);else client.push(f)}else client.push(f)}
   const {data,error}=await q;if(error)throw error;let rows=data||[];if(client.length)rows=rows.filter(r=>client.every(f=>clientPass(table,r,f)));return new QS(table,rows)
 }
-async function getDoc(ref){
-  const table=ref.table,t=T(table),key=t==="group_publication_index"?"group_id":"id";
-  const {data,error}=await supabase.from(t).select("*").eq(key,ref.id).maybeSingle();if(error)throw error;return new DS(table,data,ref.id)
+// Firestore-style score document IDs (CODE_UUID) are not UUID primary keys.
+const UUID_DOC=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function legacyGraderDoc(table,id){
+  if(!["scores","grader_verifications"].includes(T(table))||UUID_DOC.test(String(id||"")))return null;
+  const match=String(id||"").match(/^(.+)_([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i);
+  return match?{code:match[1],scopeId:match[2],field:T(table)==="scores"?"candidate_id":"group_id"}:null;
 }
+async function findDocument(ref){
+  const t=T(ref.table),legacy=legacyGraderDoc(ref.table,ref.id);
+  let q=supabase.from(t).select("*");
+  q=legacy?q.eq("grader_code",legacy.code).eq(legacy.field,legacy.scopeId):q.eq(t==="group_publication_index"?"group_id":"id",ref.id);
+  const {data,error}=await q.maybeSingle();if(error)throw error;return data;
+}
+async function getDoc(ref){return new DS(ref.table,await findDocument(ref),ref.id)}
 async function syncAssignments(uid,groups){
   let {error}=await supabase.from("grader_assignments").delete().eq("grader_id",uid);if(error)throw error;
   const rows=(groups||[]).map(group_id=>({grader_id:uid,group_id}));if(rows.length){({error}=await supabase.from("grader_assignments").insert(rows));if(error)throw error}
 }
 async function setDoc(ref,data,options={}){
-  const table=ref.table,t=T(table),key=t==="group_publication_index"?"group_id":"id";let existing=null;
-  if(options.merge){try{const r=await supabase.from(t).select("*").eq(key,ref.id).maybeSingle();existing=r.data||null}catch(_e){}}
-  const row=await toRow(table,data,existing);row[key]=ref.id;
-  const {data:out,error}=await supabase.from(t).upsert(row).select().single();if(error)throw error;
+  const table=ref.table,t=T(table),legacy=legacyGraderDoc(table,ref.id);
+  const existing=options.merge?await findDocument(ref):null;
+  const row=await toRow(table,data,existing);
+  let out,error;
+  if(legacy){
+    if(row.grader_code&&row.grader_code!==legacy.code)throw Error("Mã giám khảo không khớp bảng điểm.");
+    row.grader_code=legacy.code;row[legacy.field]=legacy.scopeId;
+    row.grader_id=await graderId(legacy.code);
+    if(!row.grader_id)throw Error("Không tìm thấy tài khoản giám khảo.");
+    // An authenticated grader must use the atomic, revision-checked database writer.
+    if(t==="scores"&&window.currentUserData?.role==="Grader"){
+      ({data:out,error}=await supabase.rpc("gradesync_save_score",{
+        p_candidate_id:row.candidate_id,p_group_id:row.group_id,
+        p_scores:row.scores||{},p_total_score:Number(row.total_score||0),
+        p_expected_revision:Math.max(0,Number(row.revision||1)-1)
+      }));
+    }else{
+      ({data:out,error}=await supabase.from(t).upsert(row,{
+        onConflict:t==="scores"?"candidate_id,grader_id":"group_id,grader_id"
+      }).select().single());
+    }
+  }else{
+    row[t==="group_publication_index"?"group_id":"id"]=ref.id;
+    ({data:out,error}=await supabase.from(t).upsert(row).select().single());
+  }
+  if(error)throw error;
   if(table==="users"&&Array.isArray(data?.assignedGroups))await syncAssignments(ref.id,data.assignedGroups);
   return new DS(table,out,ref.id)
 }
@@ -322,14 +354,29 @@ async function addDoc(ref,data){
   if(ref.table==="users")throw Object.assign(new Error("Tạo BGK phải qua Supabase Auth API."),{code:"supabase/auth-required"});
   const t=T(ref.table),row=await toRow(ref.table,data,null),r=await supabase.from(t).insert(row).select().single();if(r.error)throw r.error;return{id:r.data.id,ref:{kind:"doc",table:ref.table,id:r.data.id}}
 }
-async function deleteDoc(ref){const t=T(ref.table),key=t==="group_publication_index"?"group_id":"id",r=await supabase.from(t).delete().eq(key,ref.id);if(r.error)throw r.error}
+async function deleteDoc(ref){
+  const t=T(ref.table),legacy=legacyGraderDoc(ref.table,ref.id);
+  let q=supabase.from(t).delete();
+  q=legacy?q.eq("grader_code",legacy.code).eq(legacy.field,legacy.scopeId):q.eq(t==="group_publication_index"?"group_id":"id",ref.id);
+  const {error}=await q;if(error)throw error
+}
 function onSnapshot(ref,next,errorCb){
   let active=true,prev=new Map(),table=ref.table,t=T(table);
   const emit=async(initial=false)=>{try{if(!active)return;if(ref.kind==="doc"){next?.(await getDoc(ref));return}const s=await getDocs(ref),now=new Map(s.docs.map(d=>[d.id,d])),changes=[];if(initial)s.docs.forEach(d=>changes.push({type:"added",doc:d}));else{prev.forEach((d,id)=>{if(!now.has(id))changes.push({type:"removed",doc:d})});now.forEach((d,id)=>changes.push({type:prev.has(id)?"modified":"added",doc:d}))}prev=now;next?.(new QS(table,s.docs.map(d=>d._row),changes))}catch(e){errorCb?.(e)}};
   emit(true);const ch=supabase.channel("gs_"+t+"_"+Math.random().toString(36).slice(2)).on("postgres_changes",{event:"*",schema:"public",table:t},()=>emit(false)).subscribe();
   return()=>{active=false;try{supabase.removeChannel(ch)}catch(_e){}}
 }
-async function runTransaction(_db,fn){return fn({get:getDoc,set:(r,d,o)=>setDoc(r,d,o),delete:deleteDoc})}
+async function runTransaction(_db,fn){
+  const operations=[];
+  const result=await fn({
+    get:getDoc,
+    set:(ref,data,opts)=>{operations.push(()=>setDoc(ref,data,opts));},
+    delete:ref=>{operations.push(()=>deleteDoc(ref));}
+  });
+  // A save is successful only after Supabase has acknowledged the write.
+  for(const operation of operations)await operation();
+  return result;
+}
 function writeBatch(_db){const ops=[];return{set(r,d,o){ops.push(["s",r,d,o]);return this},delete(r){ops.push(["d",r]);return this},async commit(){for(const o of ops)o[0]==="s"?await setDoc(o[1],o[2],o[3]||{}):await deleteDoc(o[1])}}}
 function serverTimestamp(){return new CompatTimestamp(new Date())}
 
