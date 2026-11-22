@@ -1,0 +1,22 @@
+/* Scoped to grading grid only, not member tables or OSC navigation. */
+#main-content table.gsx-live-grid{border-collapse:separate;border-spacing:0;min-width:920px;width:max-content;max-width:none}
+#main-content .gsx-live-grid th,#main-content .gsx-live-grid td{
+ box-sizing:border-box;vertical-align:middle;min-width:90px;max-width:420px;
+ border-bottom:1px solid #ede3e8;padding:10px 12px;white-space:nowrap
+}
+#main-content .gsx-live-grid th{position:relative;background:#faf4f7;color:#512137;
+ font-weight:750;text-align:center;user-select:none;cursor:grab}
+#main-content .gsx-live-grid td{background:#fff;min-height:50px}
+#main-content .gsx-live-grid tbody tr:hover td{background:#fff6f9}
+#main-content .gsx-live-grid th:nth-child(1),#main-content .gsx-live-grid td:nth-child(1){width:56px;min-width:56px;max-width:56px;position:sticky;left:0;z-index:3}
+#main-content .gsx-live-grid th:nth-child(2),#main-content .gsx-live-grid td:nth-child(2){width:90px;min-width:90px;max-width:90px;position:sticky;left:56px;z-index:3}
+#main-content .gsx-live-grid th:nth-child(3),#main-content .gsx-live-grid td:nth-child(3){width:190px;min-width:190px;max-width:190px;position:sticky;left:146px;z-index:3;box-shadow:3px 0 6px -5px #5c233f88}
+#main-content .gsx-live-grid th:nth-child(-n+3){z-index:6;background:#f5e9ee}
+#main-content .gsx-live-grid tbody tr:hover td:nth-child(-n+3){background:#fff6f9}
+#main-content .gsx-live-grid input.score-input{box-sizing:border-box;width:74px!important;min-height:36px;margin:auto}
+#main-content .gsx-live-grid .gsx-col-grip{position:absolute;left:3px;top:50%;transform:translateY(-50%);font-size:15px;color:#ac8c9b}
+#main-content .gsx-live-grid .gsx-resize{position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;z-index:10;border-right:2px solid transparent}
+#main-content .gsx-live-grid .gsx-resize:hover{border-right-color:#852642}
+#main-content .gsx-live-grid .gsx-dragging{opacity:.45}
+#main-content .gsx-live-grid .gsx-drop{outline:2px dashed #a3224f;outline-offset:-3px}
+@media(max-width:720px){#main-content .gsx-live-grid th:nth-child(3),#main-content .gsx-live-grid td:nth-child(3){width:150px;min-width:150px;max-width:150px}}
