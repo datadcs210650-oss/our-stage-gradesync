@@ -2408,8 +2408,13 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 if(window.currentUserData?.role==='Grader'){
                     const au=window.auth?.currentUser;
                     if(!au?.isAnonymous) throw Object.assign(new Error('GRADER_AUTH_MISSING'),{code:'grader-auth-missing'});
-                    const sessionOK=await window.syncGraderSession(true,'score-save');
-                    if(!sessionOK) throw Object.assign(new Error('GRADER_SESSION_SYNC_FAILED'),{code:'grader-session-sync-failed'});
+                    // A Google grader's Supabase auth UID differs from the assigned profile UUID.
+                    // Score authorization is enforced by gradesync_save_score + RLS, not by
+                    // the legacy presence-session document.
+                    if(!au.googleGrader){
+                        const sessionOK=await window.syncGraderSession(true,'score-save');
+                        if(!sessionOK) throw Object.assign(new Error('GRADER_SESSION_SYNC_FAILED'),{code:'grader-session-sync-failed'});
+                    }
                 }
 
                 const inputs=[...document.querySelectorAll(`input.score-input[data-cand="${cId}"][data-group="${gId}"]`)];
@@ -2421,6 +2426,9 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 inputs.forEach(i=>{
                     const crit=i.getAttribute('data-crit'),weight=parseFloat(i.getAttribute('data-weight'))||0;
                     const raw=String(i.value??'').trim();
+                    const assigned=window.auth?.currentUser?.googleGrader
+                       ?window._gsCriterionRestrictions?.[gId]:null;
+                    if(Array.isArray(assigned)&&assigned.length&&!assigned.includes(crit))return;
                     if(raw==='') return; // ô bị xóa => tiêu chí đó bị xóa khỏi Firestore
                     let v=parseFloat(raw);
                     if(Number.isNaN(v)) return;
