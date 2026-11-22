@@ -100,6 +100,26 @@ window.verifyGroupGrading=function(groupId){
   }catch(e){notify("Không thể gửi OTP: "+e.message,true)}
  });
 };
+/* Legacy BGK also receives criterion visibility from its own RLS-scoped grants. */
+const startApp=window.initApp;
+if(typeof startApp==="function"){
+ window.initApp=function(){
+  const response=startApp.apply(this,arguments);
+  const graderId=window.currentUserData?.id;
+  if(graderId&&window.currentUserData?.role==="Grader"&&!window.auth?.currentUser?.googleGrader){
+   Promise.resolve(response).then(async()=>{
+    const result=await sb.from("gs_criterion_grants").select("group_id,criterion").eq("grader_id",graderId);
+    if(result.error||window.currentUserData?.id!==graderId)return;
+    const map={};
+    for(const grant of result.data||[])(map[grant.group_id] ||= []).push(grant.criterion);
+    window._gsCriterionRestrictions=map;
+    if(document.querySelector("#main-content input.score-input"))window.renderGradingTables?.();
+   }).catch(e=>console.warn("BGK criterion scope read",e?.code||"read-failed"));
+  }
+  return response;
+ };
+}
+
 const render=window.renderGradingTables;
 if(typeof render==="function"){
  window.renderGradingTables=function(){
