@@ -7543,6 +7543,7 @@ window.currentUserData = null; window.activeListeners = [];
 <script type="module">
 import "./casting-hub.js";
 import "./candidate-editor.js";
+import {installJudgeEmailAdmin} from "./judge-email-admin.js";
 const call=window.oscGradingCall;
 const renderExports=window.loadAdminOverviewScores;
 window.loadAdminOverviewScores=async function(container){
@@ -7598,10 +7599,14 @@ window.createAccountByCode=async()=>{
  const name=document.getElementById("acc-name"),password=document.getElementById("acc-password");
  name.setCustomValidity(name.value.trim().length<2?"Nhập họ tên giám khảo (ít nhất 2 ký tự).":"");
  if(!name.reportValidity()||!validPassword(password))return;
+ const email=document.getElementById("acc-google-email");
+ if(!email||!email.value.trim()||!email.checkValidity()){
+  email?.reportValidity();window.showToast?.("Cần nhập email BGK hợp lệ để cấp quyền Google.","error");return;
+ }
  const submit=document.querySelector('button[onclick="window.createAccountByCode()"]');
  if(submit?.disabled)return;
  if(submit)submit.disabled=true;
- try{await account("create-grader",{name:name.value.trim(),code:document.getElementById("acc-code").value.trim(),password:password.value,groupIds:[...document.querySelectorAll(".acc-group-chk:checked")].map(x=>x.value)})}finally{if(submit)submit.disabled=false}
+ try{await account("create-grader",{name:name.value.trim(),code:document.getElementById("acc-code").value.trim(),password:password.value,googleEmail:document.getElementById("acc-google-email")?.value?.trim()||"",groupIds:[...document.querySelectorAll(".acc-group-chk:checked")].map(x=>x.value)})}finally{if(submit)submit.disabled=false}
 };
 window.toggleAccountStatus=(graderId,status)=>account("lock-grader",{graderId,active:status==="Active"});
 window.resetGraderPassword=(graderId,code)=>{
@@ -7636,6 +7641,7 @@ window.loadAccountManager=async function(container){
   }
   return result;
 };
+installJudgeEmailAdmin({call});
 window.handleLogout=()=>call("exit");
 window.repairPublicationIndexes=()=>{};
 window.repairLegacyEncodedTextV27=()=>{};
