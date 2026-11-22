@@ -14,16 +14,28 @@ function digest(profile,group,code){
 }
 async function actor(db,token){
  const r=await db.auth.getUser(token);
- if(r.error||!r.data?.user)throw fail("Phiên đăng nhập Google đã hết hạn.",401);
+ if(r.error||!r.data?.user)throw fail("Phiên BGK đã hết hạn.",401);
  const user=r.data.user;
- if(!user.identities?.some(i=>i.provider==="google"))
-  throw fail("Chỉ chấp nhận BGK đăng nhập Google.",403);
- const email=String(user.email||"").toLowerCase();
- const access=required(await db.from("gs_google_grader_access").select("*").eq("auth_user_id",user.id).eq("email",email).eq("enabled",true).maybeSingle());
- if(!access)throw fail("Email chưa được cấp quyền BGK.",403);
- const profile=required(await db.from("profiles").select("id,code,name,status,role").eq("id",access.profile_id).single());
- if(profile.role!=="Grader"||profile.status!=="Active")throw fail("Tài khoản BGK đã bị khóa.",403);
- return{profile,email};
+ const google=user.identities?.some(i=>i.provider==="google")||user.app_metadata?.provider==="google";
+ const legacy=String(user.email||"").toLowerCase().endsWith("@gradesync.local");
+ if(!google&&!legacy)throw fail("Tài khoản chưa được phép xác nhận bảng điểm.",403);
+ let access;
+ if(google){
+  access=required(await db.from("gs_google_grader_access").select("*")
+    .eq("auth_user_id",user.id).eq("email",String(user.email||"").toLowerCase())
+    .eq("enabled",true).maybeSingle());
+ }else{
+  access=required(await db.from("gs_google_grader_access").select("*")
+    .eq("profile_id",user.id).eq("enabled",true).maybeSingle());
+ }
+ if(!access)throw fail("BGK chưa được BCN cấp email nhận OTP.",403);
+ const profile=required(await db.from("profiles").select("id,code,name,status,role")
+  .eq("id",access.profile_id).single());
+ if(profile.role!=="Grader"||profile.status!=="Active")
+  throw fail("Tài khoản BGK đã bị khóa.",403);
+ if(!google&&profile.id!==user.id)
+  throw fail("Mã BGK không khớp tài khoản đăng nhập.",403);
+ return{profile,email:access.email,provider:google?"google":"legacy"};
 }
 async function preflight(db,profile,groupId){
  const grant=required(await db.from("grader_assignments").select("id").eq("grader_id",profile.id).eq("group_id",groupId).maybeSingle());

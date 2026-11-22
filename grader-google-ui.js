@@ -1,8 +1,8 @@
-/* BGK-only Google account flows. OTP locks are confirmed by the server. */
+/* BGK Google and legacy login: mandatory email OTP before confirmed score locks. */
 (()=>{
 "use strict";
 const sb=window.supabase;
-const grader=()=>window.currentUserData?.role==="Grader"&&window.auth?.currentUser?.googleGrader===true;
+const grader=()=>window.currentUserData?.role==="Grader"&&window.auth?.currentUser?.isAnonymous===true;
 const notify=(text,isError=false)=>window.showToast?.(text,isError?"error":"success");
 function node(tag,text,cls){const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e}
 async function api(action,groupId,extras={}){
@@ -100,6 +100,26 @@ window.verifyGroupGrading=function(groupId){
   }catch(e){notify("Không thể gửi OTP: "+e.message,true)}
  });
 };
+/* Legacy BGK also receives criterion visibility from its own RLS-scoped grants. */
+const startApp=window.initApp;
+if(typeof startApp==="function"){
+ window.initApp=function(){
+  const response=startApp.apply(this,arguments);
+  const graderId=window.currentUserData?.id;
+  if(graderId&&window.currentUserData?.role==="Grader"&&!window.auth?.currentUser?.googleGrader){
+   Promise.resolve(response).then(async()=>{
+    const result=await sb.from("gs_criterion_grants").select("group_id,criterion").eq("grader_id",graderId);
+    if(result.error||window.currentUserData?.id!==graderId)return;
+    const map={};
+    for(const grant of result.data||[])(map[grant.group_id] ||= []).push(grant.criterion);
+    window._gsCriterionRestrictions=map;
+    if(document.querySelector("#main-content input.score-input"))window.renderGradingTables?.();
+   }).catch(e=>console.warn("BGK criterion scope read",e?.code||"read-failed"));
+  }
+  return response;
+ };
+}
+
 const render=window.renderGradingTables;
 if(typeof render==="function"){
  window.renderGradingTables=function(){
@@ -121,5 +141,55 @@ if(typeof render==="function"){
   return answer;
  };
 }
+/* Display local draft state; never claim a browser draft was saved on server. */
+function readDraftCount(){
+ try{
+  const data=JSON.parse(localStorage.getItem("gradeSyncQuotaDraftsV1")||"{}"),code=window.currentUserData?.code;
+  return Object.values(data).filter(row=>row?.graderCode===code).length;
+ }catch(_e){return 0}
+}
+function showRecoveryStatus(){
+ if(!grader())return;
+ const root=document.getElementById("main-content");
+ if(!root||!root.querySelector("input.score-input"))return;
+ let panel=root.querySelector("#gsx-recovery-panel");
+ if(!panel){
+  panel=document.createElement("div");panel.id="gsx-recovery-panel";
+  panel.className="flex flex-wrap items-center gap-3 mx-3 my-2 px-4 py-3 border border-amber-200 bg-amber-50 rounded-xl text-xs text-amber-950";
+  const status=document.createElement("span");status.className="flex-1 font-bold";status.dataset.role="status";
+  const retry=document.createElement("button");retry.type="button";retry.textContent="Đồng bộ lại điểm nháp";
+  retry.className="border border-amber-400 px-3 py-2 rounded-lg bg-white font-bold";
+  retry.addEventListener("click",async()=>{
+   if(navigator.onLine===false){notify("Chưa có mạng; điểm vẫn chỉ lưu tạm trên thiết bị.","error");return}
+   retry.disabled=true;
+   try{
+    await window.retryQuotaDrafts?.(true);
+    notify("Đã gửi yêu cầu đồng bộ. Chỉ tin trạng thái 'Đã lưu' ở từng thí sinh.");
+   }catch(e){notify("Không thể đồng bộ nháp: "+e.message,"error")}
+   finally{retry.disabled=false;refreshRecovery()}
+  });
+  panel.append(status,retry);root.prepend(panel);
+ }
+ refreshRecovery();
+}
+function refreshRecovery(){
+ const panel=document.querySelector("#gsx-recovery-panel");
+ if(!panel)return;
+ const count=readDraftCount(),online=navigator.onLine!==false;
+ const text=(online?"Đang có mạng":"Mất mạng")+" • "+(count?count+" bản nháp trên thiết bị chưa xác nhận lưu":"Chưa có bản nháp chờ đồng bộ")+
+  ". Chỉ điểm báo 'Đã lưu' mới chắc chắn ở máy chủ.";
+ const status=panel.querySelector('[data-role="status"]');
+ if(status&&status.textContent!==text)status.textContent=text;
+ const retry=panel.querySelector("button");if(retry)retry.disabled=!online||!count;
+}
+let lastScan=null;
+const scheduleRecovery=()=>{if(lastScan)return;lastScan=setTimeout(()=>{lastScan=null;showRecoveryStatus()},160)};
+const root=document.getElementById("main-content");
+if(root)new MutationObserver(scheduleRecovery).observe(root,{childList:true,subtree:true});
+for(const type of ["online","offline"])window.addEventListener(type,refreshRecovery);
+document.addEventListener("input",e=>{if(e.target.matches?.("input.score-input"))setTimeout(refreshRecovery,30)},true);
+document.addEventListener("visibilitychange",refreshRecovery);
+scheduleRecovery();
+
 window.gsExportConfirmedPdf=exportPdf;
 })();

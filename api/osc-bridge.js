@@ -95,6 +95,31 @@ function graderPassword(value){
  return value;
 }
 function password(){return crypto.randomBytes(24).toString("base64url")+"aA7!";}
+function graderGoogleEmail(value){
+ const email=String(value||"").trim().toLowerCase();
+ if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)fail("Email Google của BGK không hợp lệ.");
+ return email;
+}
+async function grantGraderGoogleEmail(graderId,rawEmail,revokeLinked=false){
+ const email=graderGoogleEmail(rawEmail),db=sb();
+ const previous=await db.from("gs_google_grader_access").select("profile_id,email,auth_user_id").eq("profile_id",graderId).maybeSingle();
+ if(previous.error)fail("Không đọc được quyền email BGK.","osc/gradesync-upstream");
+ if(previous.data?.auth_user_id&&previous.data.email!==email&&!revokeLinked)
+  fail("Email Google BGK đã liên kết tài khoản. Hãy xác nhận thu hồi liên kết cũ trước khi đổi.","osc/gradesync-conflict");
+ if(!email){
+  if(previous.data){
+   const deleted=await db.from("gs_google_grader_access").delete().eq("profile_id",graderId);
+   if(deleted.error)fail("Không thu hồi được email BGK.","osc/gradesync-upstream");
+  }
+  return;
+ }
+ const row={profile_id:graderId,email,enabled:true};
+ if(!previous.data?.auth_user_id||previous.data.email!==email)row.auth_user_id=null;
+ else row.auth_user_id=previous.data.auth_user_id;
+ const up=await db.from("gs_google_grader_access").upsert(row,{onConflict:"profile_id"});
+ if(up.error)fail(up.error.code==="23505"?"Email đã được cấp cho BGK khác.":"Không lưu được email BGK.","osc/gradesync-conflict");
+}
+
 async function createGrader(actor,body){
  const code=safeText(body.code,20).toUpperCase(),name=safeText(body.name,100);
  if(name.length<2)fail("Họ tên giám khảo cần ít nhất 2 ký tự.");
@@ -121,6 +146,8 @@ async function createGrader(actor,body){
    const {error}=await sb().from("grader_assignments").insert(groupIds.map(group_id=>({grader_id:id,group_id})));
    if(error)fail("Không thể phân công giám khảo.");
   }
+  if(body.googleEmail!==undefined&&String(body.googleEmail).trim())
+   await grantGraderGoogleEmail(id,body.googleEmail);
   await audit(actor,"grader-created",id);
  }catch(e){await sb().auth.admin.deleteUser(id).catch(()=>{});throw e}
  // Temporary password is returned once, only over the authenticated OSC manager response.
@@ -129,14 +156,35 @@ async function createGrader(actor,body){
 async function updateGrader(actor,body){
  const id=String(body.graderId||""),name=safeText(body.name,100);
  const groups=Array.isArray(body.groupIds)?[...new Set(body.groupIds)]:[];
- if(!ID.test(id)||!name||groups.length>30||groups.some(x=>!ID.test(x)))
+ if(!ID.test(id)||name.length<2||groups.length>30||groups.some(x=>!ID.test(x)))
   fail("Thông tin giám khảo hoặc nhóm không hợp lệ.");
  const exists=await supa(url("profiles",{id:"eq."+id,role:"eq.Grader",select:"id",limit:"1"}));
  if(!exists?.length)fail("Không tìm thấy giám khảo.");
- if(groups.length){const g=await supa(url("competition_groups",{id:"in.("+groups.join(",")+")",select:"id"}));
-  if(g.length!==groups.length)fail("Nhóm thi không tồn tại.")}
+ if(groups.length){
+  const found=await supa(url("competition_groups",{id:"in.("+groups.join(",")+")",select:"id"}));
+  if(found.length!==groups.length)fail("Có nhóm thi không tồn tại.");
+ }
+ // Server updates actual assignment rows as well as profile UI metadata.
+ if(body.googleEmail!==undefined)graderGoogleEmail(body.googleEmail);
+ const db=sb(),read=await db.from("grader_assignments").select("id,group_id").eq("grader_id",id);
+ if(read.error)fail("Không đọc được phân quyền nhóm.","osc/gradesync-upstream");
+ const old=read.data||[],wanted=new Set(groups),current=new Set(old.map(x=>x.group_id));
+ const remove=old.filter(x=>!wanted.has(x.group_id)).map(x=>x.id);
+ const add=groups.filter(x=>!current.has(x)).map(group_id=>({grader_id:id,group_id}));
+ // Grant new groups before updating the display profile to minimize any gap.
+ if(add.length){
+  const ins=await db.from("grader_assignments").insert(add);
+  if(ins.error)fail("Không cấp được phân quyền nhóm mới.","osc/gradesync-upstream");
+ }
+ if(remove.length){
+  const del=await db.from("grader_assignments").delete().in("id",remove);
+  if(del.error)fail("Không thu hồi được nhóm chấm cũ.","osc/gradesync-upstream");
+ }
  await supa("/rest/v1/profiles?id=eq."+id,{method:"PATCH",
-  body:{name,assigned_groups:groups},headers:{Prefer:"return=minimal"}});
+  body:{name,assigned_groups:groups,updated_at:new Date().toISOString()},
+  headers:{Prefer:"return=minimal"}});
+ if(body.googleEmail!==undefined)
+  await grantGraderGoogleEmail(id,body.googleEmail,body.revokeGoogleLink===true);
  await audit(actor,"grader-updated",id);
  return{ok:true};
 }
