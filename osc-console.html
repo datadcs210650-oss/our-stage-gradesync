@@ -216,12 +216,12 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
     </div>
 <script type="module">
         
-// Runs in an opaque sandbox. The OSC parent owns the authenticated requests.
+// Runs in a separate-origin iframe. The OSC parent owns the authenticated requests.
 const pending=new Map();
 let wire;
 const connected=new Promise(resolve=>{
  window.addEventListener("message",function accept(event){
-  if(event.source!==parent||event.data!=="osc-grading-connect"||!event.ports[0])return;
+  if(event.origin!=="https://admin.ourstage.io.vn"||event.source!==parent||event.data!=="osc-grading-connect"||!event.ports[0])return;
   window.removeEventListener("message",accept);
   wire=event.ports[0];
   wire.onmessage=({data})=>{
@@ -232,7 +232,7 @@ const connected=new Promise(resolve=>{
   };
   resolve();
  });
- parent.postMessage("osc-grading-ready","*");
+ parent.postMessage("osc-grading-ready","https://admin.ourstage.io.vn");
 });
 async function call(action,details={}){
  await connected;
@@ -7515,6 +7515,36 @@ window.currentUserData = null; window.activeListeners = [];
 
 <script type="module">
 const call=window.oscGradingCall;
+const renderExports=window.loadAdminOverviewScores;
+window.loadAdminOverviewScores=async function(container){
+ await renderExports(container);
+ const groupFilter=container.querySelector("#ov-group-filter"),graderFilter=container.querySelector("#ov-grader-filter");
+ if(!groupFilter||!graderFilter)return;
+ const button=document.createElement("button");
+ button.type="button";button.className="px-4 py-2 bg-gray-100 rounded-xl font-bold";button.textContent="Xuất CSV";
+ const existing=container.querySelector('button[onclick*="Excel"]');
+ if(existing)existing.after(button);else container.prepend(button);
+ button.onclick=async()=>{
+  button.disabled=true;
+  try{
+   const group=groupFilter.value,grader=graderFilter.value,ref=window.collection(window.db,"scores");
+   const filters=[];
+   if(group!=="ALL")filters.push(window.where("groupId","==",group));
+   if(grader!=="ALL")filters.push(window.where("graderCode","==",grader));
+   const snap=await window.getDocs(window.query(ref,...filters)),byCandidate=new Map();
+   snap.forEach(d=>{const s=d.data(),items=byCandidate.get(s.candidateId)||[];items.push(s);byCandidate.set(s.candidateId,items)});
+   const rows=[["Nhóm thi","Mã thí sinh","Họ và tên","Có mặt","Giám khảo","Điểm","Đã khóa"]];
+   for(const c of window._overviewCache.candidates){
+    if(group!=="ALL"&&c.groupId!==group)continue;
+    const scores=byCandidate.get(c.id)||[];
+    for(const sc of scores.length?scores:[null])rows.push([window._overviewCache.groupMap[c.groupId]?.name,c.code,c.name,c.isPresent?"Có":"Không",sc?.graderCode,sc?.totalScore,sc?(sc.locked?"Có":"Không"):""]);
+   }
+   const quote=v=>{let t=String(v??"");if(/^[=+@\-\t\r]/.test(t))t="'"+t;return '"'+t.replaceAll('"','""')+'"'};
+   const file=new Blob(["\uFEFF"+rows.map(r=>r.map(quote).join(",")).join("\r\n")],{type:"text/csv;charset=utf-8"});
+   const url=URL.createObjectURL(file),a=document.createElement("a");a.href=url;a.download="GrandSync-ket-qua.csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);
+  }catch(e){window.showToast(e.message,"error")}finally{button.disabled=false}
+ };
+};
 async function account(action,details){
  window.showLoading(true);
  try{
