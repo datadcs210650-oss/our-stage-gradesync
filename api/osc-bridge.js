@@ -87,10 +87,17 @@ async function audit(actor,action,target){
   body:{action:"osc-"+action,
    details:{actorUid:actor.decoded.uid,actorRole:actor.profile.role,targetId:target,source:"osc-management"}}});
 }
+function graderPassword(value){
+ if(value===undefined || value==="")return password();
+ if(typeof value!=="string" || value.length<6 || Buffer.byteLength(value,"utf8")>72 || !value.trim())
+  fail("Mật khẩu cần ít nhất 6 ký tự và tối đa 72 byte.");
+ return value;
+}
 function password(){return crypto.randomBytes(24).toString("base64url")+"aA7!";}
 async function createGrader(actor,body){
  const code=safeText(body.code,20).toUpperCase(),name=safeText(body.name,100);
- if(!CODE.test(code)||!name||name.length<2)fail("Tên hoặc mã giám khảo không hợp lệ (3–20 ký tự).");
+ if(name.length<2)fail("Họ tên giám khảo cần ít nhất 2 ký tự.");
+ if(!CODE.test(code))fail("Mã giám khảo cần 3–20 ký tự và bắt đầu bằng chữ cái.");
  const groupIds=Array.isArray(body.groupIds)?[...new Set(body.groupIds)]:[];
  if(groupIds.length>30||groupIds.some(id=>!ID.test(String(id))))fail("Danh sách nhóm không hợp lệ.");
  if(groupIds.length){
@@ -99,7 +106,7 @@ async function createGrader(actor,body){
  }
  const found=await supa(url("profiles",{code:"eq."+code,select:"id",limit:"1"}));
  if(found?.length)fail("Mã giám khảo đã tồn tại.","osc/gradesync-conflict");
- const email=code.toLowerCase()+"@gradesync.local",pass=password();
+ const email=code.toLowerCase()+"@gradesync.local",pass=graderPassword(body.password);
  const created=await sb().auth.admin.createUser({
   email,password:pass,email_confirm:true,user_metadata:{display_name:name}});
  if(created.error)fail("Không thể tạo tài khoản giám khảo trên Supabase.","osc/gradesync-upstream");
@@ -116,7 +123,7 @@ async function createGrader(actor,body){
   await audit(actor,"grader-created",id);
  }catch(e){await sb().auth.admin.deleteUser(id).catch(()=>{});throw e}
  // Temporary password is returned once, only over the authenticated OSC manager response.
- return{ok:true,code,name,temporaryPassword:pass,portal:GRADER_PORTAL};
+ return{ok:true,code,name,...(body.password?{}:{temporaryPassword:pass}),portal:GRADER_PORTAL};
 }
 async function updateGrader(actor,body){
  const id=String(body.graderId||""),name=safeText(body.name,100);
@@ -147,11 +154,11 @@ async function resetGraderPassword(actor,body){
  const id=String(body.graderId||"");if(!ID.test(id))fail("Giám khảo không hợp lệ.");
  const docs=await supa(url("profiles",{id:"eq."+id,role:"eq.Grader",select:"id,code",limit:"1"}));
  if(!docs?.length)fail("Không tìm thấy giám khảo.");
- const pass=password();
+ const pass=graderPassword(body.password);
  const changed=await sb().auth.admin.updateUserById(id,{password:pass});
  if(changed.error)fail("Không thể thay đổi mật khẩu Supabase.","osc/gradesync-upstream");
  await audit(actor,"grader-password-reset",id);
- return{ok:true,code:docs[0].code,temporaryPassword:pass};
+ return{ok:true,code:docs[0].code,...(body.password?{}:{temporaryPassword:pass})};
 }
 async function requireOscManager(req){
  const token=String(req.headers.authorization||"");

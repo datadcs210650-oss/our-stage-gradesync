@@ -225,6 +225,7 @@ const connected=new Promise(resolve=>{
   window.removeEventListener("message",accept);
   wire=event.ports[0];
   wire.onmessage=({data})=>{
+   if(data.type==="navigate"){window.oscSelectPage?.(data.page);return}
    const item=pending.get(data.id);
    if(!item)return;
    pending.delete(data.id);
@@ -1010,7 +1011,7 @@ window.currentUserData = null; window.activeListeners = [];
                     b.onclick = (e) => { e.preventDefault(); window.navigate(m.id, b, m.label); }; nav.appendChild(b);
                 }
             });
-            if(window.currentUserData.role === 'Grader') { const g = window.MENU_CONFIG.find(m => m.id === 'grading_table'); window.navigate('grading_table', nav.firstChild, g.label); } else { if(nav.firstChild) nav.firstChild.click(); }
+            if(window.currentUserData.role === 'Grader') { const g = window.MENU_CONFIG.find(m => m.id === 'grading_table'); window.navigate('grading_table', nav.firstChild, g.label); } else { if(nav.firstChild)(window.oscInitialLink?.(nav)||nav.firstChild).click(); }
         }
 
         window.navigate = function(vId, aBtn, tit) {
@@ -2918,6 +2919,9 @@ window.currentUserData = null; window.activeListeners = [];
                                 <button onclick="window.generateRandomCode()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-4 rounded-xl text-sm transition btn-press"><i class="fas fa-sync-alt"></i></button>
                             </div>
                         </div>
+                        <label class="block mb-4 text-xs font-bold text-gray-700">Mật khẩu BGK
+                          <input id="acc-password" type="password" autocomplete="new-password" minlength="6" maxlength="72" placeholder="Nhập mật khẩu hoặc để trống để tự tạo" class="block w-full mt-2 border border-gray-200 px-4 py-3 rounded-xl bg-gray-50">
+                        </label>
                         <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3 border-b border-gray-100 pb-2">Chỉ định nhóm phụ trách:</label>
                         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
                             ${groups.map(g => `<label class="relative flex items-center justify-center p-3 cursor-pointer group"><input type="checkbox" value="${g.id}" class="acc-group-chk hidden modal-checkbox"><div class="w-full text-center bg-gray-50 border border-gray-200 rounded-xl py-2 px-1 transition-all group-hover:border-red-300 group-hover:bg-red-50/50"><i class="fas fa-check text-gray-300 opacity-0 transition-opacity mb-1 block"></i><span class="font-bold text-[10px] text-gray-700 uppercase block tracking-wider truncate" title="${window.escapeHtml(g.name)}">${window.escapeHtml(g.name)}</span></div></label>`).join('')}
@@ -7549,19 +7553,44 @@ async function account(action,details){
  window.showLoading(true);
  try{
   const r=await call(action,details);
+  window.closeCustomModal();
   await window.loadAccountManager(document.getElementById("main-content"));
   if(r.temporaryPassword){
    window.openModal();
    const panel=document.getElementById("custom-modal-box");
    if(panel){const title=document.createElement("h3"),p=document.createElement("p"),close=document.createElement("button");
-    title.textContent="Thông tin đăng nhập cấp một lần";p.textContent=r.code+" · "+r.temporaryPassword;close.textContent="Đóng";close.onclick=window.closeCustomModal;panel.replaceChildren(title,p,close)}
+    title.textContent="Mật khẩu BGK do hệ thống tạo";p.textContent=r.code+" · "+r.temporaryPassword;close.textContent="Đóng";close.onclick=window.closeCustomModal;panel.replaceChildren(title,p,close)}
    else window.alert(r.code+" · "+r.temporaryPassword);
   }else window.showToast("Đã cập nhật giám khảo.");
  }catch(e){window.showToast(e.message,"error")}finally{window.showLoading(false)}
 }
-window.createAccountByCode=()=>account("create-grader",{name:document.getElementById("acc-name").value.trim(),code:document.getElementById("acc-code").value.trim(),groupIds:[...document.querySelectorAll(".acc-group-chk:checked")].map(x=>x.value)});
+function validPassword(input){
+ const v=input.value;
+ input.setCustomValidity(v&&(!v.trim()||v.length<6||new TextEncoder().encode(v).length>72)?"Mật khẩu cần ít nhất 6 ký tự và tối đa 72 byte.":"");
+ return input.reportValidity();
+}
+window.createAccountByCode=async()=>{
+ const name=document.getElementById("acc-name"),password=document.getElementById("acc-password");
+ name.setCustomValidity(name.value.trim().length<2?"Nhập họ tên giám khảo (ít nhất 2 ký tự).":"");
+ if(!name.reportValidity()||!validPassword(password))return;
+ const submit=document.querySelector('button[onclick="window.createAccountByCode()"]');
+ if(submit?.disabled)return;
+ if(submit)submit.disabled=true;
+ try{await account("create-grader",{name:name.value.trim(),code:document.getElementById("acc-code").value.trim(),password:password.value,groupIds:[...document.querySelectorAll(".acc-group-chk:checked")].map(x=>x.value)})}finally{if(submit)submit.disabled=false}
+};
 window.toggleAccountStatus=(graderId,status)=>account("lock-grader",{graderId,active:status==="Active"});
-window.resetGraderPassword=(graderId,code)=>window.showCustomConfirm("Đặt lại mật khẩu của "+code+"?",()=>account("reset-grader-password",{graderId}));
+window.resetGraderPassword=(graderId,code)=>{
+ const box=document.getElementById("custom-modal-box");
+ const form=document.createElement("form"),heading=document.createElement("h3"),label=document.createElement("label"),input=document.createElement("input"),save=document.createElement("button"),cancel=document.createElement("button");
+ heading.textContent="Cấp lại mật khẩu · "+code;heading.className="font-bold text-lg mb-4";
+ label.textContent="Mật khẩu mới";label.className="block text-sm font-semibold";
+ input.type="password";input.autocomplete="new-password";input.minLength=6;input.maxLength=72;
+ input.placeholder="Để trống để hệ thống tự tạo";input.className="block w-full my-3 border p-3 rounded-xl";
+ save.type="submit";save.textContent="Cấp mật khẩu mới";save.className="bg-red-800 text-white rounded-xl px-4 py-2";
+ cancel.type="button";cancel.textContent="Hủy";cancel.className="ml-3";cancel.onclick=window.closeCustomModal;
+ form.noValidate=true;form.onsubmit=async e=>{e.preventDefault();if(!validPassword(input)||save.disabled)return;save.disabled=true;try{await account("reset-grader-password",{graderId,password:input.value})}finally{save.disabled=false}};
+ label.append(input);form.append(heading,label,save,cancel);box.replaceChildren(form);window.openModal();input.focus();
+};
 window.deleteAccount=graderId=>window.showCustomConfirm("Xóa vĩnh viễn giám khảo và dữ liệu liên kết?",()=>account("delete-grader",{graderId}));
  const oldLAM=window.loadAccountManager;if(typeof oldLAM==='function')window.loadAccountManager=async function(c){const r=await oldLAM(c);setTimeout(()=>c?.querySelectorAll('button[onclick*="openEditGraderModal"]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/openEditGraderModal\('([^']+)',\s*'[^']*',\s*'([^']+)'/);if(!m)return;const row=b.parentElement;if(!row||row.querySelector(`[data-rp="${CSS.escape(m[1])}"]`))return;const x=document.createElement('button');x.dataset.rp=m[1];x.className='bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold px-3 py-2.5 rounded-xl text-xs border border-violet-100';x.innerHTML='<i class="fas fa-key"></i>';x.title='Đặt lại mật khẩu';x.onclick=()=>window.resetGraderPassword(m[1],m[2]);row.insertBefore(x,row.lastElementChild)}),0);return r};
 
@@ -7575,6 +7604,16 @@ try{
  window.currentUserData={id:actor.uid,name:actor.name,code:"OSC",role:actor.role==="superadmin"?"SuperAdmin":"Admin",allowedMenus:window.MENU_CONFIG.filter(m=>m.roles.includes("Admin")).map(m=>m.id)};
  window.MENU_CONFIG.find(m=>m.id==="groups_manager").label="Phiên chấm & cài đặt điểm";
  window.MENU_CONFIG.find(m=>m.id==="student_list").label="Danh sách thí sinh";
+ if(actor.externalMenu){
+  const allowed=window.MENU_CONFIG.filter(m=>m.roles.includes(window.currentUserData.role)&&
+   (window.currentUserData.role==="SuperAdmin"||window.currentUserData.allowedMenus.includes(m.id)));
+  const linkFor=(nav,page)=>nav.children[allowed.findIndex(m=>m.id===page)];
+  window.oscInitialLink=nav=>linkFor(nav,actor.page);
+  window.oscSelectPage=page=>{const link=linkFor(document.getElementById("nav-menu"),page);if(link&&!link.classList.contains("active"))link.click()};
+  document.querySelector("#app-view .sidebar-gradient")?.style.setProperty("display","none","important");
+  document.querySelector('button[onclick="window.toggleSidebar()"]')?.style.setProperty("display","none","important");
+ }
  window.initApp();window.startAdminSubmissionNotifications?.();
+ if(actor.externalMenu)await call("console-ready");
 }catch(e){document.body.textContent=e.message}
 </script></body></html>
