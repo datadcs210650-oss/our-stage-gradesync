@@ -15,7 +15,7 @@ as $$
  select not exists(
   select 1 from jsonb_object_keys(coalesce(detail,'{}'::jsonb)) key
   where not exists(
-   select 1 from public.competition_groups g,cross join lateral jsonb_array_elements(g.criteria) criterion
+   select 1 from public.competition_groups g cross join lateral jsonb_array_elements(g.criteria) criterion
    where g.id=groupid and criterion->>'name'=key
   )
   or (
