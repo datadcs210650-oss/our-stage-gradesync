@@ -114,7 +114,22 @@ async function loadCastingHub(parent){
  publication.append(el("p","text-xs text-gray-500 mt-2 mb-2","Kết quả chỉ trả khi thí sinh tự tra cứu đúng MSSV/SBD và email đã khai báo; không hiển thị danh sách công khai."));
  const mail=field("select");for(const [v,t] of [["invite","Mời BGK"],["reminder","Nhắc chấm"],["submission","Xác nhận"],["publication","Công bố"]]){const o=el("option","",t);o.value=v;mail.append(o)}
  publication.append(mail,button("Lên lịch công bố",async()=>{if(!window.confirm("Xác nhận lịch công bố kết quả?"))return;await action("casting-publish",{castingId:current,publishAt:publishAt.value?new Date(publishAt.value).toISOString():null});await reload()}),
- button("Xếp hàng email",async()=>{const addresses=(all.graders||[]).map(g=>g.email).filter(Boolean);const r=await action("casting-notification-queue",{castingId:current,kind:mail.value,emails:addresses});toast("Đã xếp "+r.queued+" email vào hàng chờ. Chưa gửi mail.")}));
+ button("Xếp hàng email",async()=>{
+  let addresses;
+  if(mail.value==="publication"){
+   const rows=(await api("casting-results",{castingId:current})).rows||[];
+   addresses=rows.filter(x=>x.outcome==="passed"&&x.review==="approved"&&x.fields?.castingEmailConsent===true)
+    .map(x=>x.email).filter(Boolean);
+  }else addresses=(all.graders||[]).map(g=>g.email).filter(Boolean);
+  if(!addresses.length)throw Error("Không có địa chỉ email đủ quyền/đồng ý nhận thư.");
+  const r=await action("casting-notification-queue",{castingId:current,kind:mail.value,emails:addresses});
+  toast("Đã xếp "+r.queued+" email vào hàng chờ. Chưa gửi mail.");
+ }),button("Gửi email đã xếp hàng",async()=>{
+  if(!current)throw Error("Chưa chọn casting.");
+  if(!window.confirm("Gửi tối đa 20 thông báo casting đã xếp hàng qua Resend?"))return;
+  const r=await api("casting-send-notifications",{castingId:current});
+  toast(r.message||"Đã gửi yêu cầu thông báo.");
+ }));
  root.append(publication);host.append(root);
  try{await reload()}catch(e){toast(e.message,true)}
 }
