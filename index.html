@@ -2338,7 +2338,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 let criteriaInputs = '';
                 criteriaList.forEach((crit, idx) => {
                     const val = scoresObj[crit.name] !== undefined ? scoresObj[crit.name] : '';
-                    criteriaInputs += `<td class="py-2 px-2 text-center border-l border-gray-100 hover:bg-gray-50/50 transition"><input type="number" id="score-${cand.id}-${idx}" data-cand="${cand.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="100" step="0.5" value="${val}" ${candInputDisabled ? 'disabled' : ''} oninput="if(this.value>100)this.value=100; if(this.value<0)this.value=0; window.autoSaveScore('${cand.id}', '${gId}', ${groupInfo.passScore})" class="score-input w-16 mx-auto border border-gray-300 p-2 rounded-lg text-center text-xs font-bold text-red-800 outline-none focus:border-red-600 focus:bg-red-50 ${candInputDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent shadow-inner opacity-60' : 'bg-white shadow-sm hover:border-red-400 transition-all duration-300'}" placeholder="-"></td>`;
+                    criteriaInputs += `<td class="py-2 px-2 text-center border-l border-gray-100 hover:bg-gray-50/50 transition"><input type="number" id="score-${cand.id}-${idx}" data-cand="${cand.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="10" step="0.5" value="${val}" ${candInputDisabled ? 'disabled' : ''} oninput="if(this.value>10)this.value=10; if(this.value<0)this.value=0; window.autoSaveScore('${cand.id}', '${gId}', ${groupInfo.passScore})" class="score-input w-16 mx-auto border border-gray-300 p-2 rounded-lg text-center text-xs font-bold text-red-800 outline-none focus:border-red-600 focus:bg-red-50 ${candInputDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent shadow-inner opacity-60' : 'bg-white shadow-sm hover:border-red-400 transition-all duration-300'}" placeholder="-"></td>`;
                 });
 
                 let statusBadgeHtml = (graded.candidateId && Object.keys(scoresObj).length) ? (isPass ? `<span class="bg-emerald-50 text-emerald-600 px-2 py-1 rounded text-[10px] font-bold border border-emerald-200">PASS</span>` : `<span class="bg-rose-50 text-rose-600 px-2 py-1 rounded text-[10px] font-bold border border-rose-200">FAIL</span>`) : `<span class="bg-gray-100 text-gray-500 px-2 py-1 rounded text-[9px] font-medium border border-gray-200">CHỜ</span>`;
@@ -3295,7 +3295,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 
             const criteriaHtml = criteriaList.map((crit, idx) => {
                 const val = selected.scoresObj[crit.name] !== undefined ? selected.scoresObj[crit.name] : '';
-                return `<div class="gs-score-card"><div class="gs-score-row"><div><div class="text-[14px] font-black text-gray-900">${window.escapeHtml(crit.name)}</div><div class="gs-score-note">Trọng số: <b>${crit.weight}%</b> · Nhập điểm từ 0 đến 100.</div></div><div><input type="number" id="score-${candidate.id}-${idx}" data-cand="${candidate.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="100" step="0.5" value="${val}" ${selected.candInputDisabled ? 'disabled' : ''} oninput="if(this.value>100)this.value=100; if(this.value<0)this.value=0; window.autoSaveScore('${candidate.id}','${gId}',${groupInfo.passScore})" class="score-input gs-score-input-lg" placeholder="-"></div></div></div>`;
+                return `<div class="gs-score-card"><div class="gs-score-row"><div><div class="text-[14px] font-black text-gray-900">${window.escapeHtml(crit.name)}</div><div class="gs-score-note">Trọng số: <b>${crit.weight}%</b> · Nhập điểm từ 0 đến 100.</div></div><div><input type="number" id="score-${candidate.id}-${idx}" data-cand="${candidate.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="10" step="0.5" value="${val}" ${selected.candInputDisabled ? 'disabled' : ''} oninput="if(this.value>10)this.value=10; if(this.value<0)this.value=0; window.autoSaveScore('${candidate.id}','${gId}',${groupInfo.passScore})" class="score-input gs-score-input-lg" placeholder="-"></div></div></div>`;
             }).join('');
 
             let disabledBanner = '';
@@ -3380,7 +3380,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
             const extraHtml = shownExtraFields.map(f => `<td class="py-3 px-3 text-center align-middle text-[11px] text-gray-700 whitespace-nowrap break-words">${window.escapeHtml((candExtraData || {})[f.name] || '-')}</td>`).join('');
             const criteriaInputs = criteriaList.map((crit, idx) => {
                 const val = scoresObj[crit.name] !== undefined ? scoresObj[crit.name] : '';
-                return `<td class="py-2 px-2 text-center border-l border-gray-100 hover:bg-gray-50/50 transition"><input type="number" id="score-${cand.id}-${idx}" data-cand="${cand.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="100" step="0.5" value="${val}" ${candInputDisabled ? 'disabled' : ''} oninput="if(this.value>100)this.value=100; if(this.value<0)this.value=0; window.autoSaveScore('${cand.id}','${gId}',${groupInfo.passScore})" class="score-input w-16 mx-auto border border-gray-300 p-2 rounded-lg text-center text-xs font-bold text-red-800 outline-none focus:border-red-600 focus:bg-red-50 ${candInputDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent shadow-inner opacity-60' : 'bg-white shadow-sm hover:border-red-400 transition-all duration-300'}" placeholder="-"></td>`;
+                return `<td class="py-2 px-2 text-center border-l border-gray-100 hover:bg-gray-50/50 transition"><input type="number" id="score-${cand.id}-${idx}" data-cand="${cand.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="10" step="0.5" value="${val}" ${candInputDisabled ? 'disabled' : ''} oninput="if(this.value>10)this.value=10; if(this.value<0)this.value=0; window.autoSaveScore('${cand.id}','${gId}',${groupInfo.passScore})" class="score-input w-16 mx-auto border border-gray-300 p-2 rounded-lg text-center text-xs font-bold text-red-800 outline-none focus:border-red-600 focus:bg-red-50 ${candInputDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent shadow-inner opacity-60' : 'bg-white shadow-sm hover:border-red-400 transition-all duration-300'}" placeholder="-"></td>`;
             }).join('');
             const presentRowClass = (!isAdmin && groupInfo.attendanceEnabled && present) ? 'bg-emerald-50/80 ring-1 ring-inset ring-emerald-200' : 'hover:bg-red-50/20';
             const presentNameBadge = (!isAdmin && groupInfo.attendanceEnabled && present) ? '<span class="ml-2 inline-flex items-center gap-1 text-[8px] font-black uppercase text-emerald-700 bg-white border border-emerald-200 px-1.5 py-0.5 rounded-full"><i class="fas fa-arrow-up"></i> ĐANG THI</span>' : '';
@@ -5714,7 +5714,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
       const raw=String(i.value??'').trim();
       if(raw==='') return;
       const n=Number(raw);
-      if(Number.isFinite(n)) scores[crit]=Math.max(0,Math.min(100,n));
+      if(Number.isFinite(n)) scores[crit]=Math.max(0,Math.min(10,n));
     });
     return {
       cId,gId,pS,
@@ -5770,7 +5770,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
     if(!window._lastQuotaToastAt || now-window._lastQuotaToastAt>12000){
       window._lastQuotaToastAt=now;
       window.showToast?.(
-        'Firebase đã chạm hạn mức. Điểm vừa nhập đã được giữ tạm trên thiết bị này; hệ thống sẽ thử đồng bộ lại sau.',
+        'Dịch vụ lưu điểm đã chạm hạn mức. Điểm vừa nhập đã được giữ tạm trên thiết bị này; hệ thống sẽ thử đồng bộ lại sau.',
         'error'
       );
     }
@@ -7291,7 +7291,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
           criteria.forEach(cr=>{
             const v=scoreFromRow(row,cr);
             if(v===null) missing.push(cr.name);
-            else if(v<0||v>100) missing.push(`${cr.name} (ngoài 0–100)`);
+            else if(v<0||v>10) missing.push(`${cr.name} (ngoài 0–10)`);
             else scores[cr.name]=v;
           });
           if(missing.length){
