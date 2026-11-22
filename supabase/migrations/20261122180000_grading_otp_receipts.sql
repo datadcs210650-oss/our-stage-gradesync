@@ -16,6 +16,7 @@ begin
  end if;
  if exists(select 1 from public.gs_grading_receipts where grader_id=p_grader and group_id=p_group)
  then return jsonb_build_object('ok',false,'code','ALREADY_CONFIRMED');end if;
+ if not exists(select 1 from public.gs_google_grader_access where profile_id=p_grader and enabled=true and auth_user_id is not null) then return jsonb_build_object('ok',false,'code','GOOGLE_NOT_INVITED');end if;
  insert into public.gs_otp_challenges(grader_id,group_id,otp_digest,expires_at,sent_at,failed_attempts,used_at)
  values(p_grader,p_group,p_digest,p_expires,now(),0,null)
  on conflict(grader_id,group_id) do update set otp_digest=excluded.otp_digest,
@@ -50,7 +51,7 @@ begin
  then return jsonb_build_object('ok',false,'code','ALREADY_CONFIRMED');end if;
  select count(*) into v_total from public.candidates where group_id=p_group;
  select count(*) into v_count from public.scores where group_id=p_group and grader_id=p_grader
-   and jsonb_typeof(scores)='object' and jsonb_object_length(scores)>0;
+   and jsonb_typeof(scores)='object' and scores <> '{}'::jsonb;
  if v_count=0 or v_count<v_total then
   return jsonb_build_object('ok',false,'code','INCOMPLETE_SCORE_COUNT','scored',v_count,'expected',v_total);
  end if;
