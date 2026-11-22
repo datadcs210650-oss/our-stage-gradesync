@@ -28,7 +28,7 @@ revoke all on function public.gs_scoring_allowed(uuid,uuid,jsonb) from public,an
 grant execute on function public.gs_scoring_allowed(uuid,uuid,jsonb) to authenticated;
 create or replace function public.gs_guard_score_write()
 returns trigger language plpgsql security definer set search_path=pg_catalog,public,auth
-as $
+as $$
 declare v_actor uuid;
 begin
  if coalesce((select auth.role()),'') <> 'authenticated' then return new; end if;
@@ -63,9 +63,9 @@ for each row execute function public.gs_guard_otp_verification();
 
 create or replace function public.gs_has_receipt(p_grader uuid,p_group uuid)
 returns boolean language sql stable security definer set search_path=pg_catalog,public
-as $
+as $$
  select exists(select 1 from public.gs_grading_receipts where grader_id=p_grader and group_id=p_group)
-$;
+$$;
 revoke all on function public.gs_has_receipt(uuid,uuid) from public,anon;
 grant execute on function public.gs_has_receipt(uuid,uuid) to authenticated;
 
