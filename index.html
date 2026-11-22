@@ -818,6 +818,13 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 if(p?.role!=="Grader"||p?.status!=="Active"||!p.code)throw Error("EMAIL_NOT_AUTHORIZED");
                 window.currentUserData={...p,role:"Grader",assignedGroups:p.assignedGroups||[],allowedMenus:["grading_table"]};
                 localStorage.setItem("gradeSyncSession",JSON.stringify(window.currentUserData));
+                const scopes=await supabase.from("gs_criterion_grants")
+                    .select("group_id,criterion").eq("grader_id",p.id);
+                if(scopes.error)throw scopes.error;
+                window._gsCriterionRestrictions={};
+                for(const row of scopes.data||[]){
+                    (window._gsCriterionRestrictions[row.group_id] ||= []).push(row.criterion);
+                }
                 window._lastInitAuthUid=user.uid;
                 window._seedAssignedGroupNamesFromUser?.();
                 await window._preloadGraderAssignedGroups?.();
@@ -7607,5 +7614,6 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 })();
 </script>
 
+<script type="module" src="./grader-google-ui.js"></script>
 </body>
 </html>
