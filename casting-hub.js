@@ -98,6 +98,12 @@ async function loadCastingHub(parent){
  }),button("Kiểm tra đồng bộ OSC",async()=>{
   const res=await action("casting-sync-payload",{castingId:current});
   toast("Đã đối chiếu "+res.candidates.length+" hồ sơ học kỳ "+res.term+". Chưa ghi vào OSC khi chưa xác nhận.");
+ }),button("Đồng bộ vào OSC",async()=>{
+  if(!current)throw Error("Chưa chọn casting.");
+  if(!window.confirm("Xác nhận đồng bộ các thí sinh PASSED đã được BCN duyệt vào danh sách diễn viên học kỳ?"))return;
+  const response=await api("sync-approved-members",{castingId:current});
+  toast(response.pendingReconcile?"Đã lưu vào OSC, cần đối soát trạng thái GrandeSync.":"Đã đồng bộ "+response.synced+" thành viên vào OSC.");
+  await showResults();
  }),button("Xuất CSV",()=>{
   if(!result)throw Error("Chưa tải kết quả.");const rows=[["SBD","MSSV","Tên","Điểm","Kết quả","Duyệt"],...result.rows.map(r=>[r.code,r.mssv,r.name,r.score,r.outcome,r.review])];
   const csv="\uFEFF"+rows.map(row=>row.map(v=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'}).join(",")).join("\r\n");
