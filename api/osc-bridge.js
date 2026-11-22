@@ -97,7 +97,7 @@ function graderPassword(value){
 function password(){return crypto.randomBytes(24).toString("base64url")+"aA7!";}
 function graderGoogleEmail(value){
  const email=String(value||"").trim().toLowerCase();
- if(email&&!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||email.length>254)fail("Email Google của BGK không hợp lệ.");
+ if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)fail("Email Google của BGK không hợp lệ.");
  return email;
 }
 async function grantGraderGoogleEmail(graderId,rawEmail,revokeLinked=false){
@@ -165,6 +165,7 @@ async function updateGrader(actor,body){
   if(found.length!==groups.length)fail("Có nhóm thi không tồn tại.");
  }
  // Server updates actual assignment rows as well as profile UI metadata.
+ if(body.googleEmail!==undefined)graderGoogleEmail(body.googleEmail);
  const db=sb(),read=await db.from("grader_assignments").select("id,group_id").eq("grader_id",id);
  if(read.error)fail("Không đọc được phân quyền nhóm.","osc/gradesync-upstream");
  const old=read.data||[],wanted=new Set(groups),current=new Set(old.map(x=>x.group_id));
