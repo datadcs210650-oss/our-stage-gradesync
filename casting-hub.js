@@ -58,7 +58,7 @@ async function loadCastingHub(parent){
  root.append(el("h2","text-xl font-black text-red-900","Quản lý casting theo học kỳ"));
  root.append(el("p","text-xs text-gray-500","Casting FA/SU/SP • Google BGK • Đối soát điểm • Duyệt kết quả • Công bố theo lịch"));
  status=el("p","text-xs font-semibold");status.setAttribute("role","status");root.append(status);
- castingSelect=field("select");castingSelect.onchange=()=>{current=castingSelect.value;title.textContent=summary()?.name||"";result=null;table.replaceChildren()};
+ castingSelect=field("select");castingSelect.id="gsxCastingSelect";castingSelect.onchange=()=>{current=castingSelect.value;title.textContent=summary()?.name||"";result=null;table.replaceChildren()};
  root.append(formRow("Chọn casting",castingSelect));
  const setup=stack(),create=panel("Tạo casting mới"),cgrid=stack(),term=field("select"),name=field("input","Tên casting"),
  method=field("select"),pass=field("input");setTermOptions(term);
