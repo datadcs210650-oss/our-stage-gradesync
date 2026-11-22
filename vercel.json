@@ -17,6 +17,23 @@
           "value": "no-store, no-cache, must-revalidate, max-age=0"
         }
       ]
+    },
+    {
+      "source": "/osc-console.html",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors https://admin.ourstage.io.vn; form-action 'none'; object-src 'none'; connect-src 'none'"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        }
+      ]
     }
   ]
 }

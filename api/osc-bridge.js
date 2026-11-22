@@ -12,7 +12,7 @@ const handleError=(res,error)=>{console.error("OSC GradeSync bridge exception",e
 const GRADER_PORTAL="https://gradesyncfinal.vercel.app/";
 const ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE=/^[A-Z][A-Z0-9_-]{2,19}$/;
-const ALLOWED_ACTIONS=new Set(["overview","group-detail","create-grader","update-grader","lock-grader","reset-grader-password","create-group","toggle-group","add-candidate","mark-attendance"]);
+const ALLOWED_ACTIONS=new Set(["overview","group-detail","create-grader","update-grader","lock-grader","reset-grader-password","create-group","toggle-group","add-candidate","mark-attendance","console-documents","delete-grader"]);
 function fail(message,code="osc/gradesync-invalid"){const e=new Error(message);e.code=code;throw e}
 function safeText(x,max=120){return String(x??"").trim().replace(/\s+/g," ").slice(0,max)}
 function sb(){return createClient(origin(),key(),{auth:{persistSession:false,autoRefreshToken:false}})}
@@ -109,6 +109,10 @@ async function createGrader(actor,body){
   const profile={id,code,name,email,role:"Grader",status:"Active",
    assigned_groups:groupIds,allowed_menus:["grading_table"],extra_data:{}};
   await supa("/rest/v1/profiles",{method:"POST",body:profile,headers:{Prefer:"return=minimal"}});
+  if(groupIds.length){
+   const {error}=await sb().from("grader_assignments").insert(groupIds.map(group_id=>({grader_id:id,group_id})));
+   if(error)fail("Không thể phân công giám khảo.");
+  }
   await audit(actor,"grader-created",id);
  }catch(e){await sb().auth.admin.deleteUser(id).catch(()=>{});throw e}
  // Temporary password is returned once, only over the authenticated OSC manager response.
@@ -231,7 +235,7 @@ async function markAttendance(actor,body){
 
 async function handle(req,res){
  if(req.method!=="POST")return sendJson(res,405,{ok:false,error:"Chỉ hỗ trợ POST."});
- if((Number(req.headers["content-length"]||0)>16000))return sendJson(res,413,{ok:false,error:"Yêu cầu quá lớn."});
+ if((Number(req.headers["content-length"]||0)>3000000))return sendJson(res,413,{ok:false,error:"Yêu cầu quá lớn."});
  const originHeader=String(req.headers.origin||"");
  if(originHeader&&originHeader!=="https://admin.ourstage.io.vn"&&
    !/^https:\/\/ourstageclubmanagerv17vercelpackage-[a-z0-9-]+\.vercel\.app$/.test(originHeader))
@@ -242,6 +246,25 @@ async function handle(req,res){
   let result;
   if(action==="overview")result=await overview();
   else if(action==="group-detail")result=await groupDetail(b);
+  else if(action==="console-documents"){
+   if(!Array.isArray(b.ops)||b.ops.length<1||b.ops.length>1000)fail("Lô dữ liệu không hợp lệ.");
+   const {data,error}=await sb().rpc("osc_grading_documents",{ops:b.ops,actor_uid:actor.decoded.uid});
+   if(error){
+    console.warn("OSC grading document operation",error.code);
+    fail(error.message?.includes("SCORE_CONFLICT")?"Điểm vừa được cập nhật. Hãy tải lại.":"Không thể lưu hoặc đọc dữ liệu chấm điểm ("+error.code+").");
+   }
+   result={ok:true,rows:data};
+  }
+  else if(action==="delete-grader"){
+   const id=String(b.graderId||"");
+   if(!ID.test(id))fail("Mã giám khảo không hợp lệ.");
+   const profile=await supa(url("profiles",{id:"eq."+id,role:"eq.Grader",select:"id",limit:"1"}));
+   if(!profile?.length)fail("Không tìm thấy giám khảo.");
+   const deleted=await sb().auth.admin.deleteUser(id);
+   if(deleted.error)fail("Không thể xóa giám khảo.");
+   await audit(actor,"grader-deleted",id);
+   result={ok:true};
+  }
   else if(action==="create-grader")result=await createGrader(actor,b);
   else if(action==="update-grader")result=await updateGrader(actor,b);
   else if(action==="lock-grader")result=await lockGrader(actor,b);
