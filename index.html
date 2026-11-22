@@ -131,6 +131,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 </style>
 
 <!-- Quota-safe build: autosave 650ms, no per-keystroke audit, local fallback enabled. -->
+<link rel="stylesheet" href="./live-grid-layout.css">
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex relative selection:bg-red-200 selection:text-red-900">
     <div id="loading-overlay" class="fixed inset-0 bg-white/90 backdrop-blur-sm z-[150] justify-center items-center flex-col gap-3">
@@ -7615,5 +7616,6 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 </script>
 
 <script type="module" src="./grader-google-ui.js"></script>
+<script src="./live-grid-layout.js" defer></script>
 </body>
 </html>
