@@ -1,8 +1,8 @@
-/* BGK-only Google account flows. OTP locks are confirmed by the server. */
+/* BGK Google and legacy login: mandatory email OTP before confirmed score locks. */
 (()=>{
 "use strict";
 const sb=window.supabase;
-const grader=()=>window.currentUserData?.role==="Grader"&&window.auth?.currentUser?.googleGrader===true;
+const grader=()=>window.currentUserData?.role==="Grader"&&window.auth?.currentUser?.isAnonymous===true;
 const notify=(text,isError=false)=>window.showToast?.(text,isError?"error":"success");
 function node(tag,text,cls){const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e}
 async function api(action,groupId,extras={}){
