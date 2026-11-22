@@ -50,17 +50,20 @@ async function preflight(db,profile,groupId){
  return group;
 }
 async function sendMail(to,code,groupName){
- const key=process.env.RESEND_API_KEY||"",from=process.env.GRADESYNC_FROM_EMAIL||"";
- if(!key||!from)throw fail("Chưa cấu hình email OTP cho GrandeSync.",503);
- const clean=String(groupName||"").replace(/[<>&"']/g,"").slice(0,120);
- const response=await fetch("https://api.resend.com/emails",{
-  method:"POST",signal:AbortSignal.timeout(10000),
-  headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},
-  body:JSON.stringify({from,to:[to],subject:"OSC GrandeSync · Mã xác nhận bảng điểm",
-   html:"<p>Yêu cầu xác nhận bảng điểm "+clean+".</p><p>Mã OTP: <b style='font-size:24px'>"+code+"</b></p><p>Mã có hiệu lực 5 phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>"})
+ const secret=process.env.GRADESYNC_OTP_RELAY_SECRET||"";
+ if(secret.length<32)throw fail("Chưa cấu hình kênh gửi OTP an toàn.",503);
+ const payload={action:"gradesync-otp-relay",to,code,groupName:String(groupName||"").slice(0,120),nonce:crypto.randomUUID()};
+ const body=JSON.stringify(payload),ts=String(Date.now());
+ const signature=crypto.createHmac("sha256",secret).update(ts+"\n"+body).digest("hex");
+ const response=await fetch("https://admin.ourstage.io.vn/api/gradesync",{
+   method:"POST",redirect:"error",signal:AbortSignal.timeout(12000),
+   headers:{"Content-Type":"application/json","X-OSC-Timestamp":ts,"X-OSC-Signature":signature},
+   body
  });
- if(!response.ok)throw fail("Dịch vụ email từ chối gửi OTP. Hãy liên hệ BCN.",503);
+ const result=await response.json().catch(()=>({}));
+ if(!response.ok||result.ok!==true)throw fail(result.error||"Dịch vụ OTP chưa chấp nhận gửi mã.",503);
 }
+
 export default async function handler(req,res){
  if(req.method!=="POST")return reply(res,405,{ok:false,error:"Chỉ hỗ trợ POST."});
  if(Number(req.headers["content-length"]||0)>12000)return reply(res,413,{ok:false,error:"Yêu cầu quá lớn."});
@@ -76,7 +79,7 @@ export default async function handler(req,res){
   const db=sb(),{profile,email}=await actor(db,token);
   if(body.action==="request"){
    const group=await preflight(db,profile,gid);
-   if(!process.env.RESEND_API_KEY||!process.env.GRADESYNC_FROM_EMAIL)
+   if(!process.env.GRADESYNC_OTP_RELAY_SECRET)
     throw fail("Chưa cấu hình dịch vụ email OTP.",503);
    const otp=String(crypto.randomInt(0,1000000)).padStart(6,"0");
    const expires=new Date(Date.now()+5*60*1000).toISOString();
