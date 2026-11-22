@@ -63,8 +63,8 @@ async function loadCastingHub(parent){
  const setup=stack(),create=panel("Tạo casting mới"),cgrid=stack(),term=field("select"),name=field("input","Tên casting"),
  method=field("select"),pass=field("input");setTermOptions(term);
  for(const [v,t] of [["mean","Trung bình"],["weighted","Trọng số BGK"],["trimmed","Bỏ điểm cao nhất & thấp nhất (≥3 BGK)"]]){const op=el("option","",t);op.value=v;method.append(op)}
- pass.type="number";pass.min="0";pass.max="100";pass.value="50";
- cgrid.append(formRow("Học kỳ",term),formRow("Tên casting",name),formRow("Phương pháp",method),formRow("Điểm đạt (0–100)",pass));
+ pass.type="number";pass.min="0";pass.max="10";pass.step=".1";pass.value="5";
+ cgrid.append(formRow("Học kỳ",term),formRow("Tên casting",name),formRow("Phương pháp",method),formRow("Điểm đạt (0–10)",pass));
  create.append(cgrid,button("Tạo casting",async()=>{const r=await action("casting-save",{term:term.value,name:name.value,method:method.value,passScore:Number(pass.value)});current=r.casting.id;await reload()}));
  setup.append(create);
  const grants=panel("Đăng nhập Google & quyền BGK");graderSelect=field("select");const email=field("input","Email Google đã được cấp");email.type="email";
