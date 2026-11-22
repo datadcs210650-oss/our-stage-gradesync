@@ -27,8 +27,8 @@ $$;
 revoke all on function public.gs_scoring_allowed(uuid,uuid,jsonb) from public,anon;
 grant execute on function public.gs_scoring_allowed(uuid,uuid,jsonb) to authenticated;
 create or replace function public.gs_guard_score_write()
-returns trigger language plpgsql security invoker set search_path=pg_catalog,public,auth
-as $$
+returns trigger language plpgsql security definer set search_path=pg_catalog,public,auth
+as $
 declare v_actor uuid;
 begin
  if coalesce((select auth.role()),'') <> 'authenticated' then return new; end if;
@@ -60,6 +60,14 @@ $$;
 drop trigger if exists gs_verify_otp_gate on public.grader_verifications;
 create trigger gs_verify_otp_gate before insert or update on public.grader_verifications
 for each row execute function public.gs_guard_otp_verification();
+
+create or replace function public.gs_has_receipt(p_grader uuid,p_group uuid)
+returns boolean language sql stable security definer set search_path=pg_catalog,public
+as $
+ select exists(select 1 from public.gs_grading_receipts where grader_id=p_grader and group_id=p_group)
+$;
+revoke all on function public.gs_has_receipt(uuid,uuid) from public,anon;
+grant execute on function public.gs_has_receipt(uuid,uuid) to authenticated;
 
 create or replace function public.gradesync_save_score(
   p_candidate_id uuid, p_group_id uuid, p_scores jsonb,
@@ -94,7 +102,7 @@ begin
  then raise exception 'UNASSIGNED_SCORING_CRITERION';end if;
  if exists(select 1 from public.grader_verifications where grader_id=v_grader
  and group_id=p_group_id and is_verified=true) or
- exists(select 1 from public.gs_grading_receipts where grader_id=v_grader and group_id=p_group_id)
+ public.gs_has_receipt(v_grader,p_group_id)
  then raise exception 'SCORES_ALREADY_SUBMITTED';end if;
  -- Normalized average of only the criteria assigned to this judge.
  for crit in select value from public.competition_groups g,
