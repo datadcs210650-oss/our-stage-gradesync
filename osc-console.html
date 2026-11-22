@@ -7544,6 +7544,7 @@ window.currentUserData = null; window.activeListeners = [];
 import "./casting-hub.js";
 import "./candidate-editor.js";
 import {installJudgeEmailAdmin} from "./judge-email-admin.js";
+import {installCastingActorRoster} from "./casting-actor-roster.js";
 const call=window.oscGradingCall;
 const renderExports=window.loadAdminOverviewScores;
 window.loadAdminOverviewScores=async function(container){
@@ -7642,6 +7643,7 @@ window.loadAccountManager=async function(container){
   return result;
 };
 installJudgeEmailAdmin({call});
+installCastingActorRoster();
 window.handleLogout=()=>call("exit");
 window.repairPublicationIndexes=()=>{};
 window.repairLegacyEncodedTextV27=()=>{};
