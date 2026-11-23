@@ -238,7 +238,57 @@ html,body{background:#fff!important;background-image:none!important}
       <div class="pt-3 text-[10px] text-slate-400">Thiết lập được lưu trên trình duyệt này.</div>
     </div>
 <script type="module">
-        
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+// Only a PUBLIC publishable key is present in this iframe. Database reads/writes
+// remain behind the authenticated OSC server bridge; this client listens to
+// read-only, data-free version signals emitted by Supabase Postgres triggers.
+const changeSignalClient=createClient(
+ "https://nkpfzjhqtdjcfypkishv.supabase.co",
+ "sb_publishable_tdThu4m1zvDazd6j3raL_g_TK1OwOrD",
+ {auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}
+);
+const changeSignalWatchers=new Map();
+let changeSignalChannel=null;
+function connectChangeSignals(){
+ if(changeSignalChannel)return;
+ const channel=changeSignalClient.channel("osc_score_change_only_"+crypto.randomUUID())
+  .on("postgres_changes",{
+   event:"UPDATE",schema:"public",table:"gs_change_signal"
+  },event=>{
+   const scope=String(event.new?.scope||"");
+   for(const watcher of changeSignalWatchers.get(scope)||[])watcher.onChange();
+  });
+ changeSignalChannel=channel;
+ channel.subscribe(status=>{
+  if(changeSignalChannel!==channel)return;
+  if(status==="SUBSCRIBED"){
+   // One reconnection catch-up: an edit made while the socket was asleep
+   // must not be missed. Never poll when connected and idle.
+   for(const set of changeSignalWatchers.values())
+    for(const watcher of set)watcher.onChange();
+  }else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){
+   for(const set of changeSignalWatchers.values())
+    for(const watcher of set)watcher.onError?.(new Error("Kết nối cập nhật trực tiếp tạm gián đoạn."));
+  }
+ });
+}
+function watchChangeSignals(scope,onChange,onError){
+ let watchers=changeSignalWatchers.get(scope);
+ if(!watchers){watchers=new Set();changeSignalWatchers.set(scope,watchers)}
+ const watcher={onChange,onError};
+ watchers.add(watcher);
+ connectChangeSignals();
+ return()=>{
+  watchers.delete(watcher);
+  if(!watchers.size)changeSignalWatchers.delete(scope);
+  if(!changeSignalWatchers.size&&changeSignalChannel){
+   const old=changeSignalChannel;changeSignalChannel=null;
+   changeSignalClient.removeChannel(old).catch(()=>{});
+  }
+ };
+}
+
 // Runs in a separate-origin iframe. The OSC parent owns the authenticated requests.
 const pending=new Map();
 let wire;
@@ -394,20 +444,55 @@ async function runTransaction(_db,fn){
  await commit(ops);return result;
 }
 function onSnapshot(ref,next,onError){
- let live=true,timer,previous=new Map(),first=true;
+ // Initial load + Supabase change events only. No HTTP timer or Firestore polling.
+ let live=true,previous=new Map(),first=true,scheduled=null,running=false,dirty=false;
+ const schedule=()=>{
+  if(!live)return;
+  if(document.hidden){dirty=true;return}
+  if(scheduled!==null)return;
+  scheduled=setTimeout(()=>{scheduled=null;update()},300);
+ };
  async function update(){
+  if(!live)return;
+  if(document.hidden){dirty=true;return}
+  if(running){dirty=true;return}
+  running=true;
   try{
-   if(ref.kind==="doc"){const snap=await getDoc(ref);const val=JSON.stringify(snap._row);if(live&&(first||previous.get(ref.id)!==val)){previous.set(ref.id,val);next(snap)}}
-   else{const snap=await getDocs(ref),now=new Map(snap.docs.map(d=>[d.id,d])),changes=[];
-    for(const [id,d] of now){const old=previous.get(id);if(!old||JSON.stringify(old._row)!==JSON.stringify(d._row))changes.push({type:old?"modified":"added",doc:d})}
-    for(const [id,d] of previous)if(!now.has(id))changes.push({type:"removed",doc:d});
-    previous=now;if(live&&(first||changes.length)){snap._changes=changes;next(snap)}
+   if(ref.kind==="doc"){
+    const snap=await getDoc(ref),value=JSON.stringify(snap._row);
+    if(live&&(first||previous.get(ref.id)!==value)){
+     previous.set(ref.id,value);next(snap);
+    }
+   }else{
+    const snap=await getDocs(ref),now=new Map(snap.docs.map(d=>[d.id,d])),changes=[];
+    for(const [id,d] of now){
+     const old=previous.get(id);
+     if(!old||JSON.stringify(old._row)!==JSON.stringify(d._row))
+      changes.push({type:old?"modified":"added",doc:d});
+    }
+    for(const [id,d] of previous)if(!now.has(id))
+     changes.push({type:"removed",doc:d});
+    if(live){previous=now;if(first||changes.length){snap._changes=changes;next(snap)}}
    }
    first=false;
   }catch(e){if(live)onError?.(e)}
-  finally{if(live)timer=setTimeout(update,document.hidden?30000:5000)}
+  finally{
+   running=false;
+   if(live&&dirty){dirty=false;schedule()}
+  }
  }
- update();return ()=>{live=false;clearTimeout(timer)};
+ const release=watchChangeSignals(T(ref.table),schedule,onError);
+ const foreground=()=>{
+  // Do not fetch merely because time passed. Catch up only if change
+  // notifications were queued while the iframe was hidden.
+  if(!document.hidden&&dirty){dirty=false;schedule()}
+ };
+ document.addEventListener("visibilitychange",foreground);
+ update();
+ return()=>{
+  live=false;clearTimeout(scheduled);
+  release();document.removeEventListener("visibilitychange",foreground);
+ };
 }
 function serverTimestamp(){return new CompatTimestamp(new Date())}
 const auth={currentUser:null};window.auth=auth;
