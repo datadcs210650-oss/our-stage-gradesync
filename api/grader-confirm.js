@@ -56,10 +56,18 @@ async function preflight(db,profile,groupId){
  const requiredCriteria=(group.criteria||[]).filter(c=>!allowed||allowed.has(c.name)).map(c=>c.name);
  const incomplete=candidates.filter(c=>{
   const marks=byCandidate.get(c.id)||{};
-  return !requiredCriteria.length||requiredCriteria.some(name=>typeof marks[name]!=="number"||marks[name]<0||marks[name]>100);
+  return requiredCriteria.some(name=>typeof marks[name]!=="number"||marks[name]<0||marks[name]>10);
  });
- if(incomplete.length)throw fail("Chưa thể khóa: "+incomplete.length+" thí sinh thiếu tiêu chí hoặc chưa lưu điểm.",409);
- return group;
+ const scored=candidates.filter(c=>Object.keys(byCandidate.get(c.id)||{}).length>0).length;
+ const missingCriteria=candidates.reduce((count,c)=>{
+  const marks=byCandidate.get(c.id)||{};
+  return count+requiredCriteria.filter(name=>typeof marks[name]!=="number").length;
+ },0);
+ return {group,completeness:{
+  totalCandidates:candidates.length,scoredCandidates:scored,
+  missingCandidates:candidates.length-scored,missingCriterionCells:missingCriteria,
+  partial:incomplete.length>0, incompleteCandidates:incomplete.length
+ }};
 }
 async function sendMail(to,code,groupName){
  const secret=process.env.GRADESYNC_OTP_RELAY_SECRET||"";
@@ -89,8 +97,14 @@ export default async function handler(req,res){
   const gid=String(body.groupId||"");
   if(!UUID.test(gid))throw fail("Phiên chấm không hợp lệ.");
   const db=sb(),{profile,email}=await actor(db,token);
+  if(body.action==="preflight"){
+   const info=await preflight(db,profile,gid);
+   return reply(res,200,{ok:true,groupName:info.group.name,completeness:info.completeness});
+  }
   if(body.action==="request"){
-   const group=await preflight(db,profile,gid);
+   const {group,completeness}=await preflight(db,profile,gid);
+   if(completeness.partial&&body.confirmPartial!==true)
+    throw fail("Bảng điểm chưa đầy đủ; cần xác nhận rõ số thí sinh/tiêu chí còn thiếu trước khi gửi OTP.",409);
    if(!process.env.GRADESYNC_OTP_RELAY_SECRET)
     throw fail("Chưa cấu hình dịch vụ email OTP.",503);
    const otp=String(crypto.randomInt(0,1000000)).padStart(6,"0");
@@ -98,10 +112,10 @@ export default async function handler(req,res){
    const issued=required(await db.rpc("gs_issue_grading_otp",{p_grader:profile.id,p_group:gid,p_digest:digest(profile.id,gid,otp),p_expires:expires}));
    if(!issued.ok)throw fail(issued.code==="COOLDOWN"?"Chỉ gửi lại OTP sau 60 giây.":"Không thể cấp OTP: "+issued.code,429);
    await sendMail(email,otp,group.name);
-   return reply(res,200,{ok:true,expiresIn:300,emailMasked:email.replace(/^(.{2}).*(@[^@]+)$/,"$1***$2")});
+   return reply(res,200,{ok:true,expiresIn:300,completeness,emailMasked:email.replace(/^(.{2}).*(@[^@]+)$/,"$1***$2")});
   }
   if(body.action==="receipt"){
-   const receipt=required(await db.from("gs_grading_receipts").select("email,grader_name,verified_at,snapshot,snapshot_sha256").eq("grader_id",profile.id).eq("group_id",gid).maybeSingle());
+   const receipt=required(await db.from("gs_grading_receipts").select("email,grader_name,verified_at,snapshot,snapshot_sha256,completeness").eq("grader_id",profile.id).eq("group_id",gid).maybeSingle());
    if(!receipt)throw fail("Chưa có biên bản xác nhận.",404);
    const [group,candidates]=await Promise.all([
     db.from("competition_groups").select("name").eq("id",gid).single(),
@@ -111,7 +125,7 @@ export default async function handler(req,res){
    const names=new Map((candidates.data||[]).map(c=>[c.id,{name:c.name,code:c.code}]));
    return reply(res,200,{ok:true,receipt:{
      groupName:group.data.name,graderName:receipt.grader_name,email:receipt.email,
-     confirmedAt:receipt.verified_at,sha256:receipt.snapshot_sha256,
+     confirmedAt:receipt.verified_at,sha256:receipt.snapshot_sha256,completeness:receipt.completeness,
      rows:(receipt.snapshot||[]).map(row=>({candidateId:row.candidateId,...(names.get(row.candidateId)||{}),
       scores:row.scores,total:row.total,revision:row.revision}))
    }});
@@ -121,7 +135,7 @@ export default async function handler(req,res){
    if(!/^\d{6}$/.test(code))throw fail("Mã OTP phải đủ 6 chữ số.");
    const data=required(await db.rpc("gs_finalize_grading_otp",{p_grader:profile.id,p_group:gid,p_digest:digest(profile.id,gid,code)}));
    if(!data?.ok)throw fail(data.code==="OTP_INVALID"?"OTP không đúng.":data.code==="OTP_EXPIRED"?"OTP đã hết hạn.":"Không thể xác nhận: "+(data?.code||"unknown"),409);
-   return reply(res,200,{ok:true,sha256:data.sha256,confirmedAt:data.confirmedAt});
+   return reply(res,200,{ok:true,sha256:data.sha256,confirmedAt:data.confirmedAt,completeness:data.completeness});
   }
   throw fail("Tác vụ OTP không hợp lệ.");
  }catch(e){
