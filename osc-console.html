@@ -7418,7 +7418,9 @@ window.currentUserData = null; window.activeListeners = [];
         window.oscGradingCall("casting-grader-receipt",{groupId,graderCode})
       ]);
       const receipt=meta?.receipt||null;
-      const scoreMap=new Map(scores.map(s=>[s.candidateId,s]));
+      // Bảng điểm đã khóa luôn xuất từ snapshot OTP bất biến, không lấy điểm live sau khi ký.
+      const authoritativeScores=receipt?receipt.snapshot.map(row=>({...row,totalScore:row.total})):scores;
+      const scoreMap=new Map(authoritativeScores.map(row=>[row.candidateId,row]));
       const criteria=group.criteria||[];
       const allowed=new Set((meta?.allowedCriteria||[]).filter(Boolean));
       const expected=allowed.size?criteria.filter(c=>allowed.has(c.name)):criteria;
@@ -7501,6 +7503,7 @@ window.currentUserData = null; window.activeListeners = [];
           <div><b>Điểm đạt:</b> ≥ ${esc(group.passScore||0)}</div>
           <div><b>Thời gian khóa/nộp:</b> ${esc(signTime)}</div>
           <div><b>Tình trạng dữ liệu:</b> ${esc(auditLine)}</div>
+          ${receipt?'<div><b>Nguồn điểm:</b> Bản chốt bất biến khi xác nhận OTP; SHA-256 đối chiếu snapshot, không phải hash của toàn bộ tệp PDF.</div>':''}
         </div>
         <table>
           <thead><tr><th>STT</th><th>SBD</th><th>Họ tên</th>${th}<th>Tổng</th><th>Kết quả</th></tr></thead>
