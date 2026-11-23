@@ -2233,6 +2233,12 @@ window.currentUserData = null; window.activeListeners = [];
 
         window.startGroupContentClock = function(){
             clearInterval(window._groupContentClock);
+            // OSC admins render scoring content on actual data changes, not
+            // every 30 seconds. Keep the clock only for grader time gates.
+            if(['Admin','SuperAdmin'].includes(window.currentUserData?.role)){
+                window._groupContentClock=null;
+                return;
+            }
             window._groupContentClock=setInterval(()=>{
                 const g=window._groupMapCache?.[window._selectedGradingGroupId];
                 if(!g) return;
