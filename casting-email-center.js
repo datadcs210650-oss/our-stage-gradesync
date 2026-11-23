@@ -115,7 +115,7 @@ window.loadCastingEmail=async function(host){
   for(const g of allGroups.filter(g=>g.castingId===casting.value))group.append(new Option(g.name,g.id));
   if(group.options.length>1)group.selectedIndex=1;
  }
- function clear(){rows=[];chosen.clear();checkAll.checked=false;tbody.replaceChildren();summary.textContent="Chọn phiên rồi nhấn Tải kết quả."}
+ function clear(){requestVersion++;rows=[];chosen.clear();checkAll.checked=false;tbody.replaceChildren();summary.textContent="Chọn phiên rồi nhấn Tải kết quả."}
  casting.onchange=()=>{sessions();clear();logBody.replaceChildren()};
  group.onchange=clear;checkAll.onchange=()=>{chosen.clear();draw()};
  async function loadRows(){
