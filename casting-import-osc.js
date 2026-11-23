@@ -1,8 +1,8 @@
 /* Import OSC member profiles as GradeSync contestants without copying private data to BGK. */
 export function installCastingImportFromOSC(){
- const earlier=window.loadCastingHub;
+ const earlier=window.loadStudentList;
  if(typeof earlier!=="function")return;
- window.loadCastingHub=async function(host){
+ window.loadStudentList=async function(host){
   await earlier(host);
   if(!host)return;
   const root=document.createElement("section");
@@ -67,7 +67,7 @@ export function installCastingImportFromOSC(){
     info.textContent="Đã nhập "+response.imported+" thí sinh, bỏ qua "+response.skipped+" MSSV đã tồn tại. Không thay đổi bảng điểm.";
     checklist.querySelectorAll("input:checked").forEach(x=>x.checked=false);
     window.showToast?.("Đã đồng bộ thí sinh từ OSC.");
-    await window.loadCastingHub(host);
+    await window.loadStudentList(host);
    }catch(e){info.textContent="Không thể đồng bộ: "+e.message}finally{submit.disabled=false}
   };
   try{await listGroups()}catch(e){info.textContent=e.message}
