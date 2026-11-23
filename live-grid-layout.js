@@ -13,7 +13,7 @@ sheet.textContent=[
  ".gsx-live-grid .gsx-col-grip{display:inline-flex;padding:2px 5px;border-radius:5px;margin-right:5px;cursor:grab;color:#9f1239;font-size:18px;user-select:none}",
  ".gsx-live-grid .gsx-col-grip:hover{background:#f6dce6}",
  ".gsx-live-grid .gsx-resize{position:absolute;right:0;top:0;bottom:0;width:9px;cursor:col-resize;touch-action:none;z-index:70}",
- ".gsx-live-grid th{position:relative}",
+ ".gsx-live-grid thead th{position:sticky!important;top:0;z-index:26;background:#f9eef2}",
  ".gsx-live-grid .gsx-drop{outline:2px dashed #991b1b;outline-offset:-2px}",
  ".gsx-live-grid .gsx-dragging{opacity:.5}"
 ].join("\n");
