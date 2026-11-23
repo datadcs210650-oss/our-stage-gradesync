@@ -114,22 +114,9 @@ export default async function handler(req,res){
    await sendMail(email,otp,group.name);
    return reply(res,200,{ok:true,expiresIn:300,completeness,emailMasked:email.replace(/^(.{2}).*(@[^@]+)$/,"$1***$2")});
   }
-  if(body.action==="receipt"){
-   const receipt=required(await db.from("gs_grading_receipts").select("email,grader_name,verified_at,snapshot,snapshot_sha256,completeness").eq("grader_id",profile.id).eq("group_id",gid).maybeSingle());
-   if(!receipt)throw fail("Chưa có biên bản xác nhận.",404);
-   const [group,candidates]=await Promise.all([
-    db.from("competition_groups").select("name").eq("id",gid).single(),
-    db.from("candidates").select("id,name,code").eq("group_id",gid).limit(1500)
-   ]);
-   if(group.error||candidates.error)throw fail("Không thể đọc biên bản.",503);
-   const names=new Map((candidates.data||[]).map(c=>[c.id,{name:c.name,code:c.code}]));
-   return reply(res,200,{ok:true,receipt:{
-     groupName:group.data.name,graderName:receipt.grader_name,email:receipt.email,
-     confirmedAt:receipt.verified_at,sha256:receipt.snapshot_sha256,completeness:receipt.completeness,
-     rows:(receipt.snapshot||[]).map(row=>({candidateId:row.candidateId,...(names.get(row.candidateId)||{}),
-      scores:row.scores,total:row.total,revision:row.revision}))
-   }});
-  }
+  // Biên bản chứa điểm chi tiết chỉ BCN được cấp quyền mới có thể xuất.
+  // Không trả bản snapshot đã chốt cho endpoint xác thực BGK.
+  if(body.action==="receipt")throw fail("Giám khảo không có quyền tải hoặc xuất bảng điểm.",403);
   if(body.action==="confirm"){
    const code=String(body.code||"");
    if(!/^\d{6}$/.test(code))throw fail("Mã OTP phải đủ 6 chữ số.");
