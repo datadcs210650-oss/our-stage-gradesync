@@ -71,7 +71,7 @@ window.loadCastingEmail=async function(host){
  });shell.append(legacy);
  const status=node("p","text-xs font-semibold text-slate-600");status.setAttribute("role","status");shell.append(status);
  host.replaceChildren(shell);
- let allGroups=[],rows=[],chosen=new Set(),requestVersion=0;
+ let allGroups=[],rows=[],chosen=new Set(),requestVersion=0,revision="";
  const notify=(msg,err=false)=>{status.textContent=msg;status.className="text-xs font-semibold "+(err?"text-rose-700":"text-emerald-700")};
  const eligible=()=>rows.filter(row=>row.eligible);
  const selected=()=>rows.filter(row=>row.eligible&&chosen.has(row.id));
@@ -144,7 +144,7 @@ window.loadCastingEmail=async function(host){
   notify("Đang gửi yêu cầu tới Resend, vui lòng không bấm gửi lặp lại...");
   const result=await api("casting-result-email",{task:"dispatch",castingId:casting.value,
    groupId:group.value||undefined,allEligible:all,candidateIds:all?[]:recipients.map(x=>x.id),
-   subject:subject.value,intro:intro.value,thankYou:thanks.value,scheduledAt:at});
+   revision,subject:subject.value,intro:intro.value,thankYou:thanks.value,scheduledAt:at});
   notify(result.message||"Resend đã tiếp nhận yêu cầu.");
   await loadHistory();
  }
@@ -152,6 +152,8 @@ window.loadCastingEmail=async function(host){
   if(!casting.value)return;
   const result=await api("casting-result-email",{task:"history",castingId:casting.value});
   logBody.replaceChildren();
+  const cancelled=(result.jobs||[]).find(x=>x.status==="cancelled");
+  if(cancelled)revision=cancelled.id;
   for(const job of result.jobs||[]){
    const row=node("div","flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 py-2");
    row.append(node("span","text-xs text-slate-700",String(job.status||"")+
