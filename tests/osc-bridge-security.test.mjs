@@ -13,7 +13,7 @@ test("OSC is the sole gateway for GradeSync privileged admin operations",()=>{
 test("secret Supabase key is server-owned and never forwarded to browser",()=>{
  assert.match(source,/process\.env\.SUPABASE_SECRET_KEY/);
  assert.match(source,/apikey/);
- assert.match(source,/Authorization:"Bearer "\+key\(\)/);
+ assert.match(source,/key\(\)\.startsWith\("eyJ"\)\?\{?"?Authorization"?:\s*"Bearer "\+key\(\)/);
  assert.doesNotMatch(source,/res\.end\(key\(\)\)|return.*SUPABASE_SECRET_KEY/);
 });
 test("judge codes, UUIDs and allowed admin actions are validated",()=>{

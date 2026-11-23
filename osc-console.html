@@ -1132,7 +1132,7 @@ window.currentUserData = null; window.activeListeners = [];
             setTimeout(async () => {
                 const w = document.createElement('div'); w.className = 'animate-fade-up h-full flex flex-col min-w-0'; mc.innerHTML = ''; mc.appendChild(w);
                 try { 
-                    const mFn = { 'dashboard': window.loadDashboard, 'statistics': window.loadStatistics, 'groups_manager': window.loadGroupsManager, 'student_list': window.loadStudentList, 'grading_table': window.loadGradingTable, 'admin_live_monitor': window.loadAdminLiveMonitor, 'audit_logs': window.loadAuditLogs, 'admin_overview_scores': window.loadAdminOverviewScores, 'account_manager': window.loadAccountManager, 'casting_hub': window.loadCastingHub }; 
+                    const mFn = { 'dashboard': window.loadDashboard, 'statistics': window.loadStatistics, 'groups_manager': window.loadGroupsManager, 'student_list': window.loadStudentList, 'grading_table': window.loadGradingTable, 'admin_live_monitor': window.loadAdminLiveMonitor, 'audit_logs': window.loadAuditLogs, 'admin_overview_scores': window.loadAdminOverviewScores, 'account_manager': window.loadAccountManager, 'casting_hub': window.loadCastingHub, 'casting_email': window.loadCastingEmail }; 
                     if(mFn[vId]) await mFn[vId](w); 
                 } catch(e) { window.renderErrorState(w, e.message); }
             }, 50);
@@ -4745,62 +4745,41 @@ window.currentUserData = null; window.activeListeners = [];
     if(!n) return showError('Vui lòng nhập tên nhóm.');
     if(!Number.isFinite(p)) return showError('Điểm đạt không hợp lệ.');
     if(o==='auto'&&!s) return showError('Nhóm tự động cần Giờ Mở.');
-    if(!e) return showError('Vui lòng cài Giờ Khóa.');
 
     const startIso=s?localDateToIso(s):null;
     const endIso=localDateToIso(e);
     if(o==='auto'&&!startIso) return showError('Giờ mở không hợp lệ.');
-    if(!endIso) return showError('Giờ khóa không hợp lệ.');
+    if(e&&!endIso) return showError('Giờ khóa không hợp lệ.');
 
-    const criteria=[];
-    let total=0;
-    document.querySelectorAll(`#e-c-c-${CSS.escape(id)} .c-n`).forEach(nameInput=>{
-      const row=nameInput.closest('[data-gs-criteria-row="1"]') || nameInput.parentElement;
-      const weightInput=row?.querySelector('.c-w');
-      const cn=nameInput.value.trim();
-      const cw=Number(weightInput?.value);
-      if(!cn && !weightInput?.value) return;
-      if(!cn) throw new Error('Có tiêu chí chưa nhập tên.');
-      if(!Number.isFinite(cw) || cw<0 || cw>100) throw new Error(`Trọng số của “${cn}” không hợp lệ.`);
-      criteria.push({name:clean(cn),weight:Number(cw.toFixed(2))});
-      total+=cw;
-    });
-    if(!criteria.length) return showError('Nhóm phải có ít nhất 1 tiêu chí chấm.');
-    if(!weightIs100(total)) return showError(`Tổng trọng số hiện tại là ${Number(total.toFixed(2))}%. Tổng phải bằng 100%.`);
-
-    const extraFields=[];
-    document.querySelectorAll(`#e-e-c-${CSS.escape(id)} .e-n`).forEach(input=>{
-      const row=input.closest(`[class*="e-e-${id}"]`) || input.parentElement;
-      const en=input.value.trim();
-      if(en) extraFields.push({name:clean(en),showToGrader:!!row?.querySelector('.e-s')?.checked});
-    });
-
-    window.showLoading?.(true,'Đang lưu nhóm...');
     try{
-      const ref=window.doc(window.db,'competition_groups',id);
-      const snap=await window.getDoc(ref);
-      const old=snap.exists()?snap.data():{};
-      const update={
-        name:clean(n),
-        criteria,
-        extraFields,
-        passScore:p,
-        openMode:o,
-        startTime:startIso,
-        endTime:endIso,
-        openAt:(o==='auto'&&startIso)?new Date(startIso):null,
-        closeAt:new Date(endIso),
-        attendanceEnabled:a,
-        visibleToGraders:true,
-        publishEnabled:true,
-        visibilityExplicitlySet:false,
-        publishAt:(o==='auto'&&startIso)?new Date(startIso):null,
-        publishUntil:new Date(endIso),
-        publicationUpdatedAt:window.serverTimestamp()
-      };
-      if(o==='auto') update.isManuallyOpened=false;
-      await window.setDoc(ref,update,{merge:true});
-      if(window.syncPublicationIndexForGroup) await window.syncPublicationIndexForGroup(id,{...old,...update,id});
+      const criteria=[];
+      let total=0;
+      document.querySelectorAll(`#e-c-c-${CSS.escape(id)} .c-n`).forEach(nameInput=>{
+        const row=nameInput.closest('[data-gs-criteria-row="1"]') || nameInput.parentElement;
+        const weightInput=row?.querySelector('.c-w');
+        const cn=nameInput.value.trim();
+        const cw=Number(weightInput?.value);
+        if(!cn && !weightInput?.value) return;
+        if(!cn) throw new Error('Có tiêu chí chưa nhập tên.');
+        if(!Number.isFinite(cw) || cw<0 || cw>100) throw new Error(`Trọng số của “${cn}” không hợp lệ.`);
+        criteria.push({name:clean(cn),weight:Number(cw.toFixed(2))});
+        total+=cw;
+      });
+      if(!criteria.length) return showError('Nhóm phải có ít nhất 1 tiêu chí chấm.');
+      if(!weightIs100(total)) return showError(`Tổng trọng số hiện tại là ${Number(total.toFixed(2))}%. Tổng phải bằng 100%.`);
+
+      const extraFields=[];
+      document.querySelectorAll(`#e-e-c-${CSS.escape(id)} .e-n`).forEach(input=>{
+        const row=input.closest(`[class*="e-e-${id}"]`) || input.parentElement;
+        const en=input.value.trim();
+        if(en) extraFields.push({name:clean(en),showToGrader:!!row?.querySelector('.e-s')?.checked});
+      });
+
+      window.showLoading?.(true,'Đang lưu nhóm...');
+      await window.oscGradingCall("casting-update-session",{
+        groupId:id,version:nameEl.dataset.version||null,name:n,passScore:p,criteria,extraFields,openMode:o,
+        startAt:startIso,endAt:endIso,attendanceEnabled:a
+      });
       window.showToast?.('Đã lưu tiêu chí và cấu hình nhóm.');
       await window.loadGroupsManager(document.getElementById('main-content'));
     }catch(err){
@@ -7787,11 +7766,40 @@ window.repairPublicationIndexes=()=>{};
 window.repairLegacyEncodedTextV27=()=>{};
 try{
  const actor=await call("console-identity");
+ const roles=["SuperAdmin","Admin"];
+ const pages=[
+  ["dashboard","Tổng quan","fa-chart-pie"],
+  ["groups_manager","Phiên chấm","fa-layer-group"],
+  ["student_list","Thí sinh","fa-users-rectangle"],
+  ["account_manager","Giám khảo","fa-user-shield"],
+  ["grading_table","Bảng điểm","fa-clipboard-check"],
+  ["casting_hub","Duyệt kết quả","fa-calendar-check"],
+  ["casting_email","Email","fa-envelope"],
+  ["admin_live_monitor","Mở/khóa điểm","fa-lock"],
+  ["admin_overview_scores","Xuất bảng điểm","fa-download"],
+  ["statistics","Thống kê","fa-chart-line"],
+  ["audit_logs","Lịch sử chấm","fa-history"]
+ ];
+ window.MENU_CONFIG=pages.map(([id,label,icon])=>({id,label,icon,roles}));
+ window.loadDashboard=async container=>{
+  const shortcuts=document.createElement("div");
+  shortcuts.className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4";
+  for(const [id,label] of pages.slice(1,7)){
+   const button=document.createElement("button");
+   button.className="text-left p-5 bg-white border border-rose-100 rounded-2xl text-red-900 font-bold hover:bg-rose-50";
+   button.textContent=label;
+   button.onclick=async()=>{
+    if(actor.externalMenu){
+     try{await call("console-navigate",{page:id});return}catch(error){console.debug("OSC menu bridge:",error.message)}
+    }
+    document.getElementById("nav-menu").children[pages.findIndex(page=>page[0]===id)]?.click();
+   };
+   shortcuts.append(button);
+  }
+  container.append(shortcuts);
+ };
  window.auth.currentUser={uid:actor.uid,isAnonymous:false};
  window.currentUserData={id:actor.uid,name:actor.name,code:"OSC",role:actor.role==="superadmin"?"SuperAdmin":"Admin",allowedMenus:window.MENU_CONFIG.filter(m=>m.roles.includes("Admin")).map(m=>m.id)};
- window.MENU_CONFIG.push({id:"casting_hub",label:"Quản lý casting học kỳ",icon:"fa-calendar-check",roles:["SuperAdmin","Admin"]});
-  window.MENU_CONFIG.find(m=>m.id==="groups_manager").label="Phiên chấm & cài đặt điểm";
- window.MENU_CONFIG.find(m=>m.id==="student_list").label="Danh sách thí sinh";
  if(actor.externalMenu){
   const allowed=window.MENU_CONFIG.filter(m=>m.roles.includes(window.currentUserData.role)&&
    (window.currentUserData.role==="SuperAdmin"||window.currentUserData.allowedMenus.includes(m.id)));

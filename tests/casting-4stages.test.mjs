@@ -30,10 +30,10 @@ test("casting aggregate is deterministic for mean, weighted, and trimmed",()=>{
  const src=read("lib/casting-manager.js"),a=src.indexOf("function scoreAggregate("),b=src.indexOf("async function results(",a);
  assert.ok(a>=0&&b>a);
  const aggregate=new Function(src.slice(a,b)+"\nreturn scoreAggregate;")();
- const s=[{total_score:20,grader_code:"A"},{total_score:60,grader_code:"B"},{total_score:80,grader_code:"C"},{total_score:100,grader_code:"D"}];
- assert.equal(aggregate(s,{aggregate_method:"mean"}),65);
- assert.equal(aggregate(s,{aggregate_method:"trimmed"}),70);
- assert.equal(aggregate(s,{aggregate_method:"weighted",grader_weights:{A:1,B:1,C:1,D:3}}),76.67);
+ const s=[{total_score:2,grader_code:"A"},{total_score:6,grader_code:"B"},{total_score:8,grader_code:"C"},{total_score:10,grader_code:"D"}];
+ assert.equal(aggregate(s,{aggregate_method:"mean"}),6.5);
+ assert.equal(aggregate(s,{aggregate_method:"trimmed"}),7);
+ assert.equal(aggregate(s,{aggregate_method:"weighted",grader_weights:{A:1,B:1,C:1,D:3}}),7.67);
 });
 test("candidate results require approval, publishing and private email match",()=>{
  const src=read("api/casting-public.js");
