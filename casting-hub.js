@@ -68,18 +68,8 @@ async function loadCastingHub(parent){
   const csv="\uFEFF"+rows.map(row=>row.map(v=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'}).join(",")).join("\r\n");
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),a=document.createElement("a");a.href=url;a.download="OSC_Casting_DoiSoat.csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }));review.append(actions);root.append(review);
- const publication=panel("Công bố kết quả tra cứu"),publishAt=field("input");publishAt.type="datetime-local";
- const showScore=field("input");showScore.type="checkbox";showScore.className="w-4 h-4 mr-2";
- publication.append(formRow("Thời điểm công bố (giờ địa phương)",publishAt));
- const scoreToggle=el("label","flex items-center text-xs font-semibold mt-2");scoreToggle.append(showScore,document.createTextNode("Cho thí sinh xem điểm tổng (mặc định chỉ xem PASSED / FAILED)"));publication.append(scoreToggle);
- publication.append(el("p","text-xs text-gray-500 mt-2 mb-2","Kết quả chỉ trả khi thí sinh tự tra cứu đúng MSSV/SBD và email đã khai báo; không hiển thị danh sách công khai."));
- publication.append(button("Lên lịch công bố",async()=>{
-  if(!current)throw Error("Chưa chọn casting.");
-  if(!window.confirm("Xác nhận lịch công bố kết quả?"))return;
-  await action("casting-publish",{castingId:current,publishAt:publishAt.value?new Date(publishAt.value).toISOString():null,publicFields:showScore.checked?["outcome","score"]:["outcome"]});
-  await reload();
- }));
- root.append(publication);parent.replaceChildren(root);
+ // Lịch công bố và thư kết quả được quản lý trong menu Email.
+ parent.replaceChildren(root);
  result=null;
  try{await reload()}catch(e){toast(e.message,true)}
 }
@@ -87,7 +77,7 @@ async function loadCastingEmail(parent){
  const root=panel("Gửi email theo đợt tuyển");
  const data=await api("casting-list");
  const picker=field("select"),kind=field("select");
- const types={invite:"Mời BGK",reminder:"Nhắc chấm",submission:"Xác nhận",publication:"Công bố kết quả"};
+ const types={invite:"Mời BGK",reminder:"Nhắc chấm",submission:"Xác nhận"};
  const states={queued:"Chờ gửi",sent:"Đã gửi",failed:"Gửi lỗi"};
  choose(picker,data.castings||[],c=>c.term+" · "+c.name);
  choose(kind,Object.entries(types).map(([id,label])=>({id,label})),x=>x.label);
@@ -178,7 +168,7 @@ async function loadCastingEmail(parent){
  }
  const change=picker.onchange;picker.onchange=()=>{sessions();change();readTemplate()};
  kind.onchange=readTemplate;session.onchange=()=>output.replaceChildren();
- kind.value="publication";sessions();
+ kind.value="invite";sessions();
  const controls=el("div","flex flex-wrap gap-2");
  controls.append(perform("Xếp hàng email",async()=>{
   if(!picker.value)throw Error("Chưa chọn casting.");
