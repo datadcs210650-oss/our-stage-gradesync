@@ -7546,6 +7546,7 @@ import "./candidate-editor.js";
 import {installJudgeEmailAdmin} from "./judge-email-admin.js";
 import {installCastingActorRoster} from "./casting-actor-roster.js";
 import {installCastingImportFromOSC} from "./casting-import-osc.js";
+import {installCastingAdminPages} from "./osc-casting-admin-pages.js";
 const call=window.oscGradingCall;
 const renderExports=window.loadAdminOverviewScores;
 window.loadAdminOverviewScores=async function(container){
@@ -7646,6 +7647,7 @@ window.loadAccountManager=async function(container){
 installJudgeEmailAdmin({call});
 installCastingActorRoster();
 installCastingImportFromOSC();
+installCastingAdminPages();
 window.handleLogout=()=>call("exit");
 window.repairPublicationIndexes=()=>{};
 window.repairLegacyEncodedTextV27=()=>{};

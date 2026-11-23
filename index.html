@@ -2432,7 +2432,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                     if(raw==='') return; // ô bị xóa => tiêu chí đó bị xóa khỏi Firestore
                     let v=parseFloat(raw);
                     if(Number.isNaN(v)) return;
-                    if(v>100){v=100;i.value='100';}
+                    if(v>10){v=10;i.value='10';}
                     if(v<0){v=0;i.value='0';}
                     scores[crit]=v; total+=(v*weight)/100;
                 });
@@ -5918,7 +5918,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
       if(raw==='') return;
       let value=Number(raw);
       if(!Number.isFinite(value)) return;
-      value=Math.max(0,Math.min(100,value));
+      value=Math.max(0,Math.min(10,value));
       input.value=String(value);
       scores[key]=value;
       total+=(value*weight)/100;
@@ -6705,7 +6705,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
       if(raw==='') return;
       let value=Number(raw);
       if(!Number.isFinite(value)) return;
-      value=Math.max(0,Math.min(100,value));
+      value=Math.max(0,Math.min(10,value));
       input.value=String(value);
       scores[crit]=value;
       total+=(value*weight)/100;
@@ -7631,5 +7631,6 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 <script type="module" src="./grader-google-ui.js"></script>
 <script defer src="./offline-score-recovery.js"></script>
 <script src="./live-grid-layout.js" defer></script>
+<script type="module" src="./grader-session-deeplink.js"></script>
 </body>
 </html>

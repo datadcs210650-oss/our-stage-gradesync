@@ -73,6 +73,9 @@ function show(){
 async function renderEditor(host){
  const box=create("section","bg-white border border-gray-200 rounded-2xl p-4 space-y-3");
  box.append(create("h3","font-extrabold text-sm text-red-900","Hồ sơ thí sinh · Theo cấu hình thành viên OSC"));
+ const castingSelector=create("select","w-full px-3 py-2 border rounded-xl text-sm");
+ castingSelector.id="gsxCastingSelect";
+ box.append(field("Chọn casting học kỳ",castingSelector));
  const top=create("div","grid grid-cols-1 md:grid-cols-2 gap-3");
  select=create("select","w-full px-3 py-2 border rounded-lg text-sm");
  select.onchange=()=>{cid=select.value;show()};
@@ -103,13 +106,20 @@ async function renderEditor(host){
  const lastReload=reload;
  const refreshed=async()=>{await lastReload();updateOptions()};
  host.append(box);
- try{await refreshed()}catch(e){notice.textContent=e.message}
+ try{
+  const data=await api("casting-list");
+  castingSelector.replaceChildren();
+  for(const c of data.castings||[]){
+   const opt=new Option(c.term+" · "+c.name,c.id);castingSelector.append(opt);
+  }
+  await refreshed();
+ }catch(e){notice.textContent=e.message}
  const cast=document.getElementById("gsxCastingSelect");
  cast?.addEventListener("change",()=>{cid="";refreshed().catch(e=>notice.textContent=e.message)});
 }
-const previous=window.loadCastingHub;
+const previous=window.loadStudentList;
 if(typeof previous==="function"){
- window.loadCastingHub=async function(root){
+ window.loadStudentList=async function(root){
   await previous(root);
   await renderEditor(root);
  };
