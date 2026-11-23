@@ -7409,21 +7409,32 @@ window.currentUserData = null; window.activeListeners = [];
       const receipt=meta?.receipt||null;
       const scoreMap=new Map(scores.map(s=>[s.candidateId,s]));
       const criteria=group.criteria||[];
+      const allowed=new Set((meta?.allowedCriteria||[]).filter(Boolean));
+      const expected=allowed.size?criteria.filter(c=>allowed.has(c.name)):criteria;
       const rows=candidates.map((c,index)=>{
-        const s=scoreMap.get(c.id);
-        if(!s) return '';
-        const result=Number(s.totalScore||0)>=Number(group.passScore||0)?'ĐẠT':'TRƯỢT';
+        const s=scoreMap.get(c.id),values=s?.scores||{};
+        const entered=Object.keys(values).some(key=>values[key]!==null&&values[key]!==undefined&&values[key]!=="");
+        const complete=entered&&expected.every(cr=>values[cr.name]!==null&&values[cr.name]!==undefined&&
+          values[cr.name]!==""&&Number.isFinite(Number(values[cr.name])));
+        const result=!entered?"CHƯA CHẤM":!complete?"CHƯA ĐỦ":
+         Number(s.totalScore)>=Number(group.passScore||0)?"ĐẠT":"TRƯỢT";
         return `<tr>
           <td>${index+1}</td>
-          <td>${esc(c.code||'-')}</td>
-          <td class="name">${esc(c.name||'-')}</td>
-          ${criteria.map(cr=>`<td>${esc(s.scores?.[cr.name]??'-')}</td>`).join('')}
-          <td><b>${esc(Number(s.totalScore||0).toFixed(2).replace(/\.00$/,''))}</b></td>
+          <td>${esc(c.code||"-")}</td>
+          <td class="name">${esc(c.name||"-")}</td>
+          ${criteria.map(cr=>`<td>${esc(values[cr.name]??"-")}</td>`).join("")}
+          <td><b>${entered&&s.totalScore!==null&&s.totalScore!==undefined?esc(Number(s.totalScore).toFixed(2).replace(/\\.00$/,"")):"-"}</b></td>
           <td><b>${result}</b></td>
         </tr>`;
-      }).filter(Boolean).join('');
+      }).join("");
 
-      if(!rows) throw new Error('BGK chưa có kết quả để xuất.');
+      if(!candidates.length)throw new Error("Phiên chấm chưa có thí sinh.");
+      const completeness=receipt?.completeness||{};
+      const auditLine=receipt?
+       (completeness.scoredCandidates??0)+"/"+(completeness.totalCandidates??candidates.length)+
+       " thí sinh có điểm, "+(completeness.missingCriterionCells??0)+" ô tiêu chí chưa chấm"+
+       (completeness.partial?" · ĐÃ XÁC NHẬN MỘT PHẦN":""):
+       "Chưa có biên bản OTP để đối chiếu; hiển thị điểm hiện tại và trạng thái khóa.";
 
       const signed=verification?.isVerified===true||!!receipt;
       const signTime=receipt?.confirmedAt?new Date(receipt.confirmedAt).toLocaleString("vi-VN"):tsToText(verification?.timestamp)||"Chưa ghi nhận";
@@ -7478,6 +7489,7 @@ window.currentUserData = null; window.activeListeners = [];
           <div><b>Giám khảo:</b> ${esc(grader.name||'Giám khảo')} - ${esc(graderCode)}</div>
           <div><b>Điểm đạt:</b> ≥ ${esc(group.passScore||0)}</div>
           <div><b>Thời gian khóa/nộp:</b> ${esc(signTime)}</div>
+          <div><b>Tình trạng dữ liệu:</b> ${esc(auditLine)}</div>
         </div>
         <table>
           <thead><tr><th>STT</th><th>SBD</th><th>Họ tên</th>${th}<th>Tổng</th><th>Kết quả</th></tr></thead>
