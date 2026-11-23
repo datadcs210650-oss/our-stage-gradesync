@@ -84,7 +84,7 @@ async function loadCastingHub(parent){
  try{await reload()}catch(e){toast(e.message,true)}
 }
 async function loadCastingEmail(parent){
- const root=panel("Thông báo casting");
+ const root=panel("Gửi email theo đợt tuyển");
  const data=await api("casting-list");
  const picker=field("select"),kind=field("select");
  const types={invite:"Mời BGK",reminder:"Nhắc chấm",submission:"Xác nhận",publication:"Công bố kết quả"};
@@ -127,10 +127,64 @@ async function loadCastingEmail(parent){
   offset=0;list.replaceChildren();pagination.replaceChildren();message.textContent="";
   history().catch(error=>message.textContent=error.message);
  };
+ const session=field("select"),subject=field("input"),body=field("textarea");
+ body.rows=6;body.maxLength=6000;subject.maxLength=180;
+ const output=el("div","overflow-x-auto"),templateStatus=el("p","text-xs text-gray-600");
+ const loadResults=perform("Xem danh sách kết quả",async()=>{
+  const cast=picker.value,group=session.value;
+  const response=await api("casting-results",{castingId:cast});
+  if(cast!==picker.value||group!==session.value)return;
+  const rows=response.rows.filter(row=>row.groupId===group);
+  const header=["SBD","Họ tên","MSSV","Email","Điểm","Kết quả","Gửi thông báo"];
+  const values=rows.map(row=>[row.code,row.name,row.mssv,row.email,row.score??"",
+   {passed:"Đạt",failed:"Chưa đạt",pending:"Chờ chấm"}[row.outcome],
+   !row.email?"Thiếu email":!row.emailConsent?"Chưa đồng ý nhận thư":row.review!=="approved"?"Chờ duyệt":
+   response.casting.status!=="published"||Date.parse(response.casting.publish_at)>Date.now()?"Chờ công bố":"Đủ điều kiện"]);
+  const table=el("table","w-full text-left text-xs");
+  for(const [index,line] of [header,...values].entries()){
+   const tr=el("tr","border-b");
+   for(const value of line)tr.append(el(index?"td":"th","p-2",String(value??"")));
+   table.append(tr);
+  }
+  const download=perform("Tải danh sách CSV",()=>{
+   const csv=[header,...values].map(line=>line.map(value=>{
+    let v=String(value??"");if(/^[=+@\-\t\r]/.test(v))v="'"+v;
+    return '"'+v.replaceAll('"','""')+'"';
+   }).join(",")).join("\r\n");
+   const url=URL.createObjectURL(new Blob(["\uFEFF",csv],{type:"text/csv;charset=utf-8"}));
+   const link=el("a");link.href=url;link.download="Ket-qua-"+group+".csv";link.click();
+   setTimeout(()=>URL.revokeObjectURL(url),1000);
+  });
+  output.replaceChildren(table,download);
+ });
+ const save=perform("Lưu mẫu thư",async()=>{
+  await api("casting-send-notifications",{castingId:picker.value,kind:kind.value,templateAction:"save",subject:subject.value,text:body.value});
+  templateStatus.textContent="Đã lưu mẫu thư.";
+ });
+ let templateRequest=0;
+ async function readTemplate(){
+  const version=++templateRequest;
+  subject.value="";body.value="";templateStatus.textContent="";save.disabled=true;
+  if(!picker.value)return;
+  try{
+   const data=await api("casting-send-notifications",{castingId:picker.value,kind:kind.value,templateAction:"read"});
+   if(version!==templateRequest)return;
+   subject.value=data.template.subject;body.value=data.template.text;save.disabled=false;
+  }catch(error){if(version===templateRequest)templateStatus.textContent=error.message}
+ }
+ function sessions(){
+  choose(session,(data.groups||[]).filter(g=>g.castingId===picker.value),g=>g.name);
+  output.replaceChildren();loadResults.disabled=!session.value;
+ }
+ const change=picker.onchange;picker.onchange=()=>{sessions();change();readTemplate()};
+ kind.onchange=readTemplate;session.onchange=()=>output.replaceChildren();
+ kind.value="publication";sessions();
  const controls=el("div","flex flex-wrap gap-2");
  controls.append(perform("Xếp hàng email",async()=>{
   if(!picker.value)throw Error("Chưa chọn casting.");
-  const response=await api("casting-notification-queue",{castingId:picker.value,kind:kind.value,allEligible:true});
+  if(kind.value==="publication"&&!session.value)throw Error("Chọn phiên chấm trước khi lập danh sách gửi.");
+  const response=await api("casting-notification-queue",{castingId:picker.value,kind:kind.value,allEligible:true,
+   groupId:kind.value==="publication"?session.value:undefined});
   message.textContent=response.queued?"Đã xếp "+response.queued+" email vào hàng đợi.":"Không có người nhận mới đủ điều kiện.";
   offset=0;await history();
  }),perform("Gửi email trong hàng đợi",async()=>{
@@ -141,9 +195,12 @@ async function loadCastingEmail(parent){
    "Resend đã tiếp nhận. Trạng thái hàng đợi đang chờ đối soát.":response.message;
   offset=0;await history();
  }),perform("Tải lại lịch sử",history));
- root.append(formRow("Casting",picker),formRow("Loại thông báo",kind),controls,message,
+ root.append(formRow("Đợt tuyển",picker),formRow("Phiên chấm để xem và gửi kết quả",session),loadResults,output,
+  formRow("Loại email",kind),formRow("Tiêu đề email",subject),formRow("Nội dung email",body),
+  el("p","text-xs text-gray-600","Dùng {{dot}} cho tên đợt tuyển và {{hocky}} cho học kỳ. Mẫu đã lưu áp dụng khi gửi thư."),
+  save,templateStatus,controls,message,
   el("h4","font-bold text-sm text-red-900","Hàng đợi và lịch sử gửi"),list,pagination);
- parent.replaceChildren(root);await history();
+ parent.replaceChildren(root);await Promise.all([history(),readTemplate()]);
 }
 window.loadCastingHub=loadCastingHub;
 window.loadCastingEmail=loadCastingEmail;
