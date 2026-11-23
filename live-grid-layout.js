@@ -57,7 +57,7 @@ function applyOrder(table,desired){
 }
 function decorate(table){
  if(!table.isConnected)return;
- if(table.dataset.gsxLiveTable==="true"){updateSticky(table);return}
+ if(table.dataset.gsxLiveTable==="true")return;
  const x=columns(table);if(!x)return;
  const {heads}=x,group=key();
  heads.forEach((h,i)=>{
@@ -116,12 +116,17 @@ function decorate(table){
  if(viewport?.style){viewport.style.overflowX="auto";viewport.style.position="relative"}
  updateSticky(table);
 }
-let scheduled=false;
+let scheduled=false,observed=null;
+const resize=typeof ResizeObserver==="function"?new ResizeObserver(()=>{if(observed?.isConnected)updateSticky(observed)}):null;
 function scan(){
  scheduled=false;
- const table=findTable();if(table)decorate(table);
+ const table=findTable();
+ if(table!==observed){
+  resize?.disconnect();observed=table;
+  if(table){decorate(table);if(resize)for(const th of [...table.tHead.rows[0].cells].slice(0,3))resize.observe(th)}
+ }
 }
-function schedule(){if(!scheduled){scheduled=true;setTimeout(scan,130)}}
+function schedule(){if(!scheduled){scheduled=true;requestAnimationFrame(scan)}}
 function paint(input){
  const id=input.dataset.cand,status=document.getElementById("save-status-"+id);
  if(!status)return;
@@ -138,6 +143,7 @@ document.addEventListener("input",e=>{
 },true);
 const root=document.getElementById("main-content");
 if(root)new MutationObserver(schedule).observe(root,{subtree:true,childList:true});
+window.gsPrepareLiveTable=scan;
 window.addEventListener("online",schedule);
 schedule();
 })();

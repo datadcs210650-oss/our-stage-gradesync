@@ -10,7 +10,7 @@ const field=(text,input)=>{const label=create("label","block text-xs font-bold t
 const btn=(label,run)=>{const b=create("button","px-3 py-2 bg-red-900 text-white rounded-lg font-semibold text-xs",label);b.type="button";b.onclick=async()=>{if(b.disabled)return;b.disabled=true;
  try{await run()}catch(e){window.showToast?.(e.message||"Không thể lưu hồ sơ.","error")}finally{b.disabled=false}};return b};
 async function renderEditor(host){
-let active=[],defs=[],schema=[],form,select,notice,cid,reloadRoster,activeGroup;
+let active=[],defs=[],schema=[],form,notice,cid,reloadRoster,activeGroup;
 let requestVersion=0;
 let castingSelector;
 let readOnly=false;
@@ -22,15 +22,12 @@ async function reload(){
  if(!host.isConnected||version!==requestVersion)return;
  readOnly=["published","archived"].includes(candidates.casting?.status);
  active=candidates.candidates||[];defs=candidates.fields||[];
- select.replaceChildren();
- for(const c of active){const o=create("option","",c.code+" · "+c.name);o.value=c.id;select.append(o)}
- if(cid&&active.some(c=>c.id===cid))select.value=cid;else cid=active[0]?.id||"";
  show();
 }
 function show(){
- const item=active.find(c=>c.id===select.value);form.replaceChildren();
+ const item=active.find(c=>c.id===cid);form.replaceChildren();
  if(!item){notice.textContent="Nhóm thi chưa có thí sinh.";return}
- cid=item.id;notice.textContent="Trường định danh (MSSV/email) chỉ BCN xem. BGK chỉ nhìn thấy trường có quyền xem.";
+ heading.textContent=item.name+" · "+item.code;notice.textContent="Trường định danh (MSSV/email) chỉ BCN xem. BGK chỉ nhìn thấy trường có quyền xem.";
  const pieces=[];
  function addField(label,key,defaultValue,kind="text"){
   const input=control(kind,defaultValue);input.dataset.key=key;input.dataset.privacy="core";
@@ -44,18 +41,18 @@ function show(){
   item.privateFields?.["Số điện thoại"]??item.fields?.["Số điện thoại"]??item.fields?.["Điện thoại"]??"","tel");
  const consent=create("label","flex items-center gap-2 text-xs font-semibold");
  const allow=control("checkbox");allow.checked=item.emailConsent===true;allow.dataset.key="castingEmailConsent";allow.dataset.privacy="core";
- allow.className="w-4 h-4";consent.append(allow,document.createTextNode("Đồng ý nhận email thông báo casting"));
+ allow.className="w-4 h-4";consent.append(allow,document.createTextNode("Thí sinh đã đồng ý nhận email kết quả"));
  pieces.push(consent);
- const contacts=new Set(["mssv","email","phone","sdt","phoneNumber","Số điện thoại","Điện thoại","name","castingEmailConsent"]);
+ const isCore=value=>["mssv","masosinhvien","email","gmail","emaillienhe","phone","phonenumber","sdt","sodienthoai","dienthoai","name","castingemailconsent"].includes(String(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replaceAll("đ","d").replace(/[^a-z0-9]/g,""));
  const flexible=new Set([...Object.keys(item.fields||{}),...Object.keys(item.privateFields||{}),
   ...(activeGroup.extraFieldNames||[])]);
  const known=new Set(defs.map(def=>def.field_key));
- const fieldsToEdit=[...defs,...[...flexible].filter(key=>!known.has(key)&&!contacts.has(key)&&
+ const fieldsToEdit=[...defs,...[...flexible].filter(key=>!known.has(key)&&!isCore(key)&&
   !["__proto__","constructor","prototype"].includes(key)).map(key=>({
    field_key:key,label:key,kind:"text",visibility:Object.hasOwn(item.privateFields||{},key)?"admin":"judge"
   }))];
  for(const def of fieldsToEdit){
-  if(contacts.has(def.field_key))continue;
+  if(isCore(def.field_key)||isCore(def.label))continue;
   const stored=def.visibility==="admin"?(item.privateFields||{}):(item.fields||{});
   let input;
   if(def.kind==="select"){
@@ -93,6 +90,7 @@ function show(){
   window.showToast?.("Đã lưu hồ sơ trên máy chủ.");
   await reload();
   await reloadRoster?.();
+  box.close();
  }));
 }
 // Danh sách có thẩm quyền từ OSC bridge, không phụ thuộc bộ nhớ/cache của bảng chấm.
@@ -159,15 +157,17 @@ async function renderRoster(host,onEdit){
  reloadRoster=load;
  try{await load()}catch(e){summary.textContent="Không tải được danh sách thí sinh từ hệ thống.";status.textContent=e.message;body.replaceChildren()}
 }
- const box=create("section","bg-white border border-gray-200 rounded-2xl p-4 space-y-3");
- box.append(create("h3","font-extrabold text-sm text-red-900","Hồ sơ thí sinh · Theo cấu hình thành viên OSC"));
+ const box=create("dialog","bg-white border rounded-2xl p-5 space-y-4");
+ box.style.cssText="width:min(56rem,94vw);max-height:88vh;margin:auto;overflow:auto";
+ box.setAttribute("aria-labelledby","candidate-profile-title");
+ const heading=create("h3","font-bold text-red-900");
+ heading.id="candidate-profile-title";
+ const bar=create("div","flex items-center justify-between gap-3");
+ bar.append(heading,btn("Đóng",()=>box.close()));box.append(bar);
  castingSelector=create("select","w-full px-3 py-2 border rounded-xl text-sm");
  castingSelector.id="gsxCastingSelect";
  castingSelector.hidden=true;box.append(castingSelector);
  const top=create("div","grid grid-cols-1 md:grid-cols-2 gap-3");
- select=create("select","w-full px-3 py-2 border rounded-lg text-sm");
- select.onchange=()=>{cid=select.value;show()};
- top.append(field("Chọn thí sinh",select));
  const addRow=create("div","grid grid-cols-1 md:grid-cols-3 gap-2");
  const fieldChoices=create("select","border rounded-lg p-2 text-sm"),privacy=create("select","border rounded-lg p-2 text-sm");
  const vis=[["admin","Chỉ BCN"],["judge","Cho BGK xem"],["public","Công khai nếu duyệt"]];
@@ -192,11 +192,11 @@ async function renderRoster(host,onEdit){
   add.disabled=available.length===0;
  };
  const refreshed=async()=>{await reload();updateOptions();addRow.hidden=!castingSelector.value||readOnly};
- box.hidden=true;
+
  host.append(box);
  let schemaPromise;
  await renderRoster(host,async item=>{
-  box.hidden=true;
+ 
   activeGroup=item;
   castingSelector.replaceChildren(new Option(item.castingName,item.castingId||""));
   cid=item.id;
@@ -207,8 +207,7 @@ async function renderRoster(host,onEdit){
   if(activeGroup!==item)return;
   await refreshed();
   if(activeGroup!==item||!host.isConnected)return;
-  box.hidden=false;
-  box.scrollIntoView({behavior:"smooth",block:"start"});
+  if(!box.open)box.showModal();
  });
 }
 const previous=window.loadStudentList;
