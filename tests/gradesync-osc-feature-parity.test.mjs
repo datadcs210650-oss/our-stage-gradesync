@@ -45,6 +45,9 @@ test("only OSC admin bridge receives receipt metadata for authenticating the PDF
  assert.match(bridge,/"casting-grader-receipt"/);
  assert.match(bridge,/gs_grading_receipts/);
  assert.match(bridge,/snapshot_sha256/);
+ assert.match(bridge,/snapshot:Array\.isArray\(verified\.snapshot\)/);
+ assert.match(adminConsole,/const authoritativeScores=receipt\?receipt\.snapshot/);
+ assert.match(adminConsole,/Bản chốt bất biến khi xác nhận OTP/);
  assert.match(adminConsole,/window\.oscGradingCall\("casting-grader-receipt"/);
  assert.match(adminConsole,/ĐÃ XÁC NHẬN BẢNG ĐIỂM/);
  assert.match(adminConsole,/Dấu xác nhận nội bộ OSC/);
