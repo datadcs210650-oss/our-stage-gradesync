@@ -70,6 +70,64 @@ function show(){
   await reload();
  }));
 }
+// Danh sách có thẩm quyền từ OSC bridge, không phụ thuộc bộ nhớ/cache của bảng chấm.
+async function renderRoster(host,onEdit){
+ const box=create("section","bg-white border border-rose-100 rounded-2xl p-5 space-y-4 shadow-sm");
+ box.id="gsx-candidate-roster";
+ const title=create("h3","font-black text-red-900 text-base","Danh sách thí sinh toàn hệ thống");
+ const summary=create("p","text-xs text-gray-500","Đang đối chiếu thí sinh trên máy chủ...");
+ const controls=create("div","grid grid-cols-1 md:grid-cols-[1fr_240px_auto] gap-2");
+ const search=control("search");search.placeholder="Tìm SBD, họ tên, học kỳ, phân ban";
+ const group=create("select","w-full p-2 border border-rose-100 rounded-xl text-sm");
+ const refresh=btn("Tải lại",load);
+ controls.append(search,group,refresh);
+ const status=create("p","text-xs text-gray-500");
+ const tableWrap=create("div","overflow-auto max-h-[550px] border rounded-xl");
+ const table=create("table","w-full min-w-[820px] text-left text-xs");
+ table.innerHTML='<thead class="sticky top-0 bg-rose-50 text-red-950"><tr><th class="p-3">SBD</th><th class="p-3">Họ và tên</th><th class="p-3">Học kỳ</th><th class="p-3">Nhóm / phiên chấm</th><th class="p-3">Điểm danh</th><th class="p-3">Hồ sơ</th></tr></thead><tbody></tbody>';
+ const body=table.querySelector("tbody");tableWrap.append(table);
+ box.append(title,summary,controls,status,tableWrap);host.prepend(box);
+ let records=[];
+ const render=()=>{
+  const term=search.value.trim().toLocaleLowerCase("vi");
+  const selected=group.value;
+  const visible=records.filter(item=>(!selected||item.groupId===selected)&&
+   (!term||[item.name,item.code,item.term,item.groupName].some(v=>String(v||"").toLocaleLowerCase("vi").includes(term))));
+  body.replaceChildren();
+  const shown=visible.slice(0,150);
+  for(const item of shown){
+   const tr=create("tr","border-b hover:bg-rose-50/50");
+   for(const value of [item.code,item.name,item.term,item.groupName,item.isPresent?"Có":"Chưa"]){
+    tr.append(create("td","p-3",String(value||"—")));
+   }
+   const cell=create("td","p-3");
+   if(item.castingId){
+    const edit=btn("Chỉnh sửa",async()=>{
+     try{await onEdit(item)}catch(e){status.textContent="Không mở được hồ sơ: "+e.message}
+    });
+    edit.classList.add("whitespace-nowrap");cell.append(edit);
+   }else cell.append(create("span","text-gray-400","Chưa gắn casting"));
+   tr.append(cell);body.append(tr);
+  }
+  if(!shown.length){const tr=create("tr"),td=create("td","text-center p-8 text-gray-500",records.length?"Không có thí sinh phù hợp bộ lọc.":"Chưa có thí sinh. Dùng công cụ thêm mới, Import Excel hoặc nhập từ thành viên OSC ở bên dưới.");td.colSpan=6;tr.append(td);body.append(tr)}
+  status.textContent="Hiển thị "+shown.length+"/"+visible.length+" thí sinh phù hợp"+(visible.length>shown.length?" · Còn "+(visible.length-shown.length)+" dòng, hãy lọc để xem tiếp.":"");
+ };
+ async function load(){
+  status.textContent="Đang tải dữ liệu thí sinh...";
+  const data=await api("casting-candidate-roster");
+  records=Array.isArray(data.rows)?data.rows:[];
+  const was=group.value;group.replaceChildren(new Option("Tất cả học kỳ và nhóm",""));
+  const unique=new Map(records.map(c=>[c.groupId,{id:c.groupId,label:c.term+" · "+c.groupName}]));
+  for(const item of [...unique.values()].sort((a,b)=>a.label.localeCompare(b.label,"vi"))){
+   const opt=new Option(item.label,item.id);group.append(opt);
+  }
+  if([...group.options].some(x=>x.value===was))group.value=was;
+  summary.textContent=records.length+" thí sinh · "+unique.size+" nhóm có thí sinh. Danh sách lấy trực tiếp từ hệ thống.";
+  render();
+ }
+ search.addEventListener("input",render);group.addEventListener("change",render);
+ try{await load()}catch(e){summary.textContent="Không tải được danh sách thí sinh từ hệ thống.";status.textContent=e.message;body.replaceChildren()}
+}
 async function renderEditor(host){
  const box=create("section","bg-white border border-gray-200 rounded-2xl p-4 space-y-3");
  box.append(create("h3","font-extrabold text-sm text-red-900","Hồ sơ thí sinh · Theo cấu hình thành viên OSC"));
@@ -114,14 +172,26 @@ async function renderEditor(host){
   }
   await refreshed();
  }catch(e){notice.textContent=e.message}
+ await renderRoster(host,async item=>{
+  castingSelector.value=item.castingId;
+  cid=item.id;
+  await refreshed();
+  select.value=item.id;
+  show();
+  box.scrollIntoView({behavior:"smooth",block:"start"});
+ });
  const cast=document.getElementById("gsxCastingSelect");
  cast?.addEventListener("change",()=>{cid="";refreshed().catch(e=>notice.textContent=e.message)});
 }
 const previous=window.loadStudentList;
 if(typeof previous==="function"){
  window.loadStudentList=async function(root){
-  await previous(root);
-  await renderEditor(root);
+  try{await previous(root)}
+  catch(e){
+   root.replaceChildren(create("p","p-4 text-red-800","Bảng quản lý cũ chưa tải được: "+e.message));
+  }
+  try{await renderEditor(root)}
+  catch(e){root.append(create("p","p-4 text-red-800","Không thể tải danh sách thí sinh: "+e.message))}
  };
 }
 })();
