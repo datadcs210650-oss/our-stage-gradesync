@@ -47,6 +47,11 @@ function buildPrint(receipt){
    const td=node("td",String(value));td.style.cssText="border:1px solid #bbb;padding:6px";tr.append(td);
   }t.append(tr);
  }
+ const c=receipt.completeness||{};
+ const partial=node("p","Độ đầy đủ: "+(c.scoredCandidates??0)+"/"+(c.totalCandidates??0)+
+ " thí sinh đã chấm • "+(c.missingCriterionCells??0)+" ô tiêu chí thiếu."+
+ (c.partial?" BẢNG ĐIỂM XÁC NHẬN CHƯA ĐẦY ĐỦ.":""));
+ partial.style.cssText="font-weight:bold;color:"+(c.partial?"#991b1b":"#166534");root.append(partial);
  root.append(t,node("p","Đây là xác nhận điện tử qua OTP email, không phải chữ ký số có chứng thư số."));
  return root;
 }
@@ -90,15 +95,25 @@ function openOtpDialog(groupId,masked){
  row.append(confirm,cancel,resend);box.append(header,explain,input,error,row);window.openModal();input.focus();
 }
 const original=window.verifyGroupGrading;
-window.verifyGroupGrading=function(groupId){
+window.verifyGroupGrading=async function(groupId){
  if(!grader())return original?.(groupId);
- window.showCustomConfirm?.("Gửi mã OTP đến email của bạn để xác nhận và khóa vĩnh viễn bảng điểm?",async()=>{
-  try{
-   await flushPending(groupId);
-   const r=await api("request",groupId);
-   openOtpDialog(groupId,r.emailMasked);
-  }catch(e){notify("Không thể gửi OTP: "+e.message,true)}
- });
+ try{
+  await flushPending(groupId);
+  const check=await api("preflight",groupId);
+  const c=check.completeness||{};
+  const summary="Đã nhập điểm cho "+(c.scoredCandidates||0)+"/"+(c.totalCandidates||0)+
+   " thí sinh; còn "+(c.incompleteCandidates||0)+" hồ sơ chưa đủ tiêu chí, "+(c.missingCriterionCells||0)+
+   " ô điểm còn thiếu.";
+  const details=c.partial?"\\nLƯU Ý: điểm chưa chấm sẽ KHÔNG được tự điền 0 hoặc tính PASSED. Khi xác nhận OTP, bảng sẽ khóa vĩnh viễn.":"\\nBảng điểm đủ tiêu chí đã phân công. Khi xác nhận OTP, bảng sẽ khóa vĩnh viễn.";
+  const proceed=async()=>{
+   try{
+    const r=await api("request",groupId,{confirmPartial:c.partial===true});
+    openOtpDialog(groupId,r.emailMasked);
+   }catch(e){notify("Không thể gửi OTP: "+e.message,true)}
+  };
+  if(window.showCustomConfirm)window.showCustomConfirm("Xác nhận khóa bảng điểm?\\n"+summary+details,proceed);
+  else if(window.confirm(summary+details))await proceed();
+ }catch(e){notify("Chưa thể đối soát điểm: "+e.message,true)}
 };
 /* Legacy BGK also receives criterion visibility from its own RLS-scoped grants. */
 const startApp=window.initApp;
