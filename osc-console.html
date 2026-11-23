@@ -2861,7 +2861,7 @@ window.currentUserData = null; window.activeListeners = [];
                         (groupInfo.criteria||[]).forEach(c=>{const vals=cS.map(s=>s.scores?.[c.name]).filter(v=>v!==undefined&&v!==null&&v!==''); fS[c.name]=vals.length?(vals.reduce((a,v)=>a+Number(v),0)/vals.length).toFixed(1):'-';});
                     }else{const sd=cS[0]||{};total=Number(sd.totalScore||0);fS=sd.scores||{};}
                     const hasScore=cS.length>0; const isPass=hasScore && total>=Number(groupInfo.passScore); if(rF==='PASS'&&(!hasScore||!isPass))return;if(rF==='FAIL'&&(!hasScore||isPass))return;
-                    n++; data.push([n,cd.code||'-',cd.name||'-',...eFs.map(f=>cd.extraData?.[f.name]||'-'),...(groupInfo.criteria||[]).map(c=>fS[c.name]??'-'),hasScore?Number(total):'-',hasScore?(isPass?'ĐẠT':'TRƯỢT'):'CHỜ']);
+                    n++; data.push([n,cd.code||'-',cd.name||'-',...eFs.map(f=>(cd.customFields?.[f.name]??cd.extraData?.[f.name])||'-'),...(groupInfo.criteria||[]).map(c=>fS[c.name]??'-'),hasScore?Number(total):'-',hasScore?(isPass?'ĐẠT':'TRƯỢT'):'CHỜ']);
                 });
                 const ws=window.XLSX.utils.aoa_to_sheet(data); const lastCol=headers.length-1;
                 ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:lastCol}}];
@@ -2957,7 +2957,7 @@ window.currentUserData = null; window.activeListeners = [];
                     idx++;
                     const nameStyle=hasScore&&!pass?'font-weight:800;color:#991b1b;':'';
                     let tr=`<tr><td>${idx}</td><td>${window.escapeHtml(cd.code||'-')}</td><td class="name-cell" style="${nameStyle}">${window.escapeHtml(cd.name||'-')}</td>`;
-                    fields.forEach(f=>tr+=`<td>${window.escapeHtml(cd.extraData?.[f.name]||'-')}</td>`);
+                    fields.forEach(f=>tr+=`<td>${window.escapeHtml((cd.customFields?.[f.name]??cd.extraData?.[f.name])||'-')}</td>`);
                     criteria.forEach(c=>tr+=`<td>${window.escapeHtml(fS[c.name]??'-')}</td>`);
                     tr+=`<td class="total-cell">${hasScore?Number(total).toFixed(2).replace(/\.00$/,''):'-'}</td><td class="result-cell ${!hasScore?'waiting':(pass?'pass':'fail')}">${!hasScore?'CHỜ':(pass?'ĐẠT':'TRƯỢT')}</td></tr>`;
                     rows.push(tr);
@@ -2988,7 +2988,7 @@ window.currentUserData = null; window.activeListeners = [];
                     *{box-sizing:border-box}
                     body{margin:0;background:#fff;color:#111;font-family:'Times New Roman',serif}
                     .pdf-root{width:285mm;margin:0 auto;background:#fff}
-                    .pdf-page{width:285mm;min-height:198mm;padding:0;page-break-after:always;break-after:page;overflow:hidden}
+                    .pdf-page{width:285mm;padding:0}
                     .pdf-page.last-page{page-break-after:auto;break-after:auto}
                     .national{text-align:center;font-weight:700;font-size:14px;line-height:1.35;margin-top:1mm}
                     .under{width:48mm;border-top:1.4px solid #111;margin:1.8mm auto 0}
@@ -3009,14 +3009,26 @@ window.currentUserData = null; window.activeListeners = [];
                     .signature{border:1.5px solid #16a34a;color:#b91c1c;text-align:left;padding:2.5mm 3mm;font-size:10px;line-height:1.35}.sig-note{margin-top:2mm;color:#6b7280;font-size:8px}.sig-title{font-weight:700;font-size:12px;margin-bottom:1mm}.not-verified{color:#991b1b;font-style:italic;margin-top:3mm}
                 </style>`;
                 const pdfName=window.sanitizeFileName(requestedFileName,`Bien_Ban_${title}_${graderCode==='ALL'?'HoiDong':signerName}`);
-                await window.html2pdf().set({
-                    margin:[6,6,6,6],
-                    filename:pdfName.toLowerCase().endsWith('.pdf')?pdfName:`${pdfName}.pdf`,
-                    image:{type:'jpeg',quality:0.98},
-                    html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff',logging:false},
-                    jsPDF:{unit:'mm',format:'a4',orientation:'landscape'},
-                    pagebreak:{mode:['css','legacy'],avoid:['tr','.sign-wrap']}
-                }).from(style+`<div class="pdf-root">${pages}</div>`).save();
+                const sheets=document.createElement('div');
+                sheets.innerHTML=pages;
+                let pdf;
+                for(const sheet of sheets.children){
+                    const worker=window.html2pdf().set({
+                        margin:6,html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff'},
+                        jsPDF:{unit:'mm',format:'a4',orientation:'landscape'},
+                        pagebreak:{mode:[]}
+                    }).from(style+'<div class="pdf-root">'+sheet.outerHTML+'</div>');
+                    const canvas=await worker.toCanvas().get('canvas');
+                    if(!pdf){
+                        pdf=await worker.toPdf().get('pdf');
+                        while(pdf.getNumberOfPages()>1)pdf.deletePage(pdf.getNumberOfPages());
+                        pdf.deletePage(1);
+                    }
+                    pdf.addPage('a4','landscape');
+                    const scale=Math.min(285/canvas.width,198/canvas.height);
+                    pdf.addImage(canvas.toDataURL('image/jpeg',0.98),'JPEG',6,6,canvas.width*scale,canvas.height*scale);
+                }
+                pdf.save(pdfName.toLowerCase().endsWith('.pdf')?pdfName:pdfName+'.pdf');
                 window.showToast('Đã tải PDF thành công!');
             }catch(e){console.error('PDF EXPORT ERROR:',e);window.showToast('Lỗi xuất PDF: '+(e.message||e.code),'error');}finally{window.showLoading(false);}
         };
@@ -6102,7 +6114,7 @@ window.currentUserData = null; window.activeListeners = [];
       box=document.createElement('label');
       box.id='gs-admin-session-toggle';
       box.className='flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-800 px-3 py-2 rounded-xl text-[10px] font-black cursor-pointer whitespace-nowrap';
-      box.innerHTML='<input id="gs-session-toggle-input" type="checkbox" class="accent-indigo-700 w-4 h-4"><span><i class="fas fa-shield-alt mr-1"></i>Chấm theo phiên</span>';
+      box.innerHTML='<input id="gs-session-toggle-input" type="checkbox" class="accent-indigo-700 w-4 h-4"><span><i class="fas fa-shield-alt mr-1"></i>Lưu nháp đến khi giám khảo khóa và nộp điểm</span>';
       top.appendChild(box);
       box.querySelector('input').addEventListener('change',async e=>{
         const gid=document.getElementById('grading-group-select')?.value||window._selectedGradingGroupId;
