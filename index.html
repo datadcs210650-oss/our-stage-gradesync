@@ -2681,6 +2681,11 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         };
 
         window.exportLogsPDF = async function() {
+            if(!["Admin","SuperAdmin"].includes(window.currentUserData?.role)){
+              window.showToast?.("Chỉ BCN quản trị được tải hoặc xuất dữ liệu chấm điểm.","error");
+              return;
+            }
+
             const filteredLogs = window._filteredLogsCache || []; if(filteredLogs.length === 0) { window.showToast("Không có dữ liệu lịch sử để xuất.", "error"); return; }
             const selectedGrader = document.getElementById('log-filter-grader').value; const selectedGroup = document.getElementById('log-filter-group').value; let titleStr = `LỊCH SỬ CHẤM ĐIỂM`; if (selectedGroup) titleStr += ` - NHÓM: ${selectedGroup}`; if (selectedGrader) titleStr += ` - GK: ${selectedGrader.split(' - ')[0]}`;
             let signerName = selectedGrader ? selectedGrader.split(' - ')[0] : "Ban Quản Trị Hệ Thống"; let st = new Date(); let signDateStr = `ngày ${String(st.getDate()).padStart(2,'0')} tháng ${String(st.getMonth()+1).padStart(2,'0')} năm ${st.getFullYear()}`; let signTimeString = `${String(st.getHours()).padStart(2,'0')}:${String(st.getMinutes()).padStart(2,'0')}:${String(st.getSeconds()).padStart(2,'0')} ${String(st.getDate()).padStart(2,'0')}/${String(st.getMonth()+1).padStart(2,'0')}/${st.getFullYear()}`;
@@ -2736,6 +2741,11 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         };
 
         window.openExcelConfigModalLive = async function() {
+            if(!["Admin","SuperAdmin"].includes(window.currentUserData?.role)){
+              window.showToast?.("Chỉ BCN quản trị được tải hoặc xuất dữ liệu chấm điểm.","error");
+              return;
+            }
+
             window.showLoading(true, "Chuẩn bị..."); 
             try {
                 let gO=''; window._overviewCache.groupMap && Object.keys(window._overviewCache.groupMap).forEach(id => { gO += `<option value="${id}">${window.escapeHtml(window._overviewCache.groupMap[id].name)}</option>`; });
@@ -2764,6 +2774,11 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         };
 
         window.executeExcelExport = async function(groupId, graderCode, rF, title, graderOptionText, docTitle, expHidden, requestedFileName) {
+            if(!["Admin","SuperAdmin"].includes(window.currentUserData?.role)){
+              window.showToast?.("Chỉ BCN quản trị được tải hoặc xuất dữ liệu chấm điểm.","error");
+              return;
+            }
+
             window.showLoading(true,'Đang xuất Excel...');
             try{
                 const groupInfo=window._overviewCache.groupMap[groupId];
@@ -2800,6 +2815,11 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         };
 
         window.openPDFConfigModalLive = async function() {
+            if(!["Admin","SuperAdmin"].includes(window.currentUserData?.role)){
+              window.showToast?.("Chỉ BCN quản trị được tải hoặc xuất dữ liệu chấm điểm.","error");
+              return;
+            }
+
             window.showLoading(true, "Chuẩn bị..."); 
             try {
                 let gO=''; window._overviewCache.groupMap && Object.keys(window._overviewCache.groupMap).forEach(id => { gO += `<option value="${id}">${window.escapeHtml(window._overviewCache.groupMap[id].name)}</option>`; });
@@ -2830,6 +2850,11 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         };
 
         window.executePDFExport = async function(groupId, graderCode, rF, title, signerTitle, graderOptionText, docTitle, attendanceFilter, expHidden, requestedFileName) {
+            if(!["Admin","SuperAdmin"].includes(window.currentUserData?.role)){
+              window.showToast?.("Chỉ BCN quản trị được tải hoặc xuất dữ liệu chấm điểm.","error");
+              return;
+            }
+
             window.showLoading(true,'Đang tạo PDF...');
             try{
                 const groupInfo=window._overviewCache.groupMap[groupId];

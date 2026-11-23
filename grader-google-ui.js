@@ -28,44 +28,6 @@ async function flushPending(groupId){
  }
 }
 function close(){window.closeCustomModal?.()}
-function buildPrint(receipt){
- const root=node("div");root.style.cssText="padding:24px;background:white;color:#171717;font:13px/1.5 Arial,sans-serif";
- const h=node("h2","BIÊN BẢN XÁC NHẬN BẢNG ĐIỂM");h.style.textAlign="center";root.append(h);
- for(const line of [
-  "Phiên chấm: "+receipt.groupName,
-  "Giám khảo: "+receipt.graderName+" ("+receipt.email+")",
-  "Xác nhận qua OTP email lúc: "+new Date(receipt.confirmedAt).toLocaleString("vi-VN"),
-  "SHA-256 bản chốt: "+receipt.sha256
- ]){root.append(node("p",line))}
- const t=node("table");t.style.cssText="border-collapse:collapse;width:100%;margin-top:18px";
- const header=node("tr");for(const item of ["SBD","Thí sinh","Điểm từng tiêu chí","Tổng"]){
-  const th=node("th",item);th.style.cssText="border:1px solid #bbb;padding:6px";header.append(th)
- }t.append(header);
- for(const row of receipt.rows||[]){
-  const tr=node("tr");
-  for(const value of [row.code||row.candidateId,row.name||"—",Object.entries(row.scores||{}).map(([k,v])=>k+": "+v).join("; "),String(row.total??"—")]){
-   const td=node("td",String(value));td.style.cssText="border:1px solid #bbb;padding:6px";tr.append(td);
-  }t.append(tr);
- }
- const c=receipt.completeness||{};
- const partial=node("p","Độ đầy đủ: "+(c.scoredCandidates??0)+"/"+(c.totalCandidates??0)+
- " thí sinh đã chấm • "+(c.missingCriterionCells??0)+" ô tiêu chí thiếu."+
- (c.partial?" BẢNG ĐIỂM XÁC NHẬN CHƯA ĐẦY ĐỦ.":""));
- partial.style.cssText="font-weight:bold;color:"+(c.partial?"#991b1b":"#166534");root.append(partial);
- root.append(t,node("p","Đây là xác nhận điện tử qua OTP email, không phải chữ ký số có chứng thư số."));
- return root;
-}
-async function exportPdf(groupId){
- const data=await api("receipt",groupId);
- if(typeof window.html2pdf!=="function")throw Error("Trình tạo PDF chưa sẵn sàng.");
- const name="GrandeSync_BienBan_"+String(window.currentUserData?.code||"BGK").replace(/[^a-zA-Z0-9_-]/g,"_")+".pdf";
- await window.html2pdf().set({
-  margin:10,filename:name,image:{type:"jpeg",quality:0.96},
-  html2canvas:{scale:2,backgroundColor:"#fff"},
-  jsPDF:{unit:"mm",format:"a4",orientation:"landscape"}
- }).from(buildPrint(data.receipt)).save();
- notify("Đã xuất biên bản PDF xác nhận OTP.");
-}
 function openOtpDialog(groupId,masked){
  const box=document.getElementById("custom-modal-box");if(!box)throw Error("Không mở được hộp thoại OTP.");
  box.replaceChildren();
@@ -82,8 +44,7 @@ function openOtpDialog(groupId,masked){
   confirm.disabled=true;try{
    const answer=await api("confirm",groupId,{code:input.value});
    close();notify("Bảng điểm đã xác nhận và khóa thành công.");
-   const signed=window.confirm("Đã xác nhận bảng điểm. Bạn có muốn tải biên bản PDF?");
-   if(signed)await exportPdf(groupId);
+   // BGK chỉ được xem trạng thái xác nhận; PDF bảng điểm dành riêng cho BCN.
    window._lastInitAuthUid=null;
    window.loadGradingTable?.(document.getElementById("main-content")).catch(()=>{});
   }catch(e){error.textContent=e.message}finally{confirm.disabled=false}
@@ -206,5 +167,5 @@ document.addEventListener("input",e=>{if(e.target.matches?.("input.score-input")
 document.addEventListener("visibilitychange",refreshRecovery);
 scheduleRecovery();
 
-window.gsExportConfirmedPdf=exportPdf;
+// Không công khai bất kỳ hàm tải PDF nào cho giám khảo.
 })();
