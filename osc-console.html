@@ -7423,7 +7423,7 @@ window.currentUserData = null; window.activeListeners = [];
           <td>${esc(c.code||"-")}</td>
           <td class="name">${esc(c.name||"-")}</td>
           ${criteria.map(cr=>`<td>${esc(values[cr.name]??"-")}</td>`).join("")}
-          <td><b>${entered&&s.totalScore!==null&&s.totalScore!==undefined?esc(Number(s.totalScore).toFixed(2).replace(/\\.00$/,"")):"-"}</b></td>
+          <td><b>${entered&&s.totalScore!==null&&s.totalScore!==undefined?esc(Number(s.totalScore).toFixed(2).replace(/\.00$/,"")):"-"}</b></td>
           <td><b>${result}</b></td>
         </tr>`;
       }).join("");
