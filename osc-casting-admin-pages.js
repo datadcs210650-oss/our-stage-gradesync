@@ -91,6 +91,11 @@ export function installCastingAdminPages(){
   if(!groups.length)list.append(el("p","Chưa có phiên chấm.","text-xs text-gray-500"));
   const container=el("div","","space-y-4");
   container.append(wrap,policy,list);
+  // Legacy unscoped group creation conflicts with semester-bound casting sessions.
+  // Keep the existing per-group configuration editor; use this guided creation form instead.
+  for(const child of [...host.children]){
+   if(child.querySelector("h3")?.textContent?.includes("Khởi tạo Nhóm"))child.remove();
+  }
   host.prepend(container);
   existing();naming();
  }
