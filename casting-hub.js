@@ -43,7 +43,7 @@ async function showResults(){
  head.append(hr);t.append(head);const body=document.createElement("tbody");
  for(const r of result.rows||[]){
   const tr=el("tr","border-t"),td=document.createElement("td"),checkbox=document.createElement("input");
-  checkbox.type="checkbox";checkbox.value=r.id;checkbox.className="cast-chosen";checkbox.disabled=r.outcome==="pending"||r.incomplete;
+  checkbox.type="checkbox";checkbox.value=r.id;checkbox.className="cast-chosen";checkbox.disabled=r.outcome!=="passed"||r.incomplete;
   td.className="p-3";td.append(checkbox);tr.append(td);
   for(const item of [r.mssv||r.code,r.name,r.groupName,r.score==null?"—":Number(r.score).toFixed(2),
     r.judges+"/"+r.expectedJudges,(r.anomalies||[]).join("; ")||(r.incomplete?"Chưa hoàn tất":"Đủ điểm"),r.incomplete?"CHỜ":r.outcome.toUpperCase(),r.review])tr.append(el("td","p-3",String(item||"")));
@@ -57,7 +57,7 @@ function setTermOptions(select){for(const y of [year,year+1])for(const prefix of
 async function loadCastingHub(parent){
  host=parent;host.replaceChildren();const root=el("div","space-y-4 pb-8");
  root.append(el("h2","text-xl font-black text-red-900","Quản lý casting theo học kỳ"));
- root.append(el("p","text-xs text-gray-500","Casting FA/SU/SP • Google BGK • Đối soát điểm • Duyệt kết quả • Công bố theo lịch"));
+ root.append(el("p","text-xs text-gray-500","Đối soát điểm đã khóa • Duyệt kết quả • Đồng bộ diễn viên OSC • Email và công bố theo lịch"));
  status=el("p","text-xs font-semibold");status.setAttribute("role","status");root.append(status);
  castingSelect=field("select");castingSelect.id="gsxCastingSelect";castingSelect.onchange=()=>{current=castingSelect.value;title.textContent=summary()?.name||"";result=null;table.replaceChildren();refreshRules()};
  root.append(formRow("Chọn casting",castingSelect));
@@ -75,7 +75,7 @@ async function loadCastingHub(parent){
   await action("casting-grant-criteria",{graderId:graderSelect.value,groupId:criterionGroup.value,
   criteria:[...criteriaList.querySelectorAll("input:checked")].map(e=>e.value)});
  }));
- setup.append(grants);root.append(setup);
+ setup.append(grants);
  const rules=panel("Quy chế tổng hợp nhiều giám khảo"),ruleGrid=stack(),ruleMethod=field("select"),rulePass=field("input"),weights=el("div","grid grid-cols-1 md:grid-cols-2 gap-2 mt-3");
  for(const [v,t] of [["mean","Trung bình các BGK"],["weighted","Trọng số từng BGK"],["trimmed","Loại điểm cao nhất và thấp nhất (từ 3 BGK)"]]){
   const o=el("option","",t);o.value=v;ruleMethod.append(o);
@@ -108,7 +108,7 @@ async function loadCastingHub(parent){
   }
   if(!judges.length)weights.append(el("p","text-xs text-gray-500","Hãy gắn nhóm thi và phân công BGK trước khi thiết lập trọng số."));
  };
- root.append(rules);
+ // Quy chế đã chuyển sang menu Phiên chấm & cài đặt điểm.
  const details=panel("Thông tin casting & thí sinh"),inside=stack();title=el("p","text-xs font-bold mb-2");details.append(title);
  groupSelect=field("select");
  const groupArea=el("div");groupArea.append(formRow("Nhóm thi",groupSelect),
@@ -119,7 +119,7 @@ async function loadCastingHub(parent){
  for(const [v,t] of [["admin","Chỉ BCN"],["judge","BGK được xem"],["public","Công khai nếu được duyệt"]]){const o=el("option","",t);o.value=v;visibility.append(o)}
  const fg=stack();fg.append(key,label,kind,visibility);cf.append(formRow("Trường tùy chỉnh",fg),
   button("Lưu cấu hình trường",async()=>{await action("casting-field",{castingId:current,key:key.value,label:label.value,kind:kind.value,visibility:visibility.value})}));
- inside.append(cf);details.append(inside);root.append(details);
+ inside.append(cf);details.append(inside);
  const review=panel("Đối soát điểm & duyệt PASSED / FAILED");
  table=el("div","text-xs text-gray-500");table.textContent="Bấm Tải bảng điểm để kiểm tra.";
  review.append(button("Tải bảng điểm",showResults),table);
