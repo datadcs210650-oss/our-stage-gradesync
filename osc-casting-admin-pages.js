@@ -29,6 +29,7 @@ export function installCastingAdminPages(){
    "Tên phiên tự động theo mẫu FA26_DIỄN VIÊN, SU27_BIÊN KỊCH... Có thể mở thêm nhiều phiên riêng trong cùng một học kỳ.");
   const grid=el("div","","grid grid-cols-1 md:grid-cols-2 gap-4");
   const term=sel();options(term,semesters(),x=>x.name);
+  term.value=allCastings.find(c=>semesters().some(s=>s.id===c.term))?.term||("FA"+String(new Date().getFullYear()%100).padStart(2,"0"));
   const division=input("Ví dụ: DIỄN VIÊN & BIÊN KỊCH");
   const destination=sel();
   const sessionName=el("p","","text-xs font-bold text-red-800 md:col-span-2");
