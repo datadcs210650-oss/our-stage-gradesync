@@ -31,6 +31,13 @@ test('only a public empty-data change signal is available to anonymous Realtime 
  assert.match(migration,/REVOKE ALL ON FUNCTION gradesync_internal\.emit_change_signal\(\) FROM PUBLIC, anon, authenticated/);
 });
 
+test('BGK presence is event-driven as well, without polling inactive admins',()=>{
+ const presence=fs.readFileSync(path.join(root,'supabase/migrations/20261123161000_grader_presence_event_signal.sql'),'utf8');
+ assert.match(presence,/AFTER INSERT OR UPDATE OR DELETE ON public\.grader_sessions/);
+ assert.match(presence,/INSERT INTO public\.gs_change_signal/);
+ assert.match(html,/if\(\['Admin','SuperAdmin'\]\.includes\(window\.currentUserData\?\.role\)\)/);
+});
+
 test('actual grader score writes remain direct Supabase operations with their own realtime',()=>{
  assert.match(original,/createClient\(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY/);
  assert.match(original,/supabase\.channel\("gs_"/);
