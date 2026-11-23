@@ -2863,7 +2863,7 @@ window.currentUserData = null; window.activeListeners = [];
                 if(!rows.length) rows.push(`<tr><td colspan="${colCount}" class="empty-row">Không có kết quả nào khớp với bộ lọc.</td></tr>`);
 
                 const signature=isVerified
-                    ? `<div class="signature"><div class="sig-title">Signature Valid</div><div>Bởi: <b>${window.escapeHtml(signerName)}</b></div><div>Lúc: ${signTime}</div></div>`
+                    ? `<div class="signature"><div class="sig-title">✓ ĐÃ XÁC NHẬN / KHÓA BẢNG ĐIỂM</div><div>Giám khảo: <b>${window.escapeHtml(signerName)}</b></div><div>Thời gian: ${signTime}</div><div class="sig-note">Xác nhận điện tử nội bộ, không phải chữ ký số có chứng thư số.</div></div>`
                     : `<div class="not-verified">(Chưa khóa bảng điểm)</div>`;
 
                 // 8 dòng mỗi trang: ưu tiên tuyệt đối không cắt hàng, đồng thời chừa đủ chỗ chữ ký ở trang cuối.
@@ -2904,7 +2904,7 @@ window.currentUserData = null; window.activeListeners = [];
                     .empty-row{padding:8mm!important;color:#6b7280;font-style:italic}
                     .sign-wrap{display:flex;justify-content:flex-end;margin-top:4mm;page-break-inside:avoid!important;break-inside:avoid!important}
                     .sign{text-align:center;width:76mm;font-size:11px}.date{font-style:italic;margin-bottom:2mm}.signer{font-weight:700;margin-bottom:2mm}
-                    .signature{border:1.5px solid #16a34a;color:#b91c1c;text-align:left;padding:2.5mm 3mm;font-size:10px;line-height:1.35}.sig-title{font-weight:700;font-size:12px;margin-bottom:1mm}.not-verified{color:#991b1b;font-style:italic;margin-top:3mm}
+                    .signature{border:1.5px solid #16a34a;color:#b91c1c;text-align:left;padding:2.5mm 3mm;font-size:10px;line-height:1.35}.sig-note{margin-top:2mm;color:#6b7280;font-size:8px}.sig-title{font-weight:700;font-size:12px;margin-bottom:1mm}.not-verified{color:#991b1b;font-style:italic;margin-top:3mm}
                 </style>`;
                 const pdfName=window.sanitizeFileName(requestedFileName,`Bien_Ban_${title}_${graderCode==='ALL'?'HoiDong':signerName}`);
                 await window.html2pdf().set({
@@ -7402,7 +7402,11 @@ window.currentUserData = null; window.activeListeners = [];
     if(!isAdmin()) return;
     window.showLoading?.(true,'Đang tạo PDF kết quả BGK...');
     try{
-      const {group,grader,candidates,scores,verification}=await fetchAdminData(groupId,graderCode);
+      const [{group,grader,candidates,scores,verification},meta]=await Promise.all([
+        fetchAdminData(groupId,graderCode),
+        window.oscGradingCall("casting-grader-receipt",{groupId,graderCode})
+      ]);
+      const receipt=meta?.receipt||null;
       const scoreMap=new Map(scores.map(s=>[s.candidateId,s]));
       const criteria=group.criteria||[];
       const rows=candidates.map((c,index)=>{
@@ -7421,13 +7425,22 @@ window.currentUserData = null; window.activeListeners = [];
 
       if(!rows) throw new Error('BGK chưa có kết quả để xuất.');
 
-      const signed=verification?.isVerified===true;
-      const signTime=tsToText(verification?.timestamp)||'Chưa ghi nhận';
-      const signatureBlock=verification?.signatureImage
-        ? `<img src="${verification.signatureImage}" class="sig-img"><div class="sig-name">${esc(grader.name||'Giám khảo')}</div>`
-        : signed
-          ? `<div class="digital-sign"><div class="valid">✓ SIGNATURE VALID</div><div><b>${esc(grader.name||'Giám khảo')}</b> - ${esc(graderCode)}</div><div>${esc(signTime)}</div></div>`
-          : `<div class="unsigned">Chưa có chữ ký / chưa khóa nộp</div>`;
+      const signed=verification?.isVerified===true||!!receipt;
+      const signTime=receipt?.confirmedAt?new Date(receipt.confirmedAt).toLocaleString("vi-VN"):tsToText(verification?.timestamp)||"Chưa ghi nhận";
+      const checksum=receipt?.sha256||"";
+      const signatureBlock=signed
+        ? `<div class="digital-sign">
+            <div class="stamp-line"><div class="stamp-ring">OSC<br>✓<br>GS</div><div>
+              <div class="valid">✓ ĐÃ XÁC NHẬN BẢNG ĐIỂM</div>
+              <div><b>${esc(grader.name||"Giám khảo")}</b> · ${esc(graderCode)}</div>
+              <div>Ngày giờ: ${esc(signTime)}</div>
+              <div>${receipt?"Xác nhận qua OTP email":"Xác nhận/khóa theo hệ thống"}</div>
+            </div></div>
+            ${checksum?`<div class="checksum">SHA-256: ${esc(checksum)}</div>`:""}
+            ${verification?.signatureImage?`<img src="${verification.signatureImage}" class="sig-img"><div class="sig-name">${esc(grader.name||"Giám khảo")}</div>`:""}
+            <div class="disclaimer">Dấu xác nhận nội bộ OSC – không phải chữ ký số có chứng thư số.</div>
+          </div>`
+        : `<div class="unsigned">Chưa có xác nhận khóa/nộp từ giám khảo</div>`;
 
       const th=criteria.map(cr=>`<th>${esc(cr.name)}<br><small>${esc(cr.weight)}%</small></th>`).join('');
       const htmlPdf=`
@@ -7450,6 +7463,10 @@ window.currentUserData = null; window.activeListeners = [];
         .sig-img{max-width:58mm;max-height:25mm;object-fit:contain;display:block;margin:4px auto}
         .sig-name{font-weight:700;margin-top:4px}
         .digital-sign{border:1.5px solid #16a34a;padding:7px;text-align:left;display:inline-block;min-width:55mm}
+        .stamp-line{display:flex;gap:8px;align-items:center}
+        .stamp-ring{width:48px;height:48px;border:2px double #b91c1c;color:#b91c1c;border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;flex:none;font:bold 10px/12px Arial,sans-serif}
+        .checksum{margin-top:5px;font:8px/1.35 monospace;overflow-wrap:anywhere}
+        .disclaimer{margin-top:6px;font:8px/1.4 Arial,sans-serif;color:#6b7280}
         .digital-sign .valid{font-weight:700;color:#15803d;margin-bottom:3px}
         .unsigned{color:#991b1b;font-style:italic}
       </style>
