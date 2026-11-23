@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateImport} from '../src/utils/importValidation.js';
+import {validateImport} from './src/utils/importValidation.js';
 
 test('phát hiện trùng với dữ liệu cũ và trùng trong file',()=>{
   const rows=[{'Mã SBD':'A1','Họ tên':'Một'},{'Mã SBD':'A2','Họ tên':'Hai'},{'Mã SBD':'A2','Họ tên':'Ba'}];

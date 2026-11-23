@@ -146,17 +146,44 @@ export function installCastingAdminPages(){
    const c=allCastings.find(c=>c.id===g.castingId);
    const row=el("div","","flex flex-col md:flex-row md:items-center gap-2 py-3 border-b border-gray-100");
    const left=el("div","","flex-1 min-w-0");left.append(el("div",g.name,"font-bold text-sm"),el("div",c?c.term+" · "+c.name:"Chưa gắn casting","text-xs text-gray-500"));
-   row.append(left,btn("Sao chép link BGK",()=>copy(groupLink(g.id)),true));list.append(row);
+   const nameInput=host.querySelector("#e-gn-"+CSS.escape(g.id));
+   if(nameInput&&g.version)nameInput.dataset.version=g.version;
+   const editor=nameInput?.closest("tr");
+   const edit=btn("Chỉnh sửa phiên",()=>{
+    const details=editor?.closest("details");
+    if(details){details.open=true;editor.scrollIntoView({block:"nearest"});editor.querySelector("input")?.focus()}
+   },true);
+   if(editor)row.append(left,edit);else row.append(left);
+   if(!c&&allCastings.length){
+    const link=sel();link.append(new Option("Chọn casting",""));
+    for(const casting of allCastings.filter(c=>!["published","archived"].includes(c.status)))
+     link.append(new Option(casting.term+" · "+casting.name,casting.id));
+    row.append(field("Gắn casting",link),btn("Gắn",async()=>{
+     if(!link.value)throw Error("Hãy chọn casting.");
+     await api("casting-assign-group",{castingId:link.value,groupId:g.id});
+     await window.loadGroupsManager(host);
+    },true));
+   }
+   row.append(btn("Sao chép link BGK",()=>copy(groupLink(g.id)),true));list.append(row);
   }
   if(!groups.length)list.append(el("p","Chưa có phiên chấm.","text-xs text-gray-500"));
   const container=el("div","","space-y-4");
-  container.append(wrap,policy,list);
+  const collapse=(label,section)=>{
+   const details=el("details","","mb-3");
+   details.append(el("summary",label,"cursor-pointer font-bold text-sm text-red-900"),section);
+   return details;
+  };
+  container.append(list,collapse("Tạo phiên chấm",wrap),collapse("Quy chế tổng hợp theo casting",policy));
   // Legacy unscoped group creation conflicts with semester-bound casting sessions.
   // Keep the existing per-group configuration editor; use this guided creation form instead.
   for(const child of [...host.children]){
    if(child.querySelector("h3")?.textContent?.includes("Khởi tạo Nhóm"))child.remove();
   }
-  host.prepend(container);
+  const legacy=el("details","","mt-4 bg-white border rounded-2xl p-4");
+  legacy.append(el("summary","Chỉnh sửa phiên và cấu hình điểm","cursor-pointer font-bold text-sm text-red-900"));
+  legacy.append(...host.children);
+  host.append(container,legacy);
+  legacy.querySelectorAll('button[onclick*="deleteGroup"]').forEach(button=>button.remove());
   existing();naming();
  }
  async function graderSettings(host){

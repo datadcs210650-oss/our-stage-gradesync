@@ -5,61 +5,31 @@ const api=(action,details={})=>window.oscGradingCall(action,details);
 const el=(tag,cls="",text="")=>{const e=document.createElement(tag);e.className=cls;e.textContent=text;return e};
 const field=(kind,placeholder)=>{const x=el(kind,"border rounded-lg p-2 text-xs w-full");if(placeholder)x.placeholder=placeholder;return x};
 const button=(label,fn)=>{const b=el("button","bg-red-900 hover:bg-red-800 text-white rounded-lg px-3 py-2 text-xs font-bold",label);b.type="button";b.onclick=async()=>{if(b.disabled)return;b.disabled=true;try{await fn()}catch(e){toast(e.message,true)}finally{b.disabled=false}};return b};
-let host,current="",all={},result=null,status,refreshRules=()=>{};
+let current="",castings=[],status,castingSelect,table,result;
 function toast(t,error=false){if(status){status.textContent=t;status.style.color=error?"#b91c1c":"#166534"}}
 function choose(select,items,label){select.replaceChildren(...items.map(x=>{const o=el("option","",label(x));o.value=x.id;return o}))}
-function panel(title){const x=el("section","bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"),h=el("h3","font-extrabold text-sm text-red-900 mb-3",title);x.append(h);return x}
-function stack(){return el("div","grid grid-cols-1 md:grid-cols-2 gap-3")}
-function summary(){return (all.castings||[]).find(x=>x.id===current)}
+function panel(title){const x=el("section","bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3");x.append(el("h3","font-extrabold text-sm text-red-900",title));return x}
 async function action(name,body,ok){const r=await api(name,body);toast(ok||"Đã lưu.");return r}
 function formRow(label,element){const x=el("label","block text-xs font-bold text-gray-700");x.append(el("span","block mb-1",label),element);return x}
 async function reload(){
- all=await api("casting-list");
- choose(castingSelect,all.castings||[],c=>c.term+" · "+c.name+" ("+c.status+")");
- if(!(all.castings||[]).some(c=>c.id===current))current=all.castings?.[0]?.id||"";
+ castings=(await api("casting-list")).castings||[];
+ choose(castingSelect,castings,c=>c.term+" · "+c.name);
+ if(!castings.some(c=>c.id===current))current=castings[0]?.id||"";
  castingSelect.value=current;
- choose(groupSelect,all.groups||[],g=>g.name+(g.castingId?" · đã gắn":""));
- choose(graderSelect,all.graders||[],g=>g.name+" · "+g.code+(g.email?" · "+g.email:""));
- choose(criterionGroup,all.groups||[],g=>g.name);
- showCriteria();
- title.textContent=summary()?summary().term+" • "+summary().name:"Chưa có casting. Hãy tạo casting mới.";
- refreshRules();
- if(judgeProgress){
-  judgeProgress.replaceChildren();
-  const groupIds=new Set((all.groups||[]).filter(g=>g.castingId===current).map(g=>g.id));
-  const judges=(all.graders||[]).filter(g=>(g.assignedGroups||[]).some(id=>groupIds.has(id)));
-  if(!judges.length)judgeProgress.append(el("p","text-xs text-gray-500","Casting chưa có BGK được phân công."));
-  for(const judge of judges){
-   const count=(judge.assignedGroups||[]).filter(id=>groupIds.has(id)).length;
-   const item=el("div","flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100");
-   const left=el("div","min-w-0"),name=el("p","text-xs font-bold text-red-900",judge.name+" · "+judge.code),
-    detail=el("p","text-xs text-gray-500",count+" phiên chấm · "+(judge.email||"Chưa có email BGK"));
-   left.append(name,detail);
-   item.append(left,el("span","text-xs font-bold "+(judge.status==="Active"?"text-emerald-700":"text-red-600"),judge.status==="Active"?"Đang hoạt động":"Đã khóa"));
-   judgeProgress.append(item);
-  }
- }
-}
-let castingSelect,groupSelect,graderSelect,criterionGroup,criteriaList,title,table;
-let judgeProgress;
-function showCriteria(){
- const g=all.groups?.find(x=>x.id===criterionGroup.value);criteriaList.replaceChildren();
- for(const c of g?.criteria||[]){
-  const lab=el("label","flex items-center gap-2 bg-gray-50 rounded-lg p-2 text-xs");
-  const chk=document.createElement("input");chk.type="checkbox";chk.checked=true;chk.value=c.name;chk.className="cast-criteria";
-  lab.append(chk,document.createTextNode(c.name+" · "+c.weight+"%"));criteriaList.append(lab);
- }
 }
 async function showResults(){
  if(!current){toast("Chưa chọn casting.",true);return}
- result=await api("casting-results",{castingId:current});
+ const castingId=current,view=table;
+ const response=await api("casting-results",{castingId});
+ if(castingId!==current||table!==view||!view.isConnected)return;
+ result=response;
  const wrap=el("div","overflow-x-auto border rounded-xl"),t=el("table","w-full min-w-[760px] text-xs border-collapse");
  const head=el("thead","bg-gray-100 text-gray-600"),hr=document.createElement("tr");
  for(const h of ["Chọn","MSSV / SBD","Thí sinh","Nhóm thi","Điểm HĐ","BGK","Đối soát","Kết quả","Duyệt"]){hr.append(el("th","p-3 text-left",h))}
  head.append(hr);t.append(head);const body=document.createElement("tbody");
  for(const r of result.rows||[]){
   const tr=el("tr","border-t"),td=document.createElement("td"),checkbox=document.createElement("input");
-  checkbox.type="checkbox";checkbox.value=r.id;checkbox.className="cast-chosen";checkbox.disabled=r.outcome!=="passed"||r.incomplete;
+  checkbox.type="checkbox";checkbox.value=r.id;checkbox.className="cast-chosen";checkbox.disabled=r.outcome==="pending"||r.incomplete;
   td.className="p-3";td.append(checkbox);tr.append(td);
   for(const item of [r.mssv||r.code,r.name,r.groupName,r.score==null?"—":Number(r.score).toFixed(2),
     r.judges+"/"+r.expectedJudges,(r.anomalies||[]).join("; ")||(r.incomplete?"Chưa hoàn tất":"Đủ điểm"),r.incomplete?"CHỜ":r.outcome.toUpperCase(),r.review])tr.append(el("td","p-3",String(item||"")));
@@ -68,74 +38,13 @@ async function showResults(){
  t.append(body);wrap.append(t);table.replaceChildren(wrap);
  toast("Đã đối soát "+(result.rows||[]).length+" thí sinh. Chỉ điểm BGK đã khóa/nộp được tính.");
 }
-let year=new Date().getFullYear()%100;
-function setTermOptions(select){for(const y of [year,year+1])for(const prefix of ["SP","SU","FA"]){const val=prefix+String(y).padStart(2,"0");const option=el("option","",val);option.value=val;select.append(option)}}
 async function loadCastingHub(parent){
- host=parent;host.replaceChildren();const root=el("div","space-y-4 pb-8");
- root.append(el("h2","text-xl font-black text-red-900","Quản lý casting theo học kỳ"));
- root.append(el("p","text-xs text-gray-500","Đối soát điểm đã khóa • Duyệt kết quả • Đồng bộ diễn viên OSC • Email và công bố theo lịch"));
+ const root=el("div","space-y-4 pb-8");
  status=el("p","text-xs font-semibold");status.setAttribute("role","status");root.append(status);
- castingSelect=field("select");castingSelect.id="gsxCastingSelect";castingSelect.onchange=()=>{current=castingSelect.value;title.textContent=summary()?.name||"";result=null;table.replaceChildren();reload().catch(e=>toast(e.message,true))};
- root.append(formRow("Chọn casting",castingSelect));
- const setup=stack(),create=panel("Tạo casting mới"),cgrid=stack(),term=field("select"),name=field("input","Tên casting"),
- method=field("select"),pass=field("input");setTermOptions(term);
- for(const [v,t] of [["mean","Trung bình"],["weighted","Trọng số BGK"],["trimmed","Bỏ điểm cao nhất & thấp nhất (≥3 BGK)"]]){const op=el("option","",t);op.value=v;method.append(op)}
- pass.type="number";pass.min="0";pass.max="10";pass.step=".1";pass.value="5";
- cgrid.append(formRow("Học kỳ",term),formRow("Tên casting",name),formRow("Phương pháp",method),formRow("Điểm đạt (0–10)",pass));
- create.append(cgrid,button("Tạo casting",async()=>{const r=await action("casting-save",{term:term.value,name:name.value,method:method.value,passScore:Number(pass.value)});current=r.casting.id;await reload()}));
- setup.append(create);
- const grants=panel("Đăng nhập Google & quyền BGK");graderSelect=field("select");const email=field("input","Email Google đã được cấp");email.type="email";
- grants.append(formRow("Giám khảo",graderSelect),formRow("Email Google",email),button("Cấp quyền Google",async()=>{await action("casting-grant-google",{graderId:graderSelect.value,email:email.value,enabled:true});await reload()}));
- criterionGroup=field("select");criterionGroup.onchange=showCriteria;criteriaList=el("div","grid grid-cols-2 gap-2 mt-2 mb-2");
- grants.append(formRow("Nhóm chấm",criterionGroup),criteriaList,button("Lưu quyền tiêu chí",async()=>{
-  await action("casting-grant-criteria",{graderId:graderSelect.value,groupId:criterionGroup.value,
-  criteria:[...criteriaList.querySelectorAll("input:checked")].map(e=>e.value)});
- }));
- setup.append(grants);
- const rules=panel("Quy chế tổng hợp nhiều giám khảo"),ruleGrid=stack(),ruleMethod=field("select"),rulePass=field("input"),weights=el("div","grid grid-cols-1 md:grid-cols-2 gap-2 mt-3");
- for(const [v,t] of [["mean","Trung bình các BGK"],["weighted","Trọng số từng BGK"],["trimmed","Loại điểm cao nhất và thấp nhất (từ 3 BGK)"]]){
-  const o=el("option","",t);o.value=v;ruleMethod.append(o);
- }
- rulePass.type="number";rulePass.min="0";rulePass.max="10";rulePass.step=".1";
- ruleGrid.append(formRow("Cách tính",ruleMethod),formRow("Ngưỡng PASSED (0–10)",rulePass));
- rules.append(ruleGrid,formRow("Trọng số BGK (áp dụng khi chọn Trọng số)",weights),
-   button("Lưu quy chế casting",async()=>{
-    const c=summary();if(!c)throw Error("Chưa chọn casting.");
-    const savedWeights={};
-    weights.querySelectorAll("input[data-grader-code]").forEach(input=>{
-     const weight=Number(input.value);
-     if(!Number.isFinite(weight)||weight<=0||weight>100)throw Error("Trọng số của "+input.dataset.graderCode+" phải từ 0 đến 100.");
-     savedWeights[input.dataset.graderCode]=weight;
-    });
-    await action("casting-save",{id:c.id,term:c.term,name:c.name,
-      method:ruleMethod.value,passScore:Number(rulePass.value),weights:savedWeights});
-    await reload();
-   }));
- refreshRules=()=>{
-  const c=summary();ruleMethod.value=c?.aggregate_method||"mean";rulePass.value=c?.pass_score??5;
-  weights.replaceChildren();
-  if(!c)return;
-  const ids=new Set((all.groups||[]).filter(g=>g.castingId===c.id).map(g=>g.id));
-  const judges=(all.graders||[]).filter(g=>(g.assignedGroups||[]).some(id=>ids.has(id)));
-  for(const g of judges){
-   const control=field("input");control.type="number";control.min="0.1";control.max="100";control.step="0.1";
-   control.value=String(c.grader_weights?.[g.code]??1);control.dataset.graderCode=g.code;
-   weights.append(formRow(g.name+" ("+g.code+")",control));
-  }
-  if(!judges.length)weights.append(el("p","text-xs text-gray-500","Hãy gắn nhóm thi và phân công BGK trước khi thiết lập trọng số."));
+ castingSelect=field("select");castingSelect.onchange=()=>{
+  current=castingSelect.value;result=null;table.textContent="Bấm Tải bảng điểm để kiểm tra.";
  };
- // Quy chế đã chuyển sang menu Phiên chấm & cài đặt điểm.
- const details=panel("Thông tin casting & thí sinh"),inside=stack();title=el("p","text-xs font-bold mb-2");details.append(title);
- groupSelect=field("select");
- const groupArea=el("div");groupArea.append(formRow("Nhóm thi",groupSelect),
-  button("Gắn nhóm vào casting",async()=>{await action("casting-assign-group",{castingId:current,groupId:groupSelect.value});await reload()}));
- inside.append(groupArea);
- const cf=el("div"),key=field("input","Mã trường, ví dụ phone"),label=field("input","Tên trường"),kind=field("select"),visibility=field("select");
- for(const t of ["text","email","number","date","select"]){const o=el("option","",t);o.value=t;kind.append(o)}
- for(const [v,t] of [["admin","Chỉ BCN"],["judge","BGK được xem"],["public","Công khai nếu được duyệt"]]){const o=el("option","",t);o.value=v;visibility.append(o)}
- const fg=stack();fg.append(key,label,kind,visibility);cf.append(formRow("Trường tùy chỉnh",fg),
-  button("Lưu cấu hình trường",async()=>{await action("casting-field",{castingId:current,key:key.value,label:label.value,kind:kind.value,visibility:visibility.value})}));
- inside.append(cf);details.append(inside);
+ root.append(formRow("Chọn casting",castingSelect));
  const review=panel("Đối soát điểm & duyệt PASSED / FAILED");
  table=el("div","text-xs text-gray-500");table.textContent="Bấm Tải bảng điểm để kiểm tra.";
  review.append(button("Tải bảng điểm",showResults),table);
@@ -159,34 +68,83 @@ async function loadCastingHub(parent){
   const csv="\uFEFF"+rows.map(row=>row.map(v=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'}).join(",")).join("\r\n");
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),a=document.createElement("a");a.href=url;a.download="OSC_Casting_DoiSoat.csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }));review.append(actions);root.append(review);
- const judgesPanel=panel("Ban giám khảo được phân công");
- judgeProgress=el("div","grid grid-cols-1 md:grid-cols-2 gap-3");
- judgesPanel.append(judgeProgress);root.append(judgesPanel);
-  const publication=panel("Công bố & thông báo"),publishAt=field("input");publishAt.type="datetime-local";
+ const publication=panel("Công bố kết quả tra cứu"),publishAt=field("input");publishAt.type="datetime-local";
  const showScore=field("input");showScore.type="checkbox";showScore.className="w-4 h-4 mr-2";
  publication.append(formRow("Thời điểm công bố (giờ địa phương)",publishAt));
  const scoreToggle=el("label","flex items-center text-xs font-semibold mt-2");scoreToggle.append(showScore,document.createTextNode("Cho thí sinh xem điểm tổng (mặc định chỉ xem PASSED / FAILED)"));publication.append(scoreToggle);
  publication.append(el("p","text-xs text-gray-500 mt-2 mb-2","Kết quả chỉ trả khi thí sinh tự tra cứu đúng MSSV/SBD và email đã khai báo; không hiển thị danh sách công khai."));
- const mail=field("select");for(const [v,t] of [["invite","Mời BGK"],["reminder","Nhắc chấm"],["submission","Xác nhận"],["publication","Công bố"]]){const o=el("option","",t);o.value=v;mail.append(o)}
- publication.append(mail,button("Lên lịch công bố",async()=>{if(!window.confirm("Xác nhận lịch công bố kết quả?"))return;await action("casting-publish",{castingId:current,publishAt:publishAt.value?new Date(publishAt.value).toISOString():null,publicFields:showScore.checked?["outcome","score"]:["outcome"]});await reload()}),
- button("Xếp hàng email",async()=>{
-  let addresses;
-  if(mail.value==="publication"){
-   const rows=(await api("casting-results",{castingId:current})).rows||[];
-   addresses=rows.filter(x=>x.outcome!=="pending"&&x.review==="approved"&&x.emailConsent===true)
-    .map(x=>x.email).filter(Boolean);
-  }else addresses=(all.graders||[]).map(g=>g.email).filter(Boolean);
-  if(!addresses.length)throw Error("Không có địa chỉ email đủ quyền/đồng ý nhận thư.");
-  const r=await action("casting-notification-queue",{castingId:current,kind:mail.value,emails:addresses});
-  toast("Đã xếp "+r.queued+" email vào hàng chờ. Chưa gửi mail.");
- }),button("Gửi email đã xếp hàng",async()=>{
+ publication.append(button("Lên lịch công bố",async()=>{
   if(!current)throw Error("Chưa chọn casting.");
-  if(!window.confirm("Gửi tối đa 20 thông báo casting đã xếp hàng qua Resend?"))return;
-  const r=await api("casting-send-notifications",{castingId:current});
-  toast(r.message||"Đã gửi yêu cầu thông báo.");
+  if(!window.confirm("Xác nhận lịch công bố kết quả?"))return;
+  await action("casting-publish",{castingId:current,publishAt:publishAt.value?new Date(publishAt.value).toISOString():null,publicFields:showScore.checked?["outcome","score"]:["outcome"]});
+  await reload();
  }));
- root.append(publication);host.append(root);
+ root.append(publication);parent.replaceChildren(root);
+ result=null;
  try{await reload()}catch(e){toast(e.message,true)}
 }
+async function loadCastingEmail(parent){
+ const root=panel("Thông báo casting");
+ const data=await api("casting-list");
+ const picker=field("select"),kind=field("select");
+ const types={invite:"Mời BGK",reminder:"Nhắc chấm",submission:"Xác nhận",publication:"Công bố kết quả"};
+ const states={queued:"Chờ gửi",sent:"Đã gửi",failed:"Gửi lỗi"};
+ choose(picker,data.castings||[],c=>c.term+" · "+c.name);
+ choose(kind,Object.entries(types).map(([id,label])=>({id,label})),x=>x.label);
+ const message=el("p","text-xs text-gray-600");message.setAttribute("role","status");
+ const list=el("div","space-y-2");
+ const pagination=el("div","flex items-center gap-2");
+ let offset=0,request=0;
+ const perform=(label,run)=>{
+  const control=button(label,async()=>{
+   try{await run()}catch(error){message.textContent=error.message}
+  });
+  return control;
+ };
+ async function history(){
+  const version=++request,castingId=picker.value;
+  if(!castingId){list.textContent="Chưa có casting.";return}
+  const data=await api("casting-notice-history",{castingId,offset});
+  if(version!==request)return;
+  list.replaceChildren();
+  for(const row of data.rows){
+   const box=el("div","flex flex-wrap items-center justify-between gap-2 border-b py-2 text-xs");
+   const when=new Date(row.sent_at||row.created_at).toLocaleString("vi-VN");
+   box.append(el("span","break-all",[row.recipient_email,types[row.event_type],states[row.status],when].join(" · ")));
+   if(row.status!=="queued")box.append(perform("Xếp hàng gửi lại",async()=>{
+    if(!window.confirm("Xếp hàng gửi lại thông báo tới "+row.recipient_email+"?"))return;
+    await api("casting-notice-retry",{castingId,noticeId:row.id});
+    message.textContent="Đã xếp hàng gửi lại.";offset=0;await history();
+   }));
+   list.append(box);
+  }
+  if(!data.rows.length)list.textContent="Chưa có thông báo trên trang này.";
+  pagination.replaceChildren();
+  if(offset>0)pagination.append(perform("Trang trước",async()=>{offset-=50;await history()}));
+  if(data.hasMore)pagination.append(perform("Trang sau",async()=>{offset+=50;await history()}));
+ }
+ picker.onchange=()=>{
+  offset=0;list.replaceChildren();pagination.replaceChildren();message.textContent="";
+  history().catch(error=>message.textContent=error.message);
+ };
+ const controls=el("div","flex flex-wrap gap-2");
+ controls.append(perform("Xếp hàng email",async()=>{
+  if(!picker.value)throw Error("Chưa chọn casting.");
+  const response=await api("casting-notification-queue",{castingId:picker.value,kind:kind.value,allEligible:true});
+  message.textContent=response.queued?"Đã xếp "+response.queued+" email vào hàng đợi.":"Không có người nhận mới đủ điều kiện.";
+  offset=0;await history();
+ }),perform("Gửi email trong hàng đợi",async()=>{
+  if(!picker.value)throw Error("Chưa chọn casting.");
+  if(!window.confirm("Gửi tối đa 20 thông báo đang chờ cho casting này?"))return;
+  const response=await api("casting-send-notifications",{castingId:picker.value});
+  message.textContent=response.reconciled===false?
+   "Resend đã tiếp nhận. Trạng thái hàng đợi đang chờ đối soát.":response.message;
+  offset=0;await history();
+ }),perform("Tải lại lịch sử",history));
+ root.append(formRow("Casting",picker),formRow("Loại thông báo",kind),controls,message,
+  el("h4","font-bold text-sm text-red-900","Hàng đợi và lịch sử gửi"),list,pagination);
+ parent.replaceChildren(root);await history();
+}
 window.loadCastingHub=loadCastingHub;
+window.loadCastingEmail=loadCastingEmail;
 })();

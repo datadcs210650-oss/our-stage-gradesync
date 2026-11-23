@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { weightedTotal,validateScoreSheet,mean,stddev,councilAverage,histogram } from '../src/utils/scoring.js';
+import { weightedTotal,validateScoreSheet,mean,stddev,councilAverage,histogram } from './src/utils/scoring.js';
 
 test('weightedTotal tính đúng trọng số',()=>{
   const criteria=[{name:'A',weight:30},{name:'B',weight:70}];
