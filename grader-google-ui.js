@@ -104,14 +104,14 @@ window.verifyGroupGrading=async function(groupId){
   const summary="Đã nhập điểm cho "+(c.scoredCandidates||0)+"/"+(c.totalCandidates||0)+
    " thí sinh; còn "+(c.incompleteCandidates||0)+" hồ sơ chưa đủ tiêu chí, "+(c.missingCriterionCells||0)+
    " ô điểm còn thiếu.";
-  const details=c.partial?"\\nLƯU Ý: điểm chưa chấm sẽ KHÔNG được tự điền 0 hoặc tính PASSED. Khi xác nhận OTP, bảng sẽ khóa vĩnh viễn.":"\\nBảng điểm đủ tiêu chí đã phân công. Khi xác nhận OTP, bảng sẽ khóa vĩnh viễn.";
+  const details=c.partial?"\nLƯU Ý: điểm chưa chấm sẽ KHÔNG được tự điền 0 hoặc tính PASSED. Khi xác nhận OTP, bảng sẽ khóa vĩnh viễn.":"\nBảng điểm đủ tiêu chí đã phân công. Khi xác nhận OTP, bảng sẽ khóa vĩnh viễn.";
   const proceed=async()=>{
    try{
     const r=await api("request",groupId,{confirmPartial:c.partial===true});
     openOtpDialog(groupId,r.emailMasked);
    }catch(e){notify("Không thể gửi OTP: "+e.message,true)}
   };
-  if(window.showCustomConfirm)window.showCustomConfirm("Xác nhận khóa bảng điểm?\\n"+summary+details,proceed);
+  if(window.showCustomConfirm)window.showCustomConfirm("Xác nhận khóa bảng điểm?\n"+summary+details,proceed);
   else if(window.confirm(summary+details))await proceed();
  }catch(e){notify("Chưa thể đối soát điểm: "+e.message,true)}
 };
