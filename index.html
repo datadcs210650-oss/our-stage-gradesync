@@ -2551,6 +2551,8 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                     /quota exceeded|resource[- ]exhausted/i.test(String(e?.message||''))
                 ){
                     window.handleGradeSyncQuotaExceeded?.(cId,gId,pS,e);
+                }else if(/SCORES_ALREADY_SUBMITTED|ALREADY_CONFIRMED|SCORE_LOCKED/.test(String(e?.message||''))){
+                    window.showToast('Bảng điểm đã khóa. Hãy nhờ quản trị viên mở khóa trong OSC, sau đó đồng bộ lại điểm nháp.','error');
                 }else window.showToast('Không lưu được điểm: '+(e.message||e.code||'Lỗi không xác định'),'error');
                 return false;
             }finally{
