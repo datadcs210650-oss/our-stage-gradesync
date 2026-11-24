@@ -16,7 +16,8 @@ test("roster shows private contacts and extra fields without clipping rows in a 
 });
 
 test("email is a separate OSC page with queue history and explicit resend",()=>{
- assert.match(admin,/\["casting_email","Email"/);
+ assert.match(admin,/\["casting_hub","Quản lý kết quả"/);
+ assert.doesNotMatch(admin,/\["casting_email","Email"/);
  const review=casting.slice(casting.indexOf("async function loadCastingHub"),casting.indexOf("async function loadCastingEmail"));
  assert.doesNotMatch(review,/casting-(notification|notice|send)/);
  for(const action of ["casting-notice-history","casting-notice-retry","casting-send-notifications"])

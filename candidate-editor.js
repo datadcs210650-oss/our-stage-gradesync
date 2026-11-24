@@ -23,7 +23,8 @@ window.loadStudentList=async function(host){
  const addBtn=button("+ Thêm thí sinh",async()=>openCreate());
  const approveBtn=button("✓ Duyệt nhanh",async()=>bulkApprove());
  const importBtn=button("Nhập Excel",async()=>openImport(),true);
- actions.append(addBtn,importBtn,approveBtn,refresh);title.append(name,actions);shell.append(title);
+ const exportBtn=button("Xuất Excel",async()=>exportRoster(),true);
+ actions.append(addBtn,importBtn,exportBtn,approveBtn,refresh);title.append(name,actions);shell.append(title);
  const toolbar=make("div","bg-white border border-rose-100 rounded-2xl shadow-sm p-4 grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_minmax(220px,1fr)_auto] gap-3");
  const group=make("select","w-full rounded-xl border border-slate-200 p-3 text-xs bg-white");
  const search=input("search","","Tìm tên, SBD, MSSV, email, số điện thoại trong trang");
@@ -210,6 +211,21 @@ window.loadStudentList=async function(host){
    modal.close();window.showToast?.("Đã thêm thí sinh vào nhóm.");state.offset=0;await loadPage();
   }));
   modal.showModal();
+ }
+ async function exportRoster(){
+  const session=current();if(!session)throw Error("Hãy chọn phiên chấm.");
+  if(!window.XLSX)throw Error("Thư viện Excel chưa sẵn sàng.");
+  if(state.total>3000)throw Error("Tối đa 3000 hồ sơ mỗi lần xuất.");
+  const rows=[];let offset=0,total=state.total;
+  do{
+   const page=await request("casting-candidate-roster",{groupId:session.id,offset,limit:100});
+   if(session.id!==state.selected)throw Error("Phiên đã thay đổi; hãy xuất lại.");
+   total=page.total;if(total>3000)throw Error("Tối đa 3000 hồ sơ mỗi lần xuất.");
+   const chunk=page.rows||[];rows.push(...chunk);offset+=chunk.length;if(!chunk.length)break;
+  }while(offset<total);
+  const names=[...new Set(rows.flatMap(r=>(r.extras||[]).map(e=>e.label)))];
+  const data=[["SBD","Họ và tên","MSSV","Email","Số điện thoại","Vai đăng ký","Kết quả","Duyệt",...names],...rows.map(r=>[r.code,r.name,r.mssv,r.email,r.phone,(r.registeredRoles||[]).join("; "),r.outcome==="passed"?"PASSED":r.outcome==="failed"?"NOT PASSED":"CHỜ",formatReview(r.review),...names.map(n=>String((r.extras||[]).find(e=>e.label===n)?.value??""))])];
+  const book=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(book,window.XLSX.utils.aoa_to_sheet(data),"Thi sinh");window.XLSX.writeFile(book,"GrandSync-"+session.name.replace(/[^\p{L}\p{N}_-]/gu,"_")+".xlsx");
  }
  async function openImport(){
   const session=current();

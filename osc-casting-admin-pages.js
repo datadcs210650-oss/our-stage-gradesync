@@ -100,7 +100,7 @@ export function installCastingAdminPages(){
     const criteriaData=[...criteria.children].map(row=>{const [n,w]=row.querySelectorAll("input");return {name:n.value.trim(),weight:w.value.trim()?Number(w.value):NaN}});
     const extrasData=[...extras.children].map(row=>{const [n,v]=row.querySelectorAll("input");return {name:n.value.trim(),showToGrader:v.checked}});
     const graderWeights={...policy.weights};
-    weights.querySelectorAll("input[data-code]").forEach(w=>{graderWeights[w.dataset.code]=Number(w.value)});
+    if(method.value==="weighted")weights.querySelectorAll("input[data-code]").forEach(w=>{graderWeights[w.dataset.code]=Number(w.value)});
     const roleNames=enable.checked?[...roleList.querySelectorAll("input")].map(x=>x.value.trim()):[];
     if(enable.checked&&(!roleNames.length||roleNames.some(x=>!x)))throw Error("Cần nhập tên các vai diễn.");
     const sessionPolicy={method:method.value,weights:graderWeights,roles:roleNames,maxRegistered:enable.checked?Number(reg.value):0,maxProposed:enable.checked?Number(proposed.value):0,notesEnabled:notes.checked};
@@ -165,7 +165,6 @@ export function installCastingAdminPages(){
  }
  const oldGroups=window.loadGroupsManager;
  if(typeof oldGroups==="function")window.loadGroupsManager=async function(host){
-  await oldGroups(host);
   if(host)try{await sessionSettings(host)}catch(e){window.showToast?.("Không tải được thiết lập phiên chấm: "+e.message,"error")}
  };
  const oldAccounts=window.loadAccountManager;
