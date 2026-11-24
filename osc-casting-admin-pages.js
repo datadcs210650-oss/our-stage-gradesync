@@ -38,7 +38,7 @@ export function installCastingAdminPages(){
   function openDelete(g){
    dialog.replaceChildren();
    const pane=el("div","","p-5 md:p-6 space-y-4");
-   pane.append(el("h3","Xóa phiên chấm","text-lg font-black text-red-950"),el("p","Phiên "+g.name+" sẽ bị xóa vĩnh viễn cùng "+(g.candidateCount??0)+" hồ sơ thí sinh thuộc phiên và phân công BGK. Nhật ký quản trị được giữ lại. Không xóa điểm hay kết quả chính thức.","text-sm text-red-800 leading-relaxed"),el("p","Nhập đúng tên phiên để xác nhận.","text-xs font-bold text-gray-700"));
+   pane.append(el("h3","Xóa phiên chấm","text-lg font-black text-red-950"),el("p","Phiên "+g.name+" sẽ bị xóa vĩnh viễn cùng "+(g.candidateCount??0)+" hồ sơ thí sinh, điểm, biên bản và kết quả thuộc phiên, kể cả khi đã công bố. Không thể hoàn tác. Nhật ký quản trị được giữ lại; email đã gửi và thành viên đã đồng bộ không tự thu hồi.","text-sm text-red-800 leading-relaxed"),el("p","Nhập đúng tên phiên để xác nhận.","text-xs font-bold text-gray-700"));
    const name=input(g.name);pane.append(name);
    const actions=el("div","","flex flex-wrap gap-2 justify-end");
    const remove=btn("Xóa vĩnh viễn",async()=>{await api("casting-session-control",{operation:"delete",groupId:g.id,version:g.version,confirmName:name.value,confirm:true});dialog.close();window.showToast?.("Đã xóa phiên chấm.");await sessionSettings(host)});
@@ -138,8 +138,8 @@ export function installCastingAdminPages(){
      toggle.classList.add(open?"text-amber-800":"text-emerald-800");actions.append(toggle);
     }
    }
-   if(g.canDelete===true)actions.append(btn("Xóa phiên",()=>openDelete(g),true));
-   else if(status!=="unknown"){const del=btn("Xóa phiên",()=>{},true);del.disabled=true;del.title="Chỉ xóa phiên đã đóng và chưa có điểm, biên bản hoặc kết quả duyệt.";del.classList.add("opacity-40","cursor-not-allowed");actions.append(del)}
+   if(g.canDelete===true){const del=btn("Xóa phiên",()=>openDelete(g),true);del.classList.add("text-red-700","border-red-300");actions.append(del)}
+   
    if(!casting&&allCastings.length){const target=sel();target.append(new Option("Chọn casting",""));for(const x of allCastings.filter(x=>!["published","archived"].includes(x.status)))target.append(new Option(x.term+" · "+x.name,x.id));card.append(field("Gắn casting",target),btn("Gắn",async()=>{if(!target.value)throw Error("Chọn casting.");await api("casting-assign-group",{castingId:target.value,groupId:g.id});await window.loadGroupsManager(host)},true))}
    const counts=el("div","","grid grid-cols-3 gap-2");for(const [name,num] of [["Thí sinh",g.candidateCount],["BGK",g.judgeCount],["Đã nộp",g.verifiedCount]])counts.append(el("div",name+" · "+(num??"—"),"rounded-lg bg-gray-50 p-2 text-xs font-bold"));card.append(info,counts,actions);list.append(card);
   }
