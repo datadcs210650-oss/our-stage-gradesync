@@ -43,31 +43,35 @@ const registeredFor=(gid,cid)=>{const p=policyFor(gid),c=candidateFor(gid,cid);r
 const sameEvaluation=(a,b)=>JSON.stringify([...(a?.roles||[])].sort())===JSON.stringify([...(b?.roles||[])].sort())&&String(a?.note||"")===String(b?.note||"");
 const committedEvaluation=base=>({roles:base?.gsProposedRoles||[],note:base?.gsJudgeNote||""});
 function renderEvaluation(controls,gid,cid,disabled){
- const policy=policyFor(gid),roles=registeredFor(gid,cid),old=controls.querySelector(".gsx-evaluation");
- if(!policy?.roles?.length&&!policy?.notesEnabled){old?.remove();return}
- const signature=JSON.stringify([policy,roles]);
- let pane=old;
- if(!pane||pane.dataset.signature!==signature){
-  pane=document.createElement("div");pane.className="gsx-evaluation w-full min-w-[150px] text-left border border-rose-100 rounded-lg p-2 space-y-1";pane.dataset.signature=signature;
-  if(policy.roles?.length){
-   const title=document.createElement("p");title.className="font-bold text-[10px] text-red-900";title.textContent="Vai diễn phù hợp · tối đa "+policy.maxProposed;pane.append(title);
+ const policy=policyFor(gid),roles=registeredFor(gid,cid),slot=document.getElementById("status-container-"+cid);
+ if(!policy?.roles?.length&&!policy?.notesEnabled)return;
+ const tr=slot?.closest("tr"),roleHost=tr?.querySelector(".gsx-role-cell")||controls,noteHost=tr?.querySelector(".gsx-note-cell")||controls;
+ const signature=JSON.stringify([policy.roles,roles,policy.maxProposed]);
+ if(policy.roles?.length){
+  let pane=roleHost.querySelector(".gsx-role-panel");
+  if(!pane||pane.dataset.signature!==signature){
+   const old=pane;pane=document.createElement("div");pane.className="gsx-role-panel text-left w-full rounded-lg p-2 space-y-1";pane.dataset.signature=signature;
+   const title=document.createElement("p");title.className="font-bold text-[10px] text-red-900";title.textContent="Tối đa "+policy.maxProposed+" vai";pane.append(title);
    if(!roles.length){const empty=document.createElement("p");empty.className="text-[10px] text-gray-500";empty.textContent="Chưa đăng ký vai";pane.append(empty)}
    for(const role of roles){
     const label=document.createElement("label"),check=document.createElement("input"),text=document.createElement("span");
-    label.className="flex items-center gap-1 text-xs";check.type="checkbox";check.className="gsx-role-tick accent-red-900";check.value=role;text.textContent=role;
+    label.className="flex items-center gap-2 text-xs";check.type="checkbox";check.className="gsx-role-tick accent-red-900";check.value=role;text.textContent=role;
     check.onchange=()=>{if([...pane.querySelectorAll(".gsx-role-tick:checked")].length>policy.maxProposed){check.checked=false;window.showToast?.("Đã đạt số vai tối đa.","error")}record(gid,cid)};
     label.append(check,text);pane.append(label);
    }
+   if(old)old.replaceWith(pane);else roleHost.prepend(pane);
   }
-  if(policy.notesEnabled){const label=document.createElement("label"),note=document.createElement("textarea");label.className="block text-[10px] font-bold text-red-900";label.textContent="Ghi chú BGK";note.className="gsx-judge-note w-full rounded-md border p-2 text-xs font-normal";note.rows=2;note.maxLength=1000;note.placeholder="Nhận xét…";note.oninput=()=>record(gid,cid);label.append(note);pane.append(label)}
-  if(old)old.replaceWith(pane);else controls.prepend(pane);
+  const e=currentDraft(gid,cid)?.evaluation||committedEvaluation(current(gid,cid));
+  for(const x of pane.querySelectorAll(".gsx-role-tick")){x.checked=e.roles.includes(x.value);x.disabled=disabled||(!x.checked&&e.roles.length>=policy.maxProposed)}
  }
- const evaluation=currentDraft(gid,cid)?.evaluation||committedEvaluation(current(gid,cid));
- for(const x of pane.querySelectorAll(".gsx-role-tick")){x.checked=evaluation.roles.includes(x.value);x.disabled=disabled||(!x.checked&&evaluation.roles.length>=policy.maxProposed)}
- const note=pane.querySelector(".gsx-judge-note");if(note){if(document.activeElement!==note)note.value=evaluation.note;note.disabled=disabled}
+ if(policy.notesEnabled){
+  let note=noteHost.querySelector(".gsx-judge-note");
+  if(!note){note=document.createElement("textarea");note.className="gsx-judge-note w-full rounded-md border p-2 text-xs font-normal";note.rows=2;note.maxLength=1000;note.placeholder="Nhận xét…";note.setAttribute("aria-label","Ghi chú BGK");note.oninput=()=>record(gid,cid);noteHost.prepend(note)}
+  const e=currentDraft(gid,cid)?.evaluation||committedEvaluation(current(gid,cid));if(document.activeElement!==note)note.value=e.note;note.disabled=disabled;
+ }
 }
 function readEvaluation(gid,cid){
- const p=policyFor(gid),pane=document.getElementById("status-container-"+cid)?.querySelector(".gsx-evaluation");
+ const p=policyFor(gid),slot=document.getElementById("status-container-"+cid),pane=slot?.closest("tr")||slot;
  if(!p||!pane)return currentDraft(gid,cid)?.evaluation||committedEvaluation(current(gid,cid));
  return {roles:[...pane.querySelectorAll(".gsx-role-tick:checked")].map(x=>x.value),note:p.notesEnabled?(pane.querySelector(".gsx-judge-note")?.value||""):""};
 }
