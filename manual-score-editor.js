@@ -38,10 +38,10 @@ function take(gid,cid){
 }
 function currentDraft(gid,cid){return drafts()[key(gid,cid)]}
 function record(gid,cid){
- if(!uid()||busy.has(key(gid,cid)))return;
+ if(!uid())return;
  const x=take(gid,cid);if(!x.row.length||x.row.every(i=>i.disabled))return;
  const id=key(gid,cid),old=currentDraft(gid,cid),base=current(gid,cid);
- if(!x.invalid&&equal(x.scores,base?.scores||{})){delete drafts()[id];failures.delete(id)}
+ if(!busy.has(id)&&!x.invalid&&equal(x.scores,base?.scores||{})){delete drafts()[id];failures.delete(id)}
  else drafts()[id]={gid,cid,values:x.values,revision:old?.revision??Number(base?.revision||0),at:Date.now()};
  persist();paint(gid,cid);
 }
@@ -90,7 +90,7 @@ async function save(gid,cid){
  const x=normalize(d.values);if(x.invalid)return;
  // Recheck scope against current grant data before writing; server checks again.
  if(Object.keys(x.scores).some(k=>!allowed(gid,k))){failures.set(id,"Quyền chấm đã thay đổi");paint(gid,cid);return}
- busy.add(id);failures.delete(id);const enabled=row.filter(i=>!i.disabled);enabled.forEach(i=>i.disabled=true);paint(gid,cid);
+ busy.add(id);failures.delete(id);paint(gid,cid);
  try{
   const {data,error}=await window.supabase.rpc("gradesync_save_score",{p_candidate_id:cid,p_group_id:gid,p_scores:x.scores,p_total_score:0,p_expected_revision:d.revision});
   if(error)throw error;
@@ -103,7 +103,14 @@ async function save(gid,cid){
    window._allScoresCache=cache.filter(s=>!(s.candidateId===cid&&s.graderCode===mapped.graderCode));window._allScoresCache.push(mapped);
    (window._gradedDataCache||={})[cid]=mapped;
   }
-  delete drafts()[id];persist();window.showToast?.("Đã lưu điểm.");
+  const latest=currentDraft(gid,cid);
+  if(latest&&latest!==d&&!equal(normalize(latest.values).scores,saved.scores||{})){
+   drafts()[id]={...latest,revision:Number(saved.revision)};
+   window.showToast?.("Đã lưu phiên bản trước; thay đổi mới vẫn chưa lưu.");
+  }else if(latest&&latest!==d&&normalize(latest.values).invalid){
+   drafts()[id]={...latest,revision:Number(saved.revision)};
+  }else{delete drafts()[id];window.showToast?.("Đã lưu điểm.");}
+  persist();
  }catch(e){
   if(uid()!==u)return;
   failures.set(id,/SCORE_CONFLICT/.test(String(e.message))?"Xung đột phiên bản · Chưa lưu":"Lưu thất bại");
@@ -111,10 +118,6 @@ async function save(gid,cid){
  }finally{
   busy.delete(id);
   if(uid()===u){
-   // Re-check current lock state; never enable a newly locked or unassigned input.
-   const locked=Boolean(window._allVerificationsCache?.[window.currentUserData?.code+"_"+gid]?.isVerified);
-   const group=window._groupMapCache?.[gid];
-   if(!locked&&group&&window.getGroupTimeStatus?.(group)?.active!==false)enabled.forEach(i=>{if(i.isConnected&&allowed(gid,i.dataset.crit))i.disabled=false});
    paint(gid,cid);
   }
  }
