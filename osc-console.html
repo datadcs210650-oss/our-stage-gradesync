@@ -13,14 +13,14 @@ for(const key of ["localStorage","sessionStorage"]){
     <meta http-equiv="Expires" content="0">
     <meta name="gradesync-build" content="V29.1-V27-STABLE">
 
-    <!-- GradeSync V29.2 - V27 STABLE HOTFIX: time/PDF/score-clear -->
-    <title>GradeSync - Hệ thống Chấm điểm Live</title>
+    <!-- NỀN TẢNG CHẤM ĐIỂM V29.2 - V27 STABLE HOTFIX: time/PDF/score-clear -->
+    <title>NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script defer src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='25' fill='%23991b1b'/><text x='50%' y='54%' font-family='Georgia, serif' font-size='75' font-weight='900' fill='white' text-anchor='middle' dominant-baseline='middle'>G</text></svg>">
+    <link rel="icon" type="image/png" href="https://admin.ourstage.io.vn/logo.png"><rect width='100' height='100' rx='25' fill='%23991b1b'/><text x='50%' y='54%' font-family='Georgia, serif' font-size='75' font-weight='900' fill='white' text-anchor='middle' dominant-baseline='middle'>G</text></svg>">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; background-image: radial-gradient(#e5e7eb 1px, transparent 1px); background-size: 20px 20px; font-size: 13px; }
@@ -78,7 +78,7 @@ for(const key of ["localStorage","sessionStorage"]){
         @media(max-width:700px){.gs-config-row{grid-template-columns:1fr}.gs-content-tabs{position:sticky;top:0;z-index:25}}
 
     
-/* ===== GradeSync UI ENHANCEMENT ===== */
+/* ===== NỀN TẢNG CHẤM ĐIỂM UI ENHANCEMENT ===== */
 :root{--gs-primary:#991b1b;--gs-primary2:#7f1d1d;--gs-accent:#f59e0b;--gs-bg:#f5f7fb;--gs-card:#ffffff;--gs-text:#111827;--gs-muted:#64748b;--gs-border:#e5e7eb;--gs-sidebar-w:250px;--gs-sidebar-collapsed:76px}
 body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,color .25s}.glass-header, .bg-white, input,select,textarea,.gs-settings{transition:background .25s,color .25s,border-color .25s,box-shadow .25s}
 .sidebar-gradient{width:var(--gs-sidebar-w)!important;transition:width .28s ease,transform .28s ease;position:relative}
@@ -185,8 +185,8 @@ html,body{background:#fff!important;background-image:none!important}
         <div class="absolute inset-0 bg-gradient-to-br from-red-900/10 to-transparent"></div>
         <div class="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-xl w-[380px] max-w-[90%] border border-white relative animate-fade-up">
             <div class="flex items-center gap-3 mb-6 justify-center">
-                <div class="bg-gradient-to-br from-red-700 to-red-900 p-2 rounded-xl text-white shadow-lg w-12 h-12 flex items-center justify-center"><span class="text-2xl logo-g">G</span></div>
-                <div><h1 class="text-2xl font-black text-gray-900 leading-none">GradeSync</h1><p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Live Grading</p></div>
+                <div class="bg-gradient-to-br from-red-700 to-red-900 p-2 rounded-xl text-white shadow-lg w-12 h-12 flex items-center justify-center"><img src="https://admin.ourstage.io.vn/logo.png" alt="OSC" style="width:100%;height:100%;object-fit:contain"></div>
+                <div><h1 class="text-2xl font-black text-gray-900 leading-none">NỀN TẢNG CHẤM ĐIỂM</h1><p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Live Grading</p></div>
             </div>
             <div class="flex bg-gray-100 p-1 rounded-xl mb-6">
                 <button onclick="window.switchLoginTab('email')" id="tab-email" class="flex-1 py-2 text-[11px] font-bold rounded-lg bg-white shadow-sm text-red-800 transition-all">Quản trị viên</button>
@@ -210,8 +210,8 @@ html,body{background:#fff!important;background-image:none!important}
         <div class="sidebar-gradient w-56 shrink-0 h-full text-white flex flex-col justify-between py-6 px-4 shadow-xl z-20 overflow-y-auto custom-scrollbar">
             <div>
                 <div class="flex items-center gap-3 px-2 mb-8 group cursor-pointer">
-                    <div class="bg-white/20 p-2 rounded-xl backdrop-blur-md w-9 h-9 flex items-center justify-center border border-white/10"><span class="text-xl logo-g drop-shadow-md">G</span></div>
-                    <div class="gs-brand-text"><h1 class="text-base font-black leading-tight">GradeSync</h1><p class="text-[9px] text-red-200 flex items-center gap-1 font-bold mt-0.5"><span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shadow-[0_0_3px_#4ade80]"></span> Trực tuyến</p></div>
+                    <div class="bg-white/20 p-2 rounded-xl backdrop-blur-md w-9 h-9 flex items-center justify-center border border-white/10"><img src="https://admin.ourstage.io.vn/logo.png" alt="OSC" style="width:100%;height:100%;object-fit:contain"></div>
+                    <div class="gs-brand-text"><h1 class="text-base font-black leading-tight">NỀN TẢNG CHẤM ĐIỂM</h1><p class="text-[9px] text-red-200 flex items-center gap-1 font-bold mt-0.5"><span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shadow-[0_0_3px_#4ade80]"></span> Trực tuyến</p></div>
                 </div>
                 <div class="menu-label text-[9px] font-black text-red-300/80 mb-2 px-3 uppercase tracking-widest">Danh mục</div>
                 <nav class="flex flex-col gap-1" id="nav-menu"></nav>
@@ -228,7 +228,7 @@ html,body{background:#fff!important;background-image:none!important}
         <div class="flex-1 flex flex-col h-full w-full min-w-0 bg-[#f8fafc]">
             <header class="h-16 glass-header flex items-center justify-between px-5 md:px-6 z-10 shrink-0 shadow-sm gs-topbar">
                 <div class="flex items-center gap-3"><button class="gs-theme-btn" onclick="window.toggleSidebar()" title="Thu gọn menu"><i class="fas fa-bars"></i></button>
-                <h2 id="page-title" class="text-lg font-black text-gray-800 tracking-tight">Tổng quan</h2></div>
+                <button type="button" onclick="window.oscRefreshCurrentPage?.()" class="text-xs font-bold rounded-xl px-3 py-2 border bg-white text-red-900">↻ Làm mới dữ liệu</button><h2 id="page-title" class="text-lg font-black text-gray-800 tracking-tight">Tổng quan</h2></div>
                 <div class="flex items-center gap-3 bg-red-50 text-red-800 px-3 py-1.5 rounded-md border border-red-100 shadow-sm">
                     <span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span></span>
                     <span id="header-role-badge" class="text-[10px] font-black uppercase tracking-widest">Admin</span><span id="gs-network-pill" class="gs-net-pill online"><i class="fas fa-wifi"></i><span>Online</span></span><button class="gs-theme-btn" onclick="window.toggleThemePanel()" title="Giao diện"><i class="fas fa-sliders"></i></button>
@@ -488,7 +488,7 @@ function onSnapshot(ref,next,onError){
    if(live&&dirty){dirty=false;schedule()}
   }
  }
- const release=watchChangeSignals(T(ref.table),schedule,onError);
+ const release=()=>{}; // Admin data snapshots are fetched on demand only.
  const foreground=()=>{
   // Do not fetch merely because time passed. Catch up only if change
   // notifications were queued while the iframe was hidden.
@@ -2918,11 +2918,11 @@ window.currentUserData = null; window.activeListeners = [];
         window.executePDFExport = async function(groupId, graderCode, rF, title, signerTitle, graderOptionText, docTitle, attendanceFilter, expHidden, requestedFileName) {
             window.showLoading(true,'Đang tạo PDF...');
             try{
-                const groupInfo=window._overviewCache.groupMap[groupId];
+                const freshGroup=await window.getDoc(window.doc(window.db,"competition_groups",groupId)),freshCandidates=await window.getDocs(window.query(window.collection(window.db,"candidates"),window.where("groupId","==",groupId))),freshScores=await window.getDocs(window.query(window.collection(window.db,"scores"),window.where("groupId","==",groupId)));const directory=await window.oscGradingCall("casting-receipt-list",{groupId});const groupInfo=freshGroup.exists()?freshGroup.data():null;
                 if(!groupInfo) throw new Error('Không tìm thấy nhóm thi.');
-                let candidates=window._overviewCache.candidates.filter(c=>c.groupId===groupId);
+                let candidates=freshCandidates.docs.map(d=>({id:d.id,...d.data()}));
                 if(groupInfo.attendanceEnabled&&attendanceFilter!=='ALL') candidates=candidates.filter(c=>attendanceFilter==='PRESENT'?c.isPresent:!c.isPresent);
-                let allScores=window._overviewCache.allScores.filter(s=>s.groupId===groupId);
+                let allScores=freshScores.docs.map(d=>d.data());
                 if(graderCode!=='ALL') allScores=allScores.filter(s=>s.graderCode===graderCode);
 
                 let signerName=graderCode==='ALL'?'Hội đồng Giám khảo':(graderOptionText||'').split(' - ')[0],isVerified=graderCode==='ALL',signDate=new Date();
@@ -3018,7 +3018,7 @@ window.currentUserData = null; window.activeListeners = [];
                 </style>`;
                 const pdfName=window.sanitizeFileName(requestedFileName,`Bien_Ban_${title}_${graderCode==='ALL'?'HoiDong':signerName}`);
                 const sheets=document.createElement('div');
-                sheets.innerHTML=pages;
+                const receipts=(directory.receipts||[]).filter(r=>graderCode==="ALL"||r.graderCode===graderCode);const esc=window.escapeHtml;let appendix="";for(let offset=0;offset<receipts.length;offset+=12){appendix+='<section class="pdf-page"><img src="https://admin.ourstage.io.vn/logo.png" style="height:44px;display:block;margin:0 auto 10px"><h2 style="text-align:center;font-size:18px;font-weight:bold">NỀN TẢNG CHẤM ĐIỂM – ĐỐI CHIẾU XÁC NHẬN BGK</h2><table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr><th>BGK</th><th>Thời gian xác nhận</th><th>Mã đối chiếu</th></tr></thead><tbody>'+receipts.slice(offset,offset+12).map(r=>'<tr><td>'+esc(r.graderName)+'</td><td>'+esc(r.confirmedAt?new Date(r.confirmedAt).toLocaleString("vi-VN"):"Chưa xác nhận")+'</td><td>'+esc(r.comparisonCode||(r.confirmed?"Biên bản cũ – chưa có mã":"Chưa nộp"))+'</td></tr>').join("")+'</tbody></table></section>'}sheets.innerHTML=pages+appendix;
                 let pdf;
                 for(const sheet of sheets.children){
                     const worker=window.html2pdf().set({
@@ -3064,9 +3064,7 @@ window.currentUserData = null; window.activeListeners = [];
                                 <button onclick="window.generateRandomCode()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-4 rounded-xl text-sm transition btn-press"><i class="fas fa-sync-alt"></i></button>
                             </div>
                         </div>
-                        <label class="block mb-4 text-xs font-bold text-gray-700">Mật khẩu BGK
-                          <input id="acc-password" type="password" autocomplete="new-password" minlength="6" maxlength="72" placeholder="Nhập mật khẩu hoặc để trống để tự tạo" class="block w-full mt-2 border border-gray-200 px-4 py-3 rounded-xl bg-gray-50">
-                        </label>
+                        
                         <label class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3 border-b border-gray-100 pb-2">Chỉ định nhóm phụ trách:</label>
                         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
                             ${groups.map(g => `<label class="relative flex items-center justify-center p-3 cursor-pointer group"><input type="checkbox" value="${g.id}" class="acc-group-chk hidden modal-checkbox"><div class="w-full text-center bg-gray-50 border border-gray-200 rounded-xl py-2 px-1 transition-all group-hover:border-red-300 group-hover:bg-red-50/50"><i class="fas fa-check text-gray-300 opacity-0 transition-opacity mb-1 block"></i><span class="font-bold text-[10px] text-gray-700 uppercase block tracking-wider truncate" title="${window.escapeHtml(g.name)}">${window.escapeHtml(g.name)}</span></div></label>`).join('')}
@@ -4605,7 +4603,7 @@ window.currentUserData = null; window.activeListeners = [];
   } catch(_e){}
 
   window.resetGradeSyncClient = async function(){
-    const proceed = window.confirm('Đặt lại phiên GradeSync trên trình duyệt này? Dữ liệu Firestore và điểm đã lưu sẽ KHÔNG bị xóa.');
+    const proceed = window.confirm('Đặt lại phiên NỀN TẢNG CHẤM ĐIỂM trên trình duyệt này? Dữ liệu Firestore và điểm đã lưu sẽ KHÔNG bị xóa.');
     if(!proceed) return;
     try{
       if(window.stopGraderPresenceHeartbeat) window.stopGraderPresenceHeartbeat();
@@ -4628,7 +4626,7 @@ window.currentUserData = null; window.activeListeners = [];
 </script>
 
 <script type="module" id="v29-2-editor-hotfix">
-/* GradeSync V29.2 - Criteria & Interview Editor Hotfix
+/* NỀN TẢNG CHẤM ĐIỂM V29.2 - Criteria & Interview Editor Hotfix
    Fixes:
    - Add/edit/remove group score criteria reliably.
    - Add/edit/remove scoring-content rows/columns reliably.
@@ -5237,7 +5235,7 @@ window.currentUserData = null; window.activeListeners = [];
 
 <script type="module" id="gradesync-realtime-10-client-hotfix">
 /*
-  GradeSync realtime stabilization.
+  NỀN TẢNG CHẤM ĐIỂM realtime stabilization.
   Mục tiêu: Admin + tối đa 10 BGK chấm đồng thời với listener nhẹ, cập nhật theo docChanges,
   coalesce render và không ghi grader_sessions trước từng lần lưu điểm.
 */
@@ -5245,7 +5243,7 @@ window.currentUserData = null; window.activeListeners = [];
   const INTERNAL_BUILD='REALTIME-10-CLIENT-STABLE';
 
   // Không hiện số phiên bản trên tên website.
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
   try{
     const meta=document.querySelector('meta[name="gradesync-build"]');
     if(meta) meta.setAttribute('content',INTERNAL_BUILD);
@@ -5775,7 +5773,7 @@ window.currentUserData = null; window.activeListeners = [];
 
 <script type="module" id="gradesync-quota-guard">
 (function(){
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
 
   const KEY='gradeSyncQuotaDraftsV1';
   const COOLDOWN_KEY='gradeSyncQuotaCooldownUntil';
@@ -5956,7 +5954,7 @@ window.currentUserData = null; window.activeListeners = [];
 <script type="module" id="gradesync-session-submit-mode">
 (function(){
   /*
-    GradeSync - Chế độ chấm theo phiên.
+    NỀN TẢNG CHẤM ĐIỂM - Chế độ chấm theo phiên.
     Khi Admin bật sessionSubmitMode cho nhóm:
     - BGK chấm và lưu trên thiết bị.
     - Không ghi scores lên Firestore trong lúc chấm.
@@ -5965,7 +5963,7 @@ window.currentUserData = null; window.activeListeners = [];
     - Admin chỉ xem điểm của BGK đã khóa/nộp trong nhóm đang bật chế độ này.
   */
 
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
 
   const SESSION_KEY='gradeSyncJudgingSessionDraftsV1';
   const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
@@ -6552,7 +6550,7 @@ window.currentUserData = null; window.activeListeners = [];
 
 <script type="module" id="gradesync-session-permission-fix">
 (function(){
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
 
   const isGrader=()=>window.currentUserData?.role==='Grader';
   const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
@@ -6708,7 +6706,7 @@ window.currentUserData = null; window.activeListeners = [];
 
 <script type="module" id="gradesync-system-stable-controller">
 (function(){
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
 
   const SESSION_KEY='gradeSyncJudgingSessionDraftsV1';
   const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
@@ -7177,7 +7175,7 @@ window.currentUserData = null; window.activeListeners = [];
 
 <script type="module" id="gradesync-admin-excel-pdf-manager">
 (function(){
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
 
   const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
   const esc=v=>window.escapeHtml?window.escapeHtml(v==null?'':String(v)):String(v??'');
@@ -7291,7 +7289,7 @@ window.currentUserData = null; window.activeListeners = [];
         <div>
           <div class="text-[9px] uppercase font-black text-emerald-700 tracking-widest">NHẬP KẾT QUẢ BGK</div>
           <h3 class="text-lg font-black text-gray-800 mt-1">${esc(grader.name||'Giám khảo')} - ${esc(graderCode)}</h3>
-          <p class="text-[10px] text-gray-500 mt-1">Nhóm: ${esc(group.name||groupId)}. Excel có thể dùng file mẫu hoặc file đã xuất từ GradeSync.</p>
+          <p class="text-[10px] text-gray-500 mt-1">Nhóm: ${esc(group.name||groupId)}. Excel có thể dùng file mẫu hoặc file đã xuất từ NỀN TẢNG CHẤM ĐIỂM.</p>
         </div>
         <button onclick="window.closeCustomModal()" class="w-8 h-8 rounded-xl bg-gray-100 text-gray-500"><i class="fas fa-times"></i></button>
       </div>
@@ -7530,7 +7528,7 @@ window.currentUserData = null; window.activeListeners = [];
 
       const signed=verification?.isVerified===true||!!receipt;
       const signTime=receipt?.confirmedAt?new Date(receipt.confirmedAt).toLocaleString("vi-VN"):tsToText(verification?.timestamp)||"Chưa ghi nhận";
-      const checksum=receipt?.sha256||"";
+      const checksum=receipt?.sha256||"";const comparison=receipt?.comparisonCode||"Biên bản cũ – chưa có mã";
       const signatureBlock=signed
         ? `<div class="digital-sign">
             <div class="stamp-line"><div class="stamp-ring">OSC<br>✓<br>GS</div><div>
@@ -7539,7 +7537,7 @@ window.currentUserData = null; window.activeListeners = [];
               <div>Ngày giờ: ${esc(signTime)}</div>
               <div>${receipt?"Xác nhận qua OTP email":"Xác nhận/khóa theo hệ thống"}</div>
             </div></div>
-            ${checksum?`<div class="checksum">SHA-256: ${esc(checksum)}</div>`:""}
+            <div style="font-weight:bold">Mã đối chiếu: ${esc(comparison)}</div>${checksum?`<div class="checksum">SHA-256: ${esc(checksum)}</div>`:""}
             ${verification?.signatureImage?`<img src="${verification.signatureImage}" class="sig-img"><div class="sig-name">${esc(grader.name||"Giám khảo")}</div>`:""}
             <div class="disclaimer">Dấu xác nhận nội bộ OSC – không phải chữ ký số có chứng thư số.</div>
           </div>`
@@ -7668,60 +7666,22 @@ window.loadAdminOverviewScores=async function(container){
    }
    const quote=v=>{let t=String(v??"");if(/^[=+@\-\t\r]/.test(t))t="'"+t;return '"'+t.replaceAll('"','""')+'"'};
    const file=new Blob(["\uFEFF"+rows.map(r=>r.map(quote).join(",")).join("\r\n")],{type:"text/csv;charset=utf-8"});
-   const url=URL.createObjectURL(file),a=document.createElement("a");a.href=url;a.download="GrandSync-ket-qua.csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);
+   const url=URL.createObjectURL(file),a=document.createElement("a");a.href=url;a.download="NỀN TẢNG CHẤM ĐIỂM-ket-qua.csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);
   }catch(e){window.showToast(e.message,"error")}finally{button.disabled=false}
  };
 };
 async function account(action,details){
- window.showLoading(true);
- try{
-  const r=await call(action,details);
-  window.closeCustomModal();
-  await window.loadAccountManager(document.getElementById("main-content"));
-  if(r.temporaryPassword){
-   window.openModal();
-   const panel=document.getElementById("custom-modal-box");
-   if(panel){const title=document.createElement("h3"),p=document.createElement("p"),close=document.createElement("button");
-    title.textContent="Mật khẩu BGK do hệ thống tạo";p.textContent=r.code+" · "+r.temporaryPassword;close.textContent="Đóng";close.onclick=window.closeCustomModal;panel.replaceChildren(title,p,close)}
-   else window.alert(r.code+" · "+r.temporaryPassword);
-  }else window.showToast("Đã cập nhật giám khảo.");
- }catch(e){window.showToast(e.message,"error")}finally{window.showLoading(false)}
-}
-function validPassword(input){
- const v=input.value;
- input.setCustomValidity(v&&(!v.trim()||v.length<6||new TextEncoder().encode(v).length>72)?"Mật khẩu cần ít nhất 6 ký tự và tối đa 72 byte.":"");
- return input.reportValidity();
+ window.showLoading(true);try{const r=await call(action,details);window.closeCustomModal();await window.loadAccountManager(document.getElementById("main-content"));window.showToast(action==="create-grader"?(r.mailAccepted?"Đã cấp quyền. Dịch vụ email đã tiếp nhận.":"Đã cấp quyền. Chưa gửi được email; hãy dùng Gửi lại email cấp quyền."):"Đã cập nhật giám khảo.");}catch(e){window.showToast(e.message,"error")}finally{window.showLoading(false)}
 }
 window.createAccountByCode=async()=>{
- const name=document.getElementById("acc-name"),password=document.getElementById("acc-password");
- name.setCustomValidity(name.value.trim().length<2?"Nhập họ tên giám khảo (ít nhất 2 ký tự).":"");
- if(!name.reportValidity()||!validPassword(password))return;
- const email=document.getElementById("acc-google-email");
- if(!email||!email.value.trim()||!email.checkValidity()){
-  email?.reportValidity();window.showToast?.("Cần nhập email BGK hợp lệ để cấp quyền Google.","error");return;
- }
- const submit=document.querySelector('button[onclick="window.createAccountByCode()"]');
- if(submit?.disabled)return;
- if(submit)submit.disabled=true;
- try{await account("create-grader",{name:name.value.trim(),code:document.getElementById("acc-code").value.trim(),password:password.value,googleEmail:document.getElementById("acc-google-email")?.value?.trim()||"",groupIds:[...document.querySelectorAll(".acc-group-chk:checked")].map(x=>x.value)})}finally{if(submit)submit.disabled=false}
+ const name=document.getElementById("acc-name"),email=document.getElementById("acc-google-email");
+ if(!name||name.value.trim().length<2||!email?.value.trim()||!email.checkValidity())return window.showToast("Nhập họ tên và email Google hợp lệ.","error");
+ const submit=document.querySelector('button[onclick="window.createAccountByCode()"]');if(submit?.disabled)return;if(submit)submit.disabled=true;
+ try{await account("create-grader",{name:name.value.trim(),code:document.getElementById("acc-code").value.trim(),googleEmail:email.value.trim(),groupIds:[...document.querySelectorAll(".acc-group-chk:checked")].map(x=>x.value)})}finally{if(submit)submit.disabled=false}
 };
 window.toggleAccountStatus=(graderId,status)=>account("lock-grader",{graderId,active:status==="Active"});
-window.resetGraderPassword=(graderId,code)=>{
- const box=document.getElementById("custom-modal-box");
- const form=document.createElement("form"),heading=document.createElement("h3"),label=document.createElement("label"),input=document.createElement("input"),save=document.createElement("button"),cancel=document.createElement("button");
- heading.textContent="Cấp lại mật khẩu · "+code;heading.className="font-bold text-lg mb-4";
- label.textContent="Mật khẩu mới";label.className="block text-sm font-semibold";
- input.type="password";input.autocomplete="new-password";input.minLength=6;input.maxLength=72;
- input.placeholder="Để trống để hệ thống tự tạo";input.className="block w-full my-3 border p-3 rounded-xl";
- save.type="submit";save.textContent="Cấp mật khẩu mới";save.className="bg-red-800 text-white rounded-xl px-4 py-2";
- cancel.type="button";cancel.textContent="Hủy";cancel.className="ml-3";cancel.onclick=window.closeCustomModal;
- form.noValidate=true;form.onsubmit=async e=>{e.preventDefault();if(!validPassword(input)||save.disabled)return;save.disabled=true;try{await account("reset-grader-password",{graderId,password:input.value})}finally{save.disabled=false}};
- label.append(input);form.append(heading,label,save,cancel);box.replaceChildren(form);window.openModal();input.focus();
-};
+window.resetGraderPassword=()=>window.showToast("BGK chỉ đăng nhập bằng Google.","error");
 window.deleteAccount=graderId=>window.showCustomConfirm("Xóa vĩnh viễn giám khảo và dữ liệu liên kết?",()=>account("delete-grader",{graderId}));
- const oldLAM=window.loadAccountManager;if(typeof oldLAM==='function')window.loadAccountManager=async function(c){const r=await oldLAM(c);setTimeout(()=>c?.querySelectorAll('button[onclick*="openEditGraderModal"]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/openEditGraderModal\('([^']+)',\s*'[^']*',\s*'([^']+)'/);if(!m)return;const row=b.parentElement;if(!row||row.querySelector(`[data-rp="${CSS.escape(m[1])}"]`))return;const x=document.createElement('button');x.dataset.rp=m[1];x.className='bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold px-3 py-2.5 rounded-xl text-xs border border-violet-100';x.innerHTML='<i class="fas fa-key"></i>';x.title='Đặt lại mật khẩu';x.onclick=()=>window.resetGraderPassword(m[1],m[2]);row.insertBefore(x,row.lastElementChild)}),0);return r};
-
-
 // BGK login belongs to Account Management, not the OSC dashboard.
 const loadAccountsWithPassword=window.loadAccountManager;
 window.loadAccountManager=async function(container){
@@ -7731,7 +7691,7 @@ window.loadAccountManager=async function(container){
     section.id="gsx-judge-access";section.className="gsx-judge-access";
     const info=document.createElement("div"),title=document.createElement("h3"),description=document.createElement("p"),link=document.createElement("a");
     title.textContent="Cổng truy cập dành cho Giám khảo";
-    description.textContent="Giám khảo dùng mã BGK và mật khẩu đã được cấp để đăng nhập và chấm điểm.";
+    description.textContent="Giám khảo đăng nhập bằng email Google đã được cấp quyền.";
     link.href="https://gradesyncfinal.vercel.app/";link.target="_blank";link.rel="noopener noreferrer";
     link.textContent="Mở trang đăng nhập BGK";
     info.append(title,description);section.append(info,link);container.prepend(section);
@@ -7806,6 +7766,7 @@ try{
   const linkFor=(nav,page)=>nav.children[allowed.findIndex(m=>m.id===(page==="casting_email"?"casting_hub":page))];
   window.oscInitialLink=nav=>linkFor(nav,actor.page);
   window.oscSelectPage=page=>{const link=linkFor(document.getElementById("nav-menu"),page);if(link&&!link.classList.contains("active"))link.click()};
+window.oscRefreshCurrentPage=()=>{const active=document.querySelector("#nav-menu .active");if(active)active.click();else window.location.reload()};
   document.querySelector("#app-view .sidebar-gradient")?.style.setProperty("display","none","important");
   document.querySelector('button[onclick="window.toggleSidebar()"]')?.style.setProperty("display","none","important");
  }

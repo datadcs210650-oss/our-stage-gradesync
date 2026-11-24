@@ -43,7 +43,7 @@ export function installJudgeEmailAdmin({call}){
     chip.className="gsx-grader-google-chip text-xs mt-2 text-gray-600 break-all";
     chip.textContent=record?.email?"Email BGK: "+record.email+(record.enabled?" · Được cấp quyền Google":" · Chưa kích hoạt"):"Chưa cấp email Google";
     const groups=card.querySelector(".mb-5");
-    if(groups)groups.append(chip);else card.append(chip);
+    if(groups)groups.append(chip);else card.append(chip);if(record?.email){const retry=document.createElement("button");retry.type="button";retry.className="text-xs font-bold text-red-900 border rounded-lg px-3 py-2";retry.textContent="Gửi lại email cấp quyền";retry.onclick=async()=>{retry.disabled=true;try{const r=await call("resend-grader-invite",{graderId:match[1]});window.showToast?.(r.mailAccepted?"Dịch vụ email đã tiếp nhận.":"Chưa xác nhận được email.","success")}catch(e){window.showToast?.(e.message,"error")}finally{retry.disabled=false}};chip.after(retry)}
    });
   }catch(error){window.showToast?.("Không tải được thông tin email BGK: "+(error.message||"thử lại"),"error")}
   return value;

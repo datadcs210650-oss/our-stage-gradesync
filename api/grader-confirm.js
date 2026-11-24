@@ -2,6 +2,7 @@
 import crypto from "node:crypto";
 import {createClient} from "@supabase/supabase-js";
 import {restRecoveryOptions} from "../lib/supabase-rest-recovery.js";
+import {sendScoringMail} from "../lib/scoring-mail-relay.js";
 const URL=process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co";
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const reply=(res,status,data)=>{res.setHeader("Content-Type","application/json; charset=utf-8");res.setHeader("Cache-Control","no-store");res.statusCode=status;res.end(JSON.stringify(data))};
@@ -17,33 +18,25 @@ async function actor(db,token){
  const r=await db.auth.getUser(token);
  if(r.error||!r.data?.user)throw fail("Phiên BGK đã hết hạn.",401);
  const user=r.data.user;
- const google=user.identities?.some(i=>i.provider==="google")||user.app_metadata?.provider==="google";
- const legacy=String(user.email||"").toLowerCase().endsWith("@gradesync.local");
- if(!google&&!legacy)throw fail("Tài khoản chưa được phép xác nhận bảng điểm.",403);
- let access;
- if(google){
-  access=required(await db.from("gs_google_grader_access").select("*")
-    .eq("auth_user_id",user.id).eq("email",String(user.email||"").toLowerCase())
-    .eq("enabled",true).maybeSingle());
- }else{
-  access=required(await db.from("gs_google_grader_access").select("*")
-    .eq("profile_id",user.id).eq("enabled",true).maybeSingle());
- }
+ // Token signature was validated by Supabase getUser; inspect only its signed AMR.
+ const claims=JSON.parse(Buffer.from(token.split(".")[1],"base64url").toString("utf8"));
+ const google=user.identities?.some(i=>i.provider==="google")&&user.app_metadata?.provider==="google"&&user.email_confirmed_at&&claims.amr?.some(x=>x.method==="oauth");
+ if(!google)throw fail("Chỉ cho phép xác thực bằng tài khoản Google đã được cấp quyền.",403);
+ const access=required(await db.from("gs_google_grader_access").select("*").eq("auth_user_id",user.id).eq("email",String(user.email||"").toLowerCase()).eq("enabled",true).maybeSingle());
  if(!access)throw fail("BGK chưa được BCN cấp email nhận OTP.",403);
  const profile=required(await db.from("profiles").select("id,code,name,status,role")
   .eq("id",access.profile_id).single());
  if(profile.role!=="Grader"||profile.status!=="Active")
   throw fail("Tài khoản BGK đã bị khóa.",403);
- if(!google&&profile.id!==user.id)
-  throw fail("Mã BGK không khớp tài khoản đăng nhập.",403);
- return{profile,email:access.email,provider:google?"google":"legacy"};
+ return{profile,email:access.email,provider:"google"};
 }
 async function preflight(db,profile,groupId){
  const grant=required(await db.from("grader_assignments").select("id").eq("grader_id",profile.id).eq("group_id",groupId).maybeSingle());
  if(!grant)throw fail("BGK không được phân công phiên này.",403);
  const receipt=required(await db.from("gs_grading_receipts").select("verified_at").eq("grader_id",profile.id).eq("group_id",groupId).maybeSingle());
  if(receipt)throw fail("Bảng điểm đã được xác nhận và khóa.",409);
- const group=required(await db.from("competition_groups").select("id,name,criteria").eq("id",groupId).single());
+ const group=required(await db.from("competition_groups").select("id,name,criteria,casting_id").eq("id",groupId).single());
+ if(group.casting_id){const casting=required(await db.from("gs_castings").select("status").eq("id",group.casting_id).single());if(["approved","published","archived"].includes(casting.status))throw fail("Phiên chấm đã hoàn tất.",409)}
  const [{data:candidates,error:ce},{data:scores,error:se},{data:grants,error:ge}]=await Promise.all([
   db.from("candidates").select("id").eq("group_id",groupId).limit(1500),
   db.from("scores").select("candidate_id,scores").eq("group_id",groupId).eq("grader_id",profile.id).limit(1500),
@@ -70,21 +63,6 @@ async function preflight(db,profile,groupId){
   partial:incomplete.length>0, incompleteCandidates:incomplete.length
  }};
 }
-async function sendMail(to,code,groupName){
- const secret=process.env.GRADESYNC_OTP_RELAY_SECRET||"";
- if(secret.length<32)throw fail("Chưa cấu hình kênh gửi OTP an toàn.",503);
- const payload={action:"gradesync-otp-relay",to,code,groupName:String(groupName||"").slice(0,120),nonce:crypto.randomUUID()};
- const body=JSON.stringify(payload),ts=String(Date.now());
- const signature=crypto.createHmac("sha256",secret).update(ts+"\n"+body).digest("hex");
- const response=await fetch("https://admin.ourstage.io.vn/api/gradesync",{
-   method:"POST",redirect:"error",signal:AbortSignal.timeout(12000),
-   headers:{"Content-Type":"application/json","X-OSC-Timestamp":ts,"X-OSC-Signature":signature},
-   body
- });
- const result=await response.json().catch(()=>({}));
- if(!response.ok||result.ok!==true)throw fail(result.error||"Dịch vụ OTP chưa chấp nhận gửi mã.",503);
-}
-
 export default async function handler(req,res){
  if(req.method!=="POST")return reply(res,405,{ok:false,error:"Chỉ hỗ trợ POST."});
  if(Number(req.headers["content-length"]||0)>12000)return reply(res,413,{ok:false,error:"Yêu cầu quá lớn."});
@@ -112,18 +90,28 @@ export default async function handler(req,res){
    const expires=new Date(Date.now()+5*60*1000).toISOString();
    const issued=required(await db.rpc("gs_issue_grading_otp",{p_grader:profile.id,p_group:gid,p_digest:digest(profile.id,gid,otp),p_expires:expires}));
    if(!issued.ok)throw fail(issued.code==="COOLDOWN"?"Chỉ gửi lại OTP sau 60 giây.":"Không thể cấp OTP: "+issued.code,429);
-   await sendMail(email,otp,group.name);
+   try{await sendScoringMail({kind:"otp",to:email,code:otp,groupName:group.name})}catch(e){throw fail(e.message,503)}
    return reply(res,200,{ok:true,expiresIn:300,completeness,emailMasked:email.replace(/^(.{2}).*(@[^@]+)$/,"$1***$2")});
   }
   // Biên bản chứa điểm chi tiết chỉ BCN được cấp quyền mới có thể xuất.
   // Không trả bản snapshot đã chốt cho endpoint xác thực BGK.
   if(body.action==="receipt")throw fail("Giám khảo không có quyền tải hoặc xuất bảng điểm.",403);
+  if(body.action==="completion-status"){
+   const row=required(await db.from("gs_grading_receipts").select("verified_at,comparison_code").eq("grader_id",profile.id).eq("group_id",gid).maybeSingle());
+   return reply(res,200,{ok:true,confirmed:!!row,comparisonCode:row?.comparison_code||null,confirmedAt:row?.verified_at||null});
+  }
   if(body.action==="confirm"){
    const code=String(body.code||"");
    if(!/^\d{6}$/.test(code))throw fail("Mã OTP phải đủ 6 chữ số.");
    const data=required(await db.rpc("gs_finalize_grading_otp",{p_grader:profile.id,p_group:gid,p_digest:digest(profile.id,gid,code)}));
    if(!data?.ok)throw fail(data.code==="OTP_INVALID"?"OTP không đúng.":data.code==="OTP_EXPIRED"?"OTP đã hết hạn.":"Không thể xác nhận: "+(data?.code||"unknown"),409);
-   return reply(res,200,{ok:true,sha256:data.sha256,confirmedAt:data.confirmedAt,completeness:data.completeness});
+   const saved=required(await db.from("gs_grading_receipts").select("email,comparison_code,verified_at").eq("grader_id",profile.id).eq("group_id",gid).single());
+   const group=required(await db.from("competition_groups").select("name").eq("id",gid).single());
+   let mailAccepted=false;
+   if(/^\d{8}$/.test(saved.comparison_code||"")){
+    try{await sendScoringMail({kind:"completion",to:saved.email,code:saved.comparison_code,groupName:group.name});mailAccepted=true}catch(e){console.warn("Scoring completion email pending",e.code||"transport")}
+   }
+   return reply(res,200,{ok:true,sha256:data.sha256,confirmedAt:saved.verified_at,completeness:data.completeness,comparisonCode:saved.comparison_code,mailAccepted});
   }
   throw fail("Tác vụ OTP không hợp lệ.");
  }catch(e){

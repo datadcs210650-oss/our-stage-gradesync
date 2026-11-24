@@ -12,12 +12,12 @@ if(typeof window.loadStudentList!=="function")return;
 
 window.loadStudentList=async function(host){
  host.replaceChildren();
- const alive=()=>host.isConnected;
+ const alive=()=>host.isConnected&&shell.isConnected;
  const state={groups:[],selected:"",offset:0,limit:60,items:[],defs:[],policy:null,total:0,token:0,loading:false,selectedIds:new Set()};
  const shell=make("section","space-y-4 pb-8");
  const title=make("div","flex flex-wrap items-center justify-between gap-3");
  const name=make("div");
- name.append(make("p","text-[10px] uppercase tracking-[.18em] font-black text-red-700","GRANDSYNC / QUẢN LÝ THÍ SINH"),make("h2","text-xl font-black text-slate-900","Quản lý thí sinh"));
+ name.append(make("p","text-[10px] uppercase tracking-[.18em] font-black text-red-700","NỀN TẢNG CHẤM ĐIỂM / QUẢN LÝ THÍ SINH"),make("h2","text-xl font-black text-slate-900","Quản lý thí sinh"));
  const actions=make("div","flex flex-wrap gap-2");
  const refresh=button("↻ Làm mới",async()=>loadPage(),true);
  const addBtn=button("+ Thêm thí sinh",async()=>openCreate());
@@ -47,7 +47,7 @@ window.loadStudentList=async function(host){
  modal.style.cssText="width:min(850px,94vw);max-height:88vh;overflow:auto;margin:auto";
  document.body.append(modal);
  // A single modal is disposed when this page leaves; no extra requests on idle.
- const clean=()=>{if(!host.isConnected){modal.remove();observer.disconnect()}};
+ const clean=()=>{if(!alive()){modal.remove();observer.disconnect()}};
  const observer=new MutationObserver(clean);observer.observe(document.getElementById("main-content")||host.parentNode||host,{childList:true,subtree:true});
  const current=()=>state.groups.find(x=>x.id===state.selected);
  function formatReview(v){return v==="approved"?"Đã duyệt":v==="rejected"?"Từ chối":"Chờ duyệt"}
@@ -86,13 +86,14 @@ window.loadStudentList=async function(host){
   stats[3].textContent=String(state.selectedIds.size);
  }
  async function loadPage(){
+  addBtn.disabled=importBtn.disabled=true;state.defs=[];state.policy=null;state.selectedIds.clear();
   if(!state.selected){state.items=[];state.total=0;banner.textContent="Chưa có phiên chấm.";rerender();return}
   const token=++state.token,gid=state.selected,offset=state.offset;
   banner.textContent="Đang tải thí sinh của phiên đã chọn…";refresh.disabled=true;
   try{
    const response=await request("casting-candidate-roster",{groupId:gid,offset,limit:state.limit});
    if(!alive()||token!==state.token||state.selected!==gid)return;
-   state.items=response.rows||[];state.total=response.total||0;state.defs=response.fields||[];state.policy=response.group?.sessionPolicy||null;
+   addBtn.disabled=importBtn.disabled=["published","archived"].includes(current()?.castingStatus);state.items=response.rows||[];state.total=response.total||0;state.defs=response.fields||[];state.policy=response.group?.sessionPolicy||null;
    state.selectedIds.clear();all.checked=false;search.value="";
    banner.textContent=current()?.term+" · "+current()?.name;
    rerender();
@@ -190,7 +191,7 @@ window.loadStudentList=async function(host){
     fields:update,registeredRoles:getRoles(),version:item.version,identityVersion:item.identityVersion});
    modal.close();window.showToast?.("Đã cập nhật hồ sơ thí sinh.");await loadPage();
   }));
-  modal.showModal();
+  if(!alive())throw Error("Trang đã thay đổi.");if(!modal.isConnected)document.body.append(modal);if(!modal.open)modal.showModal();
  }
  async function openCreate(){
   if(!current())throw Error("Hãy chọn phiên chấm trước.");
@@ -210,7 +211,7 @@ window.loadStudentList=async function(host){
     fields:extra,registeredRoles:getRoles(),emailConsent:consent.check.checked,confirmConsent:consent.check.checked});
    modal.close();window.showToast?.("Đã thêm thí sinh vào nhóm.");state.offset=0;await loadPage();
   }));
-  modal.showModal();
+  if(!alive())throw Error("Trang đã thay đổi.");if(!modal.isConnected)document.body.append(modal);if(!modal.open)modal.showModal();
  }
  async function exportRoster(){
   const session=current();if(!session)throw Error("Hãy chọn phiên chấm.");
@@ -225,7 +226,7 @@ window.loadStudentList=async function(host){
   }while(offset<total);
   const names=[...new Set(rows.flatMap(r=>(r.extras||[]).map(e=>e.label)))];
   const data=[["SBD","Họ và tên","MSSV","Email","Số điện thoại","Vai đăng ký","Kết quả","Duyệt",...names],...rows.map(r=>[r.code,r.name,r.mssv,r.email,r.phone,(r.registeredRoles||[]).join("; "),r.outcome==="passed"?"PASSED":r.outcome==="failed"?"NOT PASSED":"CHỜ",formatReview(r.review),...names.map(n=>String((r.extras||[]).find(e=>e.label===n)?.value??""))])];
-  const book=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(book,window.XLSX.utils.aoa_to_sheet(data),"Thi sinh");window.XLSX.writeFile(book,"GrandSync-"+session.name.replace(/[^\p{L}\p{N}_-]/gu,"_")+".xlsx");
+  const book=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(book,window.XLSX.utils.aoa_to_sheet(data),"Thi sinh");window.XLSX.writeFile(book,"OSC-Cham-diem-"+session.name.replace(/[^\p{L}\p{N}_-]/gu,"_")+".xlsx");
  }
  async function openImport(){
   const session=current();
@@ -246,7 +247,7 @@ window.loadStudentList=async function(host){
    if(!window.XLSX)throw Error("Thư viện Excel chưa sẵn sàng. Vui lòng tải lại trang.");
    const w=window.XLSX.utils.book_new();
    const sh=window.XLSX.utils.aoa_to_sheet([["SBD","Họ và tên","MSSV","Email","Số điện thoại",...(policy?.roles?.length?["Vai đăng ký"]:[]),...defs.map(d=>d.label)]]);
-   window.XLSX.utils.book_append_sheet(w,sh,"Thi sinh");window.XLSX.writeFile(w,"GrandSync-mau-thi-sinh.xlsx");
+   window.XLSX.utils.book_append_sheet(w,sh,"Thi sinh");window.XLSX.writeFile(w,"OSC-Cham-diem-mau-thi-sinh.xlsx");
   },true);
   fields.append(info,template,file,report,consent);
   let ready=[],version=0,submitting=false;
@@ -292,7 +293,7 @@ window.loadStudentList=async function(host){
     submit.disabled=!ready.length;
    }catch(e){if(token===version)report.textContent=e.message}
   };
-  modal.showModal();
+  if(!alive())throw Error("Trang đã thay đổi.");if(!modal.isConnected)document.body.append(modal);if(!modal.open)modal.showModal();
  }
  async function bulkApprove(){
   const groupInfo=current();if(!groupInfo)throw Error("Chọn phiên chấm.");
