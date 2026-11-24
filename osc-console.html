@@ -7766,7 +7766,7 @@ try{
   const linkFor=(nav,page)=>nav.children[allowed.findIndex(m=>m.id===(page==="casting_email"?"casting_hub":page))];
   window.oscInitialLink=nav=>linkFor(nav,actor.page);
   window.oscSelectPage=page=>{const link=linkFor(document.getElementById("nav-menu"),page);if(link&&!link.classList.contains("active"))link.click()};
-window.oscRefreshCurrentPage=()=>{const active=document.querySelector("#sidebar-menu .active, .gs-nav-active, .gs-sidebar .active, [aria-current=page]");if(active)active.click();else window.location.reload()};
+window.oscRefreshCurrentPage=()=>{const active=document.querySelector("#nav-menu .active");if(active)active.click();else window.location.reload()};
   document.querySelector("#app-view .sidebar-gradient")?.style.setProperty("display","none","important");
   document.querySelector('button[onclick="window.toggleSidebar()"]')?.style.setProperty("display","none","important");
  }
