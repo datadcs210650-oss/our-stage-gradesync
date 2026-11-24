@@ -6,6 +6,7 @@
  */
 import crypto from "node:crypto";
 import {createClient} from "@supabase/supabase-js";
+import {createRestRecoveryFetch,restRecoveryOptions} from "../lib/supabase-rest-recovery.js";
 import {CAST_ACTIONS,handleCastingAction} from "../lib/casting-manager.js";
 const sendJson=(res,status,payload)=>{res.statusCode=status;res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");res.end(JSON.stringify(payload))};
 const readJsonBody=req=>typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
@@ -16,7 +17,7 @@ const CODE=/^[A-Z][A-Z0-9_-]{2,19}$/;
 const ALLOWED_ACTIONS=new Set(["overview","group-detail","create-grader","update-grader","lock-grader","reset-grader-password","create-group","toggle-group","add-candidate","mark-attendance","console-documents","delete-grader"]);
 function fail(message,code="osc/gradesync-invalid"){const e=new Error(message);e.code=code;throw e}
 function safeText(x,max=120){return String(x??"").trim().replace(/\s+/g," ").slice(0,max)}
-function sb(){return createClient(origin(),key(),{auth:{persistSession:false,autoRefreshToken:false}})}
+function sb(){return createClient(origin(),key(),restRecoveryOptions(origin()))}
 function key(){const k=process.env.SUPABASE_SECRET_KEY||"";if(!k)fail("Chưa cấu hình khóa kết nối GrandeSync trên máy chủ OSC.","osc/gradesync-config");return k}
 function origin(){
  const u=process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co";
@@ -27,7 +28,7 @@ async function supa(path,{method="GET",body,headers={}}={}){
  if(!/^\/(?:rest\/v1\/(?:competition_groups|profiles|grader_assignments|candidates|scores|grader_verifications|audit_logs)(?:\?|$)|auth\/v1\/admin\/users(?:\/|\?|$))/.test(path))
   fail("API GrandeSync không được cho phép.","osc/gradesync-forbidden");
  const timeout=AbortSignal.timeout(12000);
- const response=await fetch(origin()+path,{method,redirect:"error",signal:timeout,
+ const response=await createRestRecoveryFetch(origin())(origin()+path,{method,redirect:"error",signal:timeout,
   headers:{"apikey":key(),...(key().startsWith("eyJ")?{"Authorization":"Bearer "+key()}:{}),
    "Content-Type":"application/json",...headers},
   ...(body!==undefined?{body:JSON.stringify(body)}:{})});

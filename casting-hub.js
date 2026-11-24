@@ -12,7 +12,7 @@ function panel(title){const x=el("section","bg-white border border-gray-200 roun
 async function action(name,body,ok){const r=await api(name,body);toast(ok||"Đã lưu.");return r}
 function formRow(label,element){const x=el("label","block text-xs font-bold text-gray-700");x.append(el("span","block mb-1",label),element);return x}
 async function reload(){
- castings=(await api("casting-list")).castings||[];
+ castings=(await api("casting-group-options")).castings||[];
  choose(castingSelect,castings,c=>c.term+" · "+c.name);
  if(!castings.some(c=>c.id===current))current=castings[0]?.id||"";
  castingSelect.value=current;
@@ -54,10 +54,10 @@ async function loadCastingHub(parent){
  const root=el("div","space-y-4 pb-8");
  status=el("p","text-xs font-semibold");status.setAttribute("role","status");root.append(status);
  castingSelect=field("select");castingSelect.onchange=()=>{
-  current=castingSelect.value;result=null;table.textContent="Bấm Tải bảng điểm để kiểm tra.";
+  current=castingSelect.value;result=null;table.textContent="Đang tải bảng điểm…";showResults().catch(e=>toast(e.message,true));
  };
- root.append(formRow("Chọn casting",castingSelect));
- const review=panel("Đối soát điểm & duyệt PASSED / FAILED");
+ const selector=el("div","flex flex-wrap items-end gap-2");const picker=formRow("Chọn casting",castingSelect);picker.classList.add("flex-1","min-w-[200px]");selector.append(picker,button("Tải lại danh sách",async()=>{await reload();if(current)await showResults();else toast("Chưa có casting.")}));root.append(selector);
+ const review=panel("Đối soát & duyệt kết quả");
  table=el("div","text-xs text-gray-500");table.textContent="Bấm Tải bảng điểm để kiểm tra.";
  review.append(button("Tải bảng điểm",showResults),table);
  const actions=el("div","flex flex-wrap gap-2 mt-3");
@@ -86,7 +86,7 @@ async function loadCastingHub(parent){
  // Lịch công bố và thư kết quả được quản lý trong menu Email.
  parent.replaceChildren(root);
  result=null;
- try{await reload()}catch(e){toast(e.message,true)}
+ try{await reload();if(current)await showResults();else toast("Chưa có casting.")}catch(e){toast(e.message+" · Bấm Tải lại danh sách để thử lại.",true)}
 }
 async function loadCastingEmail(parent){
  const root=panel("Gửi email theo đợt tuyển");

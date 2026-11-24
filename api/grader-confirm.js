@@ -1,10 +1,11 @@
 /* BGK: Google-authenticated, email OTP confirmation, never touches OSC admin rights. */
 import crypto from "node:crypto";
 import {createClient} from "@supabase/supabase-js";
+import {restRecoveryOptions} from "../lib/supabase-rest-recovery.js";
 const URL=process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co";
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const reply=(res,status,data)=>{res.setHeader("Content-Type","application/json; charset=utf-8");res.setHeader("Cache-Control","no-store");res.statusCode=status;res.end(JSON.stringify(data))};
-const sb=()=>createClient(URL,process.env.SUPABASE_SECRET_KEY||"",{auth:{persistSession:false,autoRefreshToken:false}});
+const sb=()=>createClient(URL,process.env.SUPABASE_SECRET_KEY||"",restRecoveryOptions(URL));
 const fail=(msg,status=400)=>Object.assign(new Error(msg),{httpStatus:status});
 const required=(r)=>{if(r.error)throw fail("Không thể xác thực dữ liệu ("+(r.error.code||"server")+").",503);return r.data};
 function digest(profile,group,code){
