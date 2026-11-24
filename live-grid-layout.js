@@ -17,6 +17,22 @@ function installScoreInputGuard(doc){
 }
 installScoreInputGuard(document);
 
+/* Mobile drawer is closed on entry and after selecting a destination.
+   Desktop collapse preferences remain unchanged. */
+const narrowDrawer=window.matchMedia("(max-width:900px)");
+function syncMobileDrawer(){document.body.classList.toggle("gs-mobile-hidden",narrowDrawer.matches)}
+if(document.body)syncMobileDrawer();
+else document.addEventListener("DOMContentLoaded",syncMobileDrawer,{once:true});
+if(narrowDrawer.addEventListener)narrowDrawer.addEventListener("change",syncMobileDrawer);
+else if(narrowDrawer.addListener)narrowDrawer.addListener(syncMobileDrawer);
+document.addEventListener("click",e=>{
+ if(narrowDrawer.matches&&e.target.closest?.("#nav-menu .menu-item,#nav-menu button"))document.body.classList.add("gs-mobile-hidden");
+});
+document.addEventListener("keydown",e=>{
+ if(e.key==="Escape"&&narrowDrawer.matches&&!document.body.classList.contains("gs-mobile-hidden"))document.body.classList.add("gs-mobile-hidden");
+});
+
+
 
 const sheet=document.createElement("style");
 sheet.textContent=[
