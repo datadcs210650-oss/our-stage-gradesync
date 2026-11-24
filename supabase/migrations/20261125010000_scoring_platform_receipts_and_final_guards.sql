@@ -32,9 +32,7 @@ returns boolean language sql stable set search_path=pg_catalog,auth as $$
  select coalesce((select auth.jwt())->'app_metadata'->>'provider','')='google'
  and coalesce((select auth.jwt())->'amr','[]'::jsonb) @> '[{"method":"oauth"}]'::jsonb
 $$;
-grant usage on schema gradesync_internal to authenticated;
-revoke all on function gradesync_internal.google_oauth_session() from public,anon;
-grant execute on function gradesync_internal.google_oauth_session() to authenticated;
+revoke all on function gradesync_internal.google_oauth_session() from public,anon,authenticated;
 create or replace function public.gs_current_grader_id()
 returns uuid language sql stable security definer set search_path=pg_catalog,public,auth as $$
  select a.profile_id from public.gs_google_grader_access a
@@ -134,18 +132,18 @@ begin
  if tg_op='DELETE' then return old;end if;return new;
 end $$;
 revoke all on function gradesync_internal.guard_completed_session() from public,anon,authenticated;
-create trigger aa_gs_completed_guard before insert or update or delete on public.gs_castings for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.competition_groups for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.grader_assignments for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.gs_criterion_grants for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.scores for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.candidates for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.grader_verifications for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.gs_grading_receipts for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.gs_casting_decisions for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.gs_candidate_identity for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.gs_candidate_fields for each row execute function gradesync_internal.guard_completed_session();
-create trigger aa_gs_completed_guard before insert or update or delete on public.group_publication_index for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.gs_castings for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.competition_groups for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.grader_assignments for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.gs_criterion_grants for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.scores for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.candidates for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.grader_verifications for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.gs_grading_receipts for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.gs_casting_decisions for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.gs_candidate_identity for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.gs_candidate_fields for each row execute function gradesync_internal.guard_completed_session();
+create trigger zz_gs_completed_guard before insert or update or delete on public.group_publication_index for each row execute function gradesync_internal.guard_completed_session();
 CREATE OR REPLACE FUNCTION public.gs_finalize_grading_otp(p_grader uuid, p_group uuid, p_digest text)
  RETURNS jsonb
  LANGUAGE plpgsql

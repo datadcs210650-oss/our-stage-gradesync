@@ -8,17 +8,18 @@ import crypto from "node:crypto";
 import {createClient} from "@supabase/supabase-js";
 import {createRestRecoveryFetch,restRecoveryOptions} from "../lib/supabase-rest-recovery.js";
 import {CAST_ACTIONS,handleCastingAction} from "../lib/casting-manager.js";
+import {sendScoringMail} from "../lib/scoring-mail-relay.js";
 const sendJson=(res,status,payload)=>{res.statusCode=status;res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");res.end(JSON.stringify(payload))};
 const readJsonBody=req=>typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
-const handleError=(res,error)=>{console.error("OSC GradeSync bridge exception",error?.code);return sendJson(res,500,{ok:false,error:"Lỗi máy chủ GrandeSync."})};
+const handleError=(res,error)=>{console.error("OSC GradeSync bridge exception",error?.code);return sendJson(res,500,{ok:false,error:"Lỗi máy chủ NỀN TẢNG CHẤM ĐIỂM."})};
 const GRADER_PORTAL="https://gradesyncfinal.vercel.app/";
 const ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE=/^[A-Z][A-Z0-9_-]{2,19}$/;
-const ALLOWED_ACTIONS=new Set(["overview","group-detail","create-grader","update-grader","lock-grader","reset-grader-password","create-group","toggle-group","add-candidate","mark-attendance","console-documents","delete-grader"]);
+const ALLOWED_ACTIONS=new Set(["overview","group-detail","create-grader","resend-grader-invite","resend-grader-completion","update-grader","lock-grader","create-group","toggle-group","add-candidate","mark-attendance","console-documents","delete-grader"]);
 function fail(message,code="osc/gradesync-invalid"){const e=new Error(message);e.code=code;throw e}
 function safeText(x,max=120){return String(x??"").trim().replace(/\s+/g," ").slice(0,max)}
 function sb(){return createClient(origin(),key(),restRecoveryOptions(origin()))}
-function key(){const k=process.env.SUPABASE_SECRET_KEY||"";if(!k)fail("Chưa cấu hình khóa kết nối GrandeSync trên máy chủ OSC.","osc/gradesync-config");return k}
+function key(){const k=process.env.SUPABASE_SECRET_KEY||"";if(!k)fail("Chưa cấu hình khóa kết nối NỀN TẢNG CHẤM ĐIỂM trên máy chủ OSC.","osc/gradesync-config");return k}
 function origin(){
  const u=process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co";
  if(u!=="https://nkpfzjhqtdjcfypkishv.supabase.co")fail("Đường dẫn Supabase GradeSync không hợp lệ.","osc/gradesync-config");
@@ -26,7 +27,7 @@ function origin(){
 }
 async function supa(path,{method="GET",body,headers={}}={}){
  if(!/^\/(?:rest\/v1\/(?:competition_groups|profiles|grader_assignments|candidates|scores|grader_verifications|audit_logs)(?:\?|$)|auth\/v1\/admin\/users(?:\/|\?|$))/.test(path))
-  fail("API GrandeSync không được cho phép.","osc/gradesync-forbidden");
+  fail("API NỀN TẢNG CHẤM ĐIỂM không được cho phép.","osc/gradesync-forbidden");
  const timeout=AbortSignal.timeout(12000);
  const response=await createRestRecoveryFetch(origin())(origin()+path,{method,redirect:"error",signal:timeout,
   headers:{"apikey":key(),...(key().startsWith("eyJ")?{"Authorization":"Bearer "+key()}:{}),
@@ -37,9 +38,10 @@ async function supa(path,{method="GET",body,headers={}}={}){
  if(!response.ok){
   const err=safeText(result?.message||result?.msg||result?.error||"",180);
   console.warn("OSC GradeSync upstream error",response.status,err.replace(/[A-Za-z0-9]{40,}/g,"[redacted]"));
-  if(response.status===401||response.status===403)fail("GrandeSync từ chối khóa dịch vụ. Kiểm tra cấu hình Supabase.","osc/gradesync-config");
+  if(err.includes("Phiên chấm đã hoàn tất."))fail("Phiên chấm đã hoàn tất.","osc/gradesync-conflict");
+  if(response.status===401||response.status===403)fail("NỀN TẢNG CHẤM ĐIỂM từ chối khóa dịch vụ. Kiểm tra cấu hình Supabase.","osc/gradesync-config");
   if(response.status===409)fail("Mã hoặc tài khoản đã tồn tại.","osc/gradesync-conflict");
-  fail("Không thể đồng bộ GrandeSync (HTTP "+response.status+").","osc/gradesync-upstream");
+  fail("Không thể đồng bộ NỀN TẢNG CHẤM ĐIỂM (HTTP "+response.status+").","osc/gradesync-upstream");
  }
  return result;
 }
@@ -121,6 +123,28 @@ async function grantGraderGoogleEmail(graderId,rawEmail,revokeLinked=false){
  if(up.error)fail(up.error.code==="23505"?"Email đã được cấp cho BGK khác.":"Không lưu được email BGK.","osc/gradesync-conflict");
 }
 
+async function assertMutableGroups(ids){
+ if(!ids.length)return;
+ const db=sb(),rows=await db.from("competition_groups").select("id,casting_id").in("id",ids);
+ if(rows.error||rows.data.length!==ids.length)fail("Có phiên chấm không tồn tại.");
+ const casts=[...new Set(rows.data.map(x=>x.casting_id).filter(Boolean))];
+ if(casts.length){const r=await db.from("gs_castings").select("status").in("id",casts);if(r.error)fail("Không kiểm tra được phiên chấm.");if(r.data.some(x=>["published","archived"].includes(x.status)))fail("Phiên chấm đã hoàn tất.","osc/gradesync-conflict")}
+}
+async function inviteGrader(id){
+ const db=sb(),[profile,access,grants]=await Promise.all([db.from("profiles").select("id,name,role,status").eq("id",id).single(),db.from("gs_google_grader_access").select("email,enabled").eq("profile_id",id).single(),db.from("grader_assignments").select("group_id").eq("grader_id",id)]);
+ if(profile.error||access.error||grants.error||profile.data.role!=="Grader"||profile.data.status!=="Active"||!access.data.enabled)fail("Chưa có quyền Google hoạt động cho BGK.");
+ const ids=grants.data.map(x=>x.group_id);let names=[];
+ if(ids.length){const groups=await db.from("competition_groups").select("name").in("id",ids);if(groups.error)fail("Không đọc được phân công BGK.");names=groups.data.map(x=>x.name)}
+ await sendScoringMail({kind:"invite",to:access.data.email,name:profile.data.name,groupName:names.join(", ")||"Chưa phân công phiên chấm"});
+ return{ok:true,mailAccepted:true};
+}
+async function resendCompletion(body){
+ const id=String(body.graderId||""),gid=String(body.groupId||"");
+ if(!ID.test(id)||!ID.test(gid))fail("Giám khảo hoặc phiên chấm không hợp lệ.");
+ const db=sb(),[receipt,group]=await Promise.all([db.from("gs_grading_receipts").select("email,comparison_code").eq("grader_id",id).eq("group_id",gid).single(),db.from("competition_groups").select("name").eq("id",gid).single()]);
+ if(receipt.error||group.error||!/^\d{8}$/.test(receipt.data?.comparison_code||""))fail("Biên bản chưa có mã đối chiếu 8 số.");
+ await sendScoringMail({kind:"completion",to:receipt.data.email,code:receipt.data.comparison_code,groupName:group.data.name});return{ok:true,mailAccepted:true};
+}
 async function createGrader(actor,body){
  const code=safeText(body.code,20).toUpperCase(),name=safeText(body.name,100);
  if(name.length<2)fail("Họ tên giám khảo cần ít nhất 2 ký tự.");
@@ -133,7 +157,10 @@ async function createGrader(actor,body){
  }
  const found=await supa(url("profiles",{code:"eq."+code,select:"id",limit:"1"}));
  if(found?.length)fail("Mã giám khảo đã tồn tại.","osc/gradesync-conflict");
- const email=code.toLowerCase()+"@gradesync.local",pass=graderPassword(body.password);
+ await assertMutableGroups(groupIds);
+ const googleEmail=graderGoogleEmail(body.googleEmail);if(!googleEmail)fail("Cần nhập email Google được cấp quyền.");
+ if(body.password)fail("Không còn hỗ trợ mật khẩu BGK.");
+ const email=code.toLowerCase()+"@gradesync.local",pass=password();
  const created=await sb().auth.admin.createUser({
   email,password:pass,email_confirm:true,user_metadata:{display_name:name}});
  if(created.error)fail("Không thể tạo tài khoản giám khảo trên Supabase.","osc/gradesync-upstream");
@@ -147,12 +174,11 @@ async function createGrader(actor,body){
    const {error}=await sb().from("grader_assignments").insert(groupIds.map(group_id=>({grader_id:id,group_id})));
    if(error)fail("Không thể phân công giám khảo.");
   }
-  if(body.googleEmail!==undefined&&String(body.googleEmail).trim())
-   await grantGraderGoogleEmail(id,body.googleEmail);
+  await grantGraderGoogleEmail(id,googleEmail);
   await audit(actor,"grader-created",id);
  }catch(e){await sb().auth.admin.deleteUser(id).catch(()=>{});throw e}
- // Temporary password is returned once, only over the authenticated OSC manager response.
- return{ok:true,code,name,...(body.password?{}:{temporaryPassword:pass}),portal:GRADER_PORTAL};
+ let mailAccepted=false;try{await inviteGrader(id);mailAccepted=true}catch(e){console.warn("BGK invite pending",e.code||"transport")}
+ return{ok:true,id,code,name,mailAccepted,portal:GRADER_PORTAL};
 }
 async function updateGrader(actor,body){
  const id=String(body.graderId||""),name=safeText(body.name,100);
@@ -172,6 +198,7 @@ async function updateGrader(actor,body){
  const old=read.data||[],wanted=new Set(groups),current=new Set(old.map(x=>x.group_id));
  const remove=old.filter(x=>!wanted.has(x.group_id)).map(x=>x.id);
  const add=groups.filter(x=>!current.has(x)).map(group_id=>({grader_id:id,group_id}));
+ await assertMutableGroups([...add.map(x=>x.group_id),...old.filter(x=>!wanted.has(x.group_id)).map(x=>x.group_id)]);
  // Grant new groups before updating the display profile to minimize any gap.
  if(add.length){
   const ins=await db.from("grader_assignments").insert(add);
@@ -199,16 +226,6 @@ async function lockGrader(actor,body){
  await supa("/rest/v1/profiles?id=eq."+id,{method:"PATCH",body:{status:active?"Active":"Inactive"},headers:{Prefer:"return=minimal"}});
  await audit(actor,active?"grader-unlocked":"grader-locked",id);
  return{ok:true};
-}
-async function resetGraderPassword(actor,body){
- const id=String(body.graderId||"");if(!ID.test(id))fail("Giám khảo không hợp lệ.");
- const docs=await supa(url("profiles",{id:"eq."+id,role:"eq.Grader",select:"id,code",limit:"1"}));
- if(!docs?.length)fail("Không tìm thấy giám khảo.");
- const pass=graderPassword(body.password);
- const changed=await sb().auth.admin.updateUserById(id,{password:pass});
- if(changed.error)fail("Không thể thay đổi mật khẩu Supabase.","osc/gradesync-upstream");
- await audit(actor,"grader-password-reset",id);
- return{ok:true,code:docs[0].code,...(body.password?{}:{temporaryPassword:pass})};
 }
 async function requireOscManager(req){
  const token=String(req.headers.authorization||"");
@@ -309,6 +326,7 @@ async function handle(req,res){
    const {data,error}=await sb().rpc("osc_grading_documents",{ops:b.ops,actor_uid:actor.decoded.uid});
    if(error){
     console.warn("OSC grading document operation",error.code);
+    if(error.message?.includes("Phiên chấm đã hoàn tất."))fail("Phiên chấm đã hoàn tất.","osc/gradesync-conflict");
     if(error.message?.includes("Phiên đã duyệt hoặc công bố kết quả."))fail("Không thể mở khóa: phiên đã duyệt hoặc công bố kết quả. Cần xử lý kết quả chính thức trước khi chấm lại.","osc/gradesync-conflict");
     if(error.message?.includes("Chỉ quản trị OSC có thể mở lại bảng điểm."))fail("Phiên quản trị không đủ quyền mở khóa. Vui lòng đăng nhập lại.","osc/gradesync-forbidden");
     fail(error.message?.includes("SCORE_CONFLICT")?"Điểm vừa được cập nhật. Hãy tải lại.":"Không thể lưu hoặc đọc dữ liệu chấm điểm ("+error.code+").");
@@ -328,7 +346,8 @@ async function handle(req,res){
   else if(action==="create-grader")result=await createGrader(actor,b);
   else if(action==="update-grader")result=await updateGrader(actor,b);
   else if(action==="lock-grader")result=await lockGrader(actor,b);
-  else if(action==="reset-grader-password")result=await resetGraderPassword(actor,b);
+  else if(action==="resend-grader-invite"){if(!ID.test(String(b.graderId||"")))fail("Giám khảo không hợp lệ.");result=await inviteGrader(b.graderId)}
+  else if(action==="resend-grader-completion")result=await resendCompletion(b);
   else if(action==="create-group")result=await createGroup(actor,b);
   else if(action==="toggle-group")result=await toggleGroup(actor,b);
   else if(action==="add-candidate")result=await addCandidate(actor,b);
