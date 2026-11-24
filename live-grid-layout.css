@@ -27,3 +27,41 @@
 #main-content .sticky-table-container{scrollbar-gutter:stable;overflow-anchor:none}
 #main-content .gsx-live-grid tbody td:nth-child(3){white-space:normal;overflow-wrap:anywhere}
 #main-content .gsx-live-grid tbody tr,#main-content .gsx-live-grid input.score-input{transition-property:background-color,border-color}
+
+
+/* Responsive grader and embedded console — preserve desktop scoring layout. */
+@media screen{
+ body:has(#app-view){min-height:100dvh;height:100dvh}
+ #app-view,#main-content{min-width:0;min-height:0}
+ #main-content .sticky-table-container{max-width:100%;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+ #custom-modal-box{max-width:calc(100vw - 32px)!important;min-width:0!important;max-height:calc(100dvh - 32px)!important}
+ #gs-mobile-backdrop{display:none!important}
+}
+@media screen and (max-width:900px){
+ body:not(.gs-mobile-hidden):has(#app-view[style*="display: flex"]) #gs-mobile-backdrop{display:block!important}
+ .sidebar-gradient{width:min(86vw,300px)!important;max-width:100%;height:100dvh!important;overscroll-behavior:contain}
+ #main-content{padding:12px!important}
+ .gs-topbar{height:auto!important;min-height:60px;padding:8px 12px!important;gap:8px;flex-wrap:wrap}
+ .gs-topbar>div:first-child{min-width:0;flex:1 1 180px}
+ #page-title{font-size:clamp(15px,2.5vw,19px);overflow-wrap:anywhere;line-height:1.3}
+ .gs-theme-btn{flex-shrink:0;min-width:44px;min-height:44px}
+ .gs-settings{max-width:calc(100vw - 24px);right:12px}
+ #nav-menu .menu-item{min-height:44px}
+ #custom-modal-container{padding:12px!important}
+ #custom-modal-box{max-width:calc(100vw - 24px)!important;max-height:calc(100dvh - 24px)!important}
+ .gs-admin-modal-body{max-height:60dvh;overflow:auto}
+ .gs-admin-modal-foot,.gs-table-toolbar{flex-wrap:wrap}
+}
+@media screen and (max-width:600px){
+ #login-view>div.relative{width:min(480px,calc(100vw - 24px))!important;padding:22px!important}
+ #login-google{min-height:48px}
+ #main-content{padding:8px!important}
+ #main-content input:not([type=checkbox]):not([type=radio]):not([type=range]),#main-content select,#main-content textarea,#custom-modal-box input:not([type=checkbox]):not([type=radio]):not([type=range]),#custom-modal-box select,#custom-modal-box textarea{font-size:16px!important}
+ #main-content .gsx-live-grid input.score-input{min-height:44px}
+ #main-content .gsx-live-grid :is(th,td).gsx-sticky-cell:nth-child(-n+2){left:auto!important}
+ #main-content .gsx-live-grid td.gsx-sticky-cell:nth-child(-n+2){position:relative!important;z-index:auto}
+ #main-content .gsx-live-grid :is(th,td).gsx-sticky-cell:nth-child(3){left:0!important;min-width:112px;max-width:145px}
+ .gs-detail-meta{grid-template-columns:minmax(0,1fr)!important}
+ .gs-content-tabs,.gs-admin-tabs{overflow-x:auto;overscroll-behavior-x:contain}
+}
+@media(pointer:coarse){.gs-theme-btn,#login-google,#nav-menu button{touch-action:manipulation}}
