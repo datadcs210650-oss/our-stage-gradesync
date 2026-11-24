@@ -1,0 +1,154 @@
+/* Manual score editing: one explicit, revision-checked save per candidate.
+ * Reuses the existing authenticated gradesync_save_score RPC; never auto-sends. */
+(()=>{
+"use strict";
+if(!window.GS_MANUAL_SCORE_MODE)return;
+const PREFIX="gsx-manual-scores-v1:",uid=()=>window.currentUserData?.role==="Grader"?String(window.currentUserData.id||""):"";
+const memory=new Map(),busy=new Set(),failures=new Map();
+const key=(gid,cid)=>gid+"|"+cid;
+function drafts(){
+ const u=uid();if(!u)return {};
+ if(!memory.has(u)){
+  let value={};try{value=JSON.parse(localStorage.getItem(PREFIX+u)||"{}")}catch(_){}
+  memory.set(u,value&&typeof value==="object"&&!Array.isArray(value)?value:{});
+ }
+ return memory.get(u);
+}
+function persist(){
+ const u=uid();if(!u)return;
+ try{localStorage.setItem(PREFIX+u,JSON.stringify(drafts()))}catch(_){window.showToast?.("Không lưu được nháp trên thiết bị. Không đóng trang trước khi lưu điểm.","error")}
+}
+const inputs=(gid,cid)=>[...document.querySelectorAll("input.score-input[data-group][data-cand]")].filter(x=>x.dataset.group===gid&&x.dataset.cand===cid);
+const allowed=(gid,criterion)=>{const list=window._gsCriterionRestrictions?.[gid];return !Array.isArray(list)||!list.length||list.includes(criterion)};
+const current=(gid,cid)=> (window._allScoresCache||[]).filter(s=>s.groupId===gid&&s.candidateId===cid&&s.graderCode===window.currentUserData?.code).sort((a,b)=>Number(b.revision||0)-Number(a.revision||0))[0]||null;
+function normalize(values){
+ const scores={};let invalid=false;
+ for(const [criterion,raw] of Object.entries(values)){
+  const s=String(raw).trim().replace(",",".");if(!s)continue;
+  if(!/^\d+(?:\.\d{1,2})?$/.test(s)||Number(s)<0||Number(s)>10){invalid=true;continue}
+  scores[criterion]=Number(s);
+ }
+ return {scores,invalid};
+}
+const equal=(a,b)=>Object.keys(a||{}).length===Object.keys(b||{}).length&&Object.entries(a||{}).every(([k,v])=>Object.hasOwn(b||{},k)&&Number(b[k])===Number(v));
+function take(gid,cid){
+ const row=inputs(gid,cid);
+ const values=Object.fromEntries(row.filter(x=>allowed(gid,x.dataset.crit)).map(x=>[x.dataset.crit,x.value]));
+ return {row,values,...normalize(values)};
+}
+function currentDraft(gid,cid){return drafts()[key(gid,cid)]}
+function record(gid,cid){
+ if(!uid()||busy.has(key(gid,cid)))return;
+ const x=take(gid,cid);if(!x.row.length||x.row.every(i=>i.disabled))return;
+ const id=key(gid,cid),old=currentDraft(gid,cid),base=current(gid,cid);
+ if(!x.invalid&&equal(x.scores,base?.scores||{})){delete drafts()[id];failures.delete(id)}
+ else drafts()[id]={gid,cid,values:x.values,revision:old?.revision??Number(base?.revision||0),at:Date.now()};
+ persist();paint(gid,cid);
+}
+function paint(gid,cid){
+ const id=key(gid,cid),d=currentDraft(gid,cid),base=current(gid,cid),row=inputs(gid,cid);
+ if(!row.length)return;
+ const slot=document.getElementById("status-container-"+cid);
+ if(!slot)return;
+ let controls=slot.querySelector(".gsx-manual-controls");
+ if(!controls){
+  controls=document.createElement("div");controls.className="gsx-manual-controls flex flex-col items-center gap-1 mt-2";
+  const status=document.createElement("span");status.className="gsx-manual-state text-[10px] font-bold";
+  const button=document.createElement("button");button.type="button";button.className="gsx-manual-save bg-red-900 text-white rounded-lg px-3 py-2 text-xs font-bold disabled:opacity-50";
+  button.onclick=()=>save(gid,cid);
+  const undo=document.createElement("button");undo.type="button";undo.textContent="Hoàn tác";undo.className="gsx-manual-undo text-[10px] font-bold text-gray-500";
+  undo.onclick=()=>{if(busy.has(id))return;if(!window.confirm("Bỏ thay đổi chưa lưu của thí sinh này?"))return;delete drafts()[id];failures.delete(id);persist();for(const i of inputs(gid,cid))i.value=String(current(gid,cid)?.scores?.[i.dataset.crit]??"");paint(gid,cid)};
+  controls.append(status,button,undo);slot.append(controls);
+ }
+ const status=controls.querySelector(".gsx-manual-state"),button=controls.querySelector(".gsx-manual-save"),undo=controls.querySelector(".gsx-manual-undo");
+ const state=busy.has(id)?"Đang lưu…":failures.has(id)?failures.get(id):d?(base?"Có thay đổi chưa lưu":"Chưa lưu"):base?"Đã lưu ✓":"Chưa chấm";
+ if(status.textContent!==state)status.textContent=state;
+ status.style.color=failures.has(id)?"#be123c":d?"#a16207":base?"#047857":"#64748b";
+ const label=d?(base?"Lưu lại":"Lưu điểm"):base?"Đã lưu":"Lưu điểm";
+ if(button.textContent!==label)button.textContent=label;
+ button.disabled=busy.has(id)||!d||row.every(i=>i.disabled)||normalize(d.values).invalid;
+ undo.hidden=!d;undo.disabled=busy.has(id);
+ const old=document.getElementById("save-status-"+cid);if(old)old.style.opacity="0";
+ const values=d?normalize(d.values):{scores:base?.scores||{},invalid:false};
+ for(const i of row){
+  const v=String(i.value).trim(),bad=v&&!/^\d+(?:[.,]\d{1,2})?$/.test(v)||v&&Number(v.replace(",","."))>10;
+  i.setAttribute("aria-invalid",String(Boolean(bad)));
+  i.style.borderColor=bad?"#be123c":d&&String(i.value)!==String(base?.scores?.[i.dataset.crit]??"")?"#d6a34c":"";
+ }
+ const relevant=row.filter(i=>allowed(gid,i.dataset.crit)),weights=relevant.reduce((s,i)=>s+Number(i.dataset.weight||0),0);
+ const total=document.getElementById("tot-"+cid);
+ if(total&&d){
+  const value=values.invalid||!Object.keys(values.scores).length||!weights?"—":(relevant.reduce((s,i)=>s+Number(values.scores[i.dataset.crit]??0)*Number(i.dataset.weight||0),0)/weights).toFixed(2);
+  if(total.textContent!==value)total.textContent=value;
+ }
+ if(total&&!d){const value=base&&Object.keys(base.scores||{}).length?String(base.totalScore??"—"):"—";if(total.textContent!==value)total.textContent=value}
+}
+async function save(gid,cid){
+ const u=uid(),id=key(gid,cid),d=currentDraft(gid,cid),row=inputs(gid,cid);
+ if(!u||!d||busy.has(id)||!row.length||row.every(i=>i.disabled))return;
+ if(navigator.onLine===false){failures.set(id,"Mất mạng · Chưa lưu");paint(gid,cid);return}
+ const x=normalize(d.values);if(x.invalid)return;
+ // Recheck scope against current grant data before writing; server checks again.
+ if(Object.keys(x.scores).some(k=>!allowed(gid,k))){failures.set(id,"Quyền chấm đã thay đổi");paint(gid,cid);return}
+ busy.add(id);failures.delete(id);const enabled=row.filter(i=>!i.disabled);enabled.forEach(i=>i.disabled=true);paint(gid,cid);
+ try{
+  const {data,error}=await window.supabase.rpc("gradesync_save_score",{p_candidate_id:cid,p_group_id:gid,p_scores:x.scores,p_total_score:0,p_expected_revision:d.revision});
+  if(error)throw error;
+  const saved=Array.isArray(data)?data[0]:data;
+  if(!saved||saved.candidate_id!==cid||saved.group_id!==gid||saved.grader_id!==u||Number(saved.revision)!==d.revision+1)throw Error("Không xác nhận được phiên bản điểm.");
+  if(uid()!==u)return;
+  const mapped={id:saved.id,candidateId:cid,groupId:gid,graderId:saved.grader_id,graderCode:saved.grader_code,graderName:saved.grader_name,scores:saved.scores,totalScore:saved.total_score,revision:saved.revision,locked:saved.locked,updatedAt:saved.updated_at,timestamp:{seconds:Math.floor(Date.parse(saved.updated_at)/1000)}};
+  const cache=window._allScoresCache||[];
+  if(!cache.some(s=>s.candidateId===cid&&s.graderCode===mapped.graderCode&&Number(s.revision)>Number(mapped.revision))){
+   window._allScoresCache=cache.filter(s=>!(s.candidateId===cid&&s.graderCode===mapped.graderCode));window._allScoresCache.push(mapped);
+   (window._gradedDataCache||={})[cid]=mapped;
+  }
+  delete drafts()[id];persist();window.showToast?.("Đã lưu điểm.");
+ }catch(e){
+  if(uid()!==u)return;
+  failures.set(id,/SCORE_CONFLICT/.test(String(e.message))?"Xung đột phiên bản · Chưa lưu":"Lưu thất bại");
+  window.showToast?.("Chưa lưu điểm: "+(e.message||"lỗi kết nối")+". Bản nháp vẫn được giữ.","error");
+ }finally{
+  busy.delete(id);
+  if(uid()===u){
+   // Re-check current lock state; never enable a newly locked or unassigned input.
+   const locked=Boolean(window._allVerificationsCache?.[window.currentUserData?.code+"_"+gid]?.isVerified);
+   const group=window._groupMapCache?.[gid];
+   if(!locked&&group&&window.getGroupTimeStatus?.(group)?.active!==false)enabled.forEach(i=>{if(i.isConnected&&allowed(gid,i.dataset.crit))i.disabled=false});
+   paint(gid,cid);
+  }
+ }
+}
+let pending=false;
+function scan(){
+ pending=false;if(!uid())return;
+ const rows=new Map();
+ for(const i of document.querySelectorAll("input.score-input[data-group][data-cand]"))rows.set(key(i.dataset.group,i.dataset.cand),[i.dataset.group,i.dataset.cand]);
+ for(const [gid,cid] of rows.values()){
+  const d=currentDraft(gid,cid);
+  if(d)for(const i of inputs(gid,cid))if(Object.hasOwn(d.values,i.dataset.crit)&&i.value!==String(d.values[i.dataset.crit])&&document.activeElement!==i)i.value=String(d.values[i.dataset.crit]);
+  paint(gid,cid);
+ }
+}
+function schedule(){if(!pending){pending=true;requestAnimationFrame(scan)}}
+document.addEventListener("input",e=>{const i=e.target;if(i.matches?.("input.score-input[data-group][data-cand]"))record(i.dataset.group,i.dataset.cand)},true);
+document.addEventListener("keydown",e=>{const i=e.target;if((e.metaKey||e.ctrlKey)&&e.key==="Enter"&&i.matches?.("input.score-input[data-group][data-cand]")){e.preventDefault();save(i.dataset.group,i.dataset.cand)}},true);
+window.addEventListener("beforeunload",e=>{if(uid()&&Object.keys(drafts()).length){e.preventDefault();e.returnValue=""}});
+window.autoSaveScore=(cid,gid)=>record(gid,cid);
+window.saveScoreNow=async()=>false;
+window.retryQuotaDrafts=async()=>false;
+window.submitSessionGrading=async()=>{throw Error("Phải lưu từng thí sinh trước khi khóa điểm.")};
+window.refreshSessionModeUI=()=>{};window.enforceSessionModeScoreListener=()=>{};
+for(const timer of Object.values(window._scoreSaveTimers||{}))clearTimeout(timer);
+window._scoreSaveTimers={};window._scoreSavePending={};window._offlinePendingScores={};
+const verify=window.verifyGroupGrading;
+window.verifyGroupGrading=async function(gid){
+ if(!uid()||!window.auth?.currentUser?.isAnonymous)return window.showToast?.("Vui lòng đăng nhập BGK để xác nhận OTP.","error");
+ if(Object.values(drafts()).some(d=>d.gid===gid)||[...busy].some(id=>id.startsWith(gid+"|")))return window.showToast?.("Còn điểm chưa lưu. Hãy lưu hoặc hoàn tác trước khi khóa bảng điểm.","error");
+ return verify?.(gid);
+};
+window.vGG=window.verifyGroupGrading;
+const root=document.getElementById("main-content");
+if(root)new MutationObserver(schedule).observe(root,{subtree:true,childList:true});
+window.addEventListener("online",schedule);schedule();
+})();

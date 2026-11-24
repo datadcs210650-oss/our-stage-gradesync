@@ -150,7 +150,7 @@ function paint(input){
  status.style.color=pending?"#b45309":"#7a1837";
 }
 document.addEventListener("input",e=>{
- if(e.target.matches?.("input.score-input")){
+ if(!window.GS_MANUAL_SCORE_MODE&&e.target.matches?.("input.score-input")){
   paint(e.target);
   if(navigator.onLine===false)window.showToast?.("Điểm chưa được gửi lên máy chủ. Không khóa/nộp khi mất mạng.","error");
  }

@@ -5976,9 +5976,7 @@ window.currentUserData = null; window.activeListeners = [];
   function getGroup(groupId){
     return window._groupMapCache?.[groupId]||null;
   }
-  function sessionModeOn(groupId){
-    return getGroup(groupId)?.sessionSubmitMode===true;
-  }
+  function sessionModeOn(_groupId){return false;}
   function scoreInputs(candidateId,groupId){
     return [...document.querySelectorAll(`input.score-input[data-cand="${candidateId}"][data-group="${groupId}"]`)];
   }
@@ -7730,6 +7728,8 @@ window.loadAccountManager=async function(container){
 installJudgeEmailAdmin({call});
 installCastingActorRoster();
 installCastingAdminPages();
+window.refreshSessionModeUI=()=>{};
+window.enforceSessionModeScoreListener=()=>{};
 const renderReview=window.loadCastingHub,renderEmail=window.loadCastingEmail;
 window.loadCastingHub=async function(host){
  const root=document.createElement("section"),tabs=document.createElement("div"),body=document.createElement("div");
