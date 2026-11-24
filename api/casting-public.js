@@ -1,9 +1,10 @@
 /* Candidate-specific result retrieval. Never returns a published roster or private profile fields. */
 import crypto from "node:crypto";
 import {createClient} from "@supabase/supabase-js";
+import {restRecoveryOptions} from "../lib/supabase-rest-recovery.js";
 const send=(res,status,data)=>{res.statusCode=status;res.setHeader("Content-Type","application/json; charset=utf-8");res.setHeader("Cache-Control","no-store");res.setHeader("X-Content-Type-Options","nosniff");res.end(JSON.stringify(data))};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const client=()=>createClient(process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co",process.env.SUPABASE_SECRET_KEY||"",{auth:{persistSession:false,autoRefreshToken:false}});
+const client=()=>{const url=process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co";return createClient(url,process.env.SUPABASE_SECRET_KEY||"",restRecoveryOptions(url))};
 const fail=(s,status=400)=>Object.assign(new Error(s),{status});
 function exactEmail(a,b){
  const A=Buffer.from(String(a||"").trim().toLowerCase()),B=Buffer.from(String(b||"").trim().toLowerCase());
