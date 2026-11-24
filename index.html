@@ -10,6 +10,7 @@
 
     <!-- GradeSync V29.2 - V27 STABLE HOTFIX: time/PDF/score-clear -->
     <title>GradeSync - Hệ thống Chấm điểm Live</title>
+    <script>window.GS_MANUAL_SCORE_MODE=true;</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
@@ -2311,6 +2312,8 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
             const criteriaList = groupInfo.criteria || [];
             criteriaList.forEach(crit => { tableHeaders += `<th class="py-2 px-3 text-center border-l border-b border-gray-200 bg-gray-50/90 whitespace-nowrap shadow-sm z-20 min-w-[90px]"><span class="font-bold text-gray-700 text-[11px]">${window.escapeHtml(crit.name)}</span><br><span class="text-[9px] text-red-800 font-bold bg-red-50 px-1.5 py-0.5 rounded mt-1 inline-block">TS: ${crit.weight}%</span></th>`; });
             tableHeaders += `<th class="py-3 px-3 text-center border-l border-b border-gray-200 w-20 whitespace-nowrap shadow-sm z-20">Tổng</th><th class="py-3 px-3 text-center border-b border-gray-200 w-24 whitespace-nowrap shadow-sm z-20">Kết quả</th>`;
+        if(groupInfo.gsCasting?.roles?.length)tableHeaders += '<th class="py-3 px-3 bg-rose-50 border-b text-center text-xs min-w-[180px]">Vai diễn phù hợp</th>';
+        if(groupInfo.gsCasting?.notesEnabled)tableHeaders += '<th class="py-3 px-3 bg-rose-50 border-b text-center text-xs min-w-[220px]">Ghi chú BGK</th>';
 
             let tableRows = ''; window._gradedDataCache = window._gradedDataCache || {};
 
@@ -2338,7 +2341,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 let criteriaInputs = '';
                 criteriaList.forEach((crit, idx) => {
                     const val = scoresObj[crit.name] !== undefined ? scoresObj[crit.name] : '';
-                    criteriaInputs += `<td class="py-2 px-2 text-center border-l border-gray-100 hover:bg-gray-50/50 transition"><input type="number" id="score-${cand.id}-${idx}" data-cand="${cand.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="10" step="0.5" value="${val}" ${candInputDisabled ? 'disabled' : ''} oninput="if(this.value>10)this.value=10; if(this.value<0)this.value=0; window.autoSaveScore('${cand.id}', '${gId}', ${groupInfo.passScore})" class="score-input w-16 mx-auto border border-gray-300 p-2 rounded-lg text-center text-xs font-bold text-red-800 outline-none focus:border-red-600 focus:bg-red-50 ${candInputDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent shadow-inner opacity-60' : 'bg-white shadow-sm hover:border-red-400 transition-all duration-300'}" placeholder="-"></td>`;
+                    criteriaInputs += `<td class="py-2 px-2 text-center border-l border-gray-100 hover:bg-gray-50/50 transition"><input type="text" inputmode="decimal" id="score-${cand.id}-${idx}" data-cand="${cand.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="10" step="0.5" value="${val}" ${candInputDisabled ? 'disabled' : ''} class="score-input w-16 mx-auto border border-gray-300 p-2 rounded-lg text-center text-xs font-bold text-red-800 outline-none focus:border-red-600 focus:bg-red-50 ${candInputDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent shadow-inner opacity-60' : 'bg-white shadow-sm hover:border-red-400 transition-all duration-300'}" placeholder="-"></td>`;
                 });
 
                 let statusBadgeHtml = (graded.candidateId && Object.keys(scoresObj).length) ? (isPass ? `<span class="bg-emerald-50 text-emerald-600 px-2 py-1 rounded text-[10px] font-bold border border-emerald-200">PASS</span>` : `<span class="bg-rose-50 text-rose-600 px-2 py-1 rounded text-[10px] font-bold border border-rose-200">FAIL</span>`) : `<span class="bg-gray-100 text-gray-500 px-2 py-1 rounded text-[9px] font-medium border border-gray-200">CHỜ</span>`;
@@ -2355,7 +2358,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                     <td class="py-3 px-3 text-center align-middle"><p class="font-bold ${cand.isPresent && !isAdmin ? 'text-emerald-900' : 'text-gray-900'} text-xs">${window.escapeHtml(cand.name)}${presentNameBadge}</p></td>
                     ${attendanceHtml}${eDataHtml}${criteriaInputs}
                     <td class="py-3 px-2 text-center border-l border-gray-100 relative align-middle"><span class="font-bold text-base ${isPass ? 'text-emerald-600' : (graded.candidateId ? 'text-rose-600' : 'text-gray-400')}" id="tot-${cand.id}">${totalScore}</span><div id="save-status-${cand.id}" class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-[8px] text-emerald-600 font-bold opacity-0 transition-opacity">Đã lưu</div></td>
-                    <td class="py-3 px-2 text-center align-middle" id="status-container-${cand.id}">${statusBadgeHtml}</td>
+                    <td class="py-3 px-2 text-center align-middle" id="status-container-${cand.id}">${statusBadgeHtml}</td>${groupInfo.gsCasting?.roles?.length?'<td class="gsx-role-cell px-3 py-2 align-middle min-w-[180px]"></td>':''}${groupInfo.gsCasting?.notesEnabled?'<td class="gsx-note-cell px-3 py-2 align-middle min-w-[220px]"></td>':''}
                 </tr>`;
             });
 
@@ -3321,7 +3324,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 
             const criteriaHtml = criteriaList.map((crit, idx) => {
                 const val = selected.scoresObj[crit.name] !== undefined ? selected.scoresObj[crit.name] : '';
-                return `<div class="gs-score-card"><div class="gs-score-row"><div><div class="text-[14px] font-black text-gray-900">${window.escapeHtml(crit.name)}</div><div class="gs-score-note">Trọng số: <b>${crit.weight}%</b> · Nhập điểm từ 0 đến 100.</div></div><div><input type="number" id="score-${candidate.id}-${idx}" data-cand="${candidate.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="10" step="0.5" value="${val}" ${selected.candInputDisabled ? 'disabled' : ''} oninput="if(this.value>10)this.value=10; if(this.value<0)this.value=0; window.autoSaveScore('${candidate.id}','${gId}',${groupInfo.passScore})" class="score-input gs-score-input-lg" placeholder="-"></div></div></div>`;
+                return `<div class="gs-score-card"><div class="gs-score-row"><div><div class="text-[14px] font-black text-gray-900">${window.escapeHtml(crit.name)}</div><div class="gs-score-note">Trọng số: <b>${crit.weight}%</b> </div></div><div><input type="text" inputmode="decimal" id="score-${candidate.id}-${idx}" data-cand="${candidate.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="10" step="0.5" value="${val}" ${selected.candInputDisabled ? 'disabled' : ''} class="score-input gs-score-input-lg" placeholder="-"></div></div></div>`;
             }).join('');
 
             let disabledBanner = '';
@@ -3391,6 +3394,8 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         shownExtraFields.forEach(f => { tableHeaders += `<th class="py-3 px-3 text-center border-b border-gray-200 whitespace-nowrap shadow-sm z-20 bg-gray-50 text-gray-600 font-bold">${window.escapeHtml(f.name)}</th>`; });
         criteriaList.forEach(crit => { tableHeaders += `<th class="py-2 px-3 text-center border-l border-b border-gray-200 bg-gray-50/90 whitespace-nowrap shadow-sm z-20 min-w-[90px]"><span class="font-bold text-gray-700 text-[11px]">${window.escapeHtml(crit.name)}</span><br><span class="text-[9px] text-red-800 font-bold bg-red-50 px-1.5 py-0.5 rounded mt-1 inline-block">TS: ${crit.weight}%</span></th>`; });
         tableHeaders += `<th class="py-3 px-3 text-center border-l border-b border-gray-200 w-20 whitespace-nowrap shadow-sm z-20">Tổng</th><th class="py-3 px-3 text-center border-b border-gray-200 w-24 whitespace-nowrap shadow-sm z-20">Kết quả</th>`;
+        if(groupInfo.gsCasting?.roles?.length)tableHeaders += '<th class="py-3 px-3 bg-rose-50 border-b text-center text-xs min-w-[180px]">Vai diễn phù hợp</th>';
+        if(groupInfo.gsCasting?.notesEnabled)tableHeaders += '<th class="py-3 px-3 bg-rose-50 border-b text-center text-xs min-w-[220px]">Ghi chú BGK</th>';
 
         const tableRows = candidateViews.map((view) => {
             const {cand, index, scoresObj, totalScore, hasScore, isPass, present, candInputDisabled, candExtraData} = view;
@@ -3405,11 +3410,11 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
             const extraHtml = shownExtraFields.map(f => `<td class="py-3 px-3 text-center align-middle text-[11px] text-gray-700 whitespace-nowrap break-words">${window.escapeHtml((candExtraData || {})[f.name] || '-')}</td>`).join('');
             const criteriaInputs = criteriaList.map((crit, idx) => {
                 const val = scoresObj[crit.name] !== undefined ? scoresObj[crit.name] : '';
-                return `<td class="py-2 px-2 text-center border-l border-gray-100 hover:bg-gray-50/50 transition"><input type="number" id="score-${cand.id}-${idx}" data-cand="${cand.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="10" step="0.5" value="${val}" ${candInputDisabled ? 'disabled' : ''} oninput="if(this.value>10)this.value=10; if(this.value<0)this.value=0; window.autoSaveScore('${cand.id}','${gId}',${groupInfo.passScore})" class="score-input w-16 mx-auto border border-gray-300 p-2 rounded-lg text-center text-xs font-bold text-red-800 outline-none focus:border-red-600 focus:bg-red-50 ${candInputDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent shadow-inner opacity-60' : 'bg-white shadow-sm hover:border-red-400 transition-all duration-300'}" placeholder="-"></td>`;
+                return `<td class="py-2 px-2 text-center border-l border-gray-100 hover:bg-gray-50/50 transition"><input type="text" inputmode="decimal" id="score-${cand.id}-${idx}" data-cand="${cand.id}" data-group="${gId}" data-pass="${groupInfo.passScore}" data-crit="${window.escapeHtml(crit.name)}" data-weight="${crit.weight}" min="0" max="10" step="0.5" value="${val}" ${candInputDisabled ? 'disabled' : ''} class="score-input w-16 mx-auto border border-gray-300 p-2 rounded-lg text-center text-xs font-bold text-red-800 outline-none focus:border-red-600 focus:bg-red-50 ${candInputDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent shadow-inner opacity-60' : 'bg-white shadow-sm hover:border-red-400 transition-all duration-300'}" placeholder="-"></td>`;
             }).join('');
             const presentRowClass = (!isAdmin && groupInfo.attendanceEnabled && present) ? 'bg-emerald-50/80 ring-1 ring-inset ring-emerald-200' : 'hover:bg-red-50/20';
             const presentNameBadge = (!isAdmin && groupInfo.attendanceEnabled && present) ? '<span class="ml-2 inline-flex items-center gap-1 text-[8px] font-black uppercase text-emerald-700 bg-white border border-emerald-200 px-1.5 py-0.5 rounded-full"><i class="fas fa-arrow-up"></i> ĐANG THI</span>' : '';
-            return `<tr class="${presentRowClass} border-b border-gray-100 transition-all duration-300 group"><td class="py-3 px-2 font-semibold text-gray-500 text-[11px] text-center align-middle">${index + 1}</td><td class="py-3 px-2 font-mono text-gray-600 text-[11px] text-center align-middle font-bold">${window.escapeHtml(cand.code) || '---'}</td><td class="py-3 px-3 text-center align-middle"><p class="font-bold ${present && !isAdmin ? 'text-emerald-900' : 'text-gray-900'} text-xs">${window.escapeHtml(cand.name)}${presentNameBadge}</p></td>${attendanceHtml}${extraHtml}${criteriaInputs}<td class="py-3 px-2 text-center border-l border-gray-100 relative align-middle"><span class="font-bold text-base ${isPass ? 'text-emerald-600' : (hasScore ? 'text-rose-600' : 'text-gray-400')}" id="tot-${cand.id}">${totalScore}</span><div id="save-status-${cand.id}" class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-[8px] text-emerald-600 font-bold opacity-0 transition-opacity">Đã lưu</div></td><td class="py-3 px-2 text-center align-middle" id="status-container-${cand.id}">${buildStatusBadge(view)}</td></tr>`;
+            return `<tr class="${presentRowClass} border-b border-gray-100 transition-all duration-300 group"><td class="py-3 px-2 font-semibold text-gray-500 text-[11px] text-center align-middle">${index + 1}</td><td class="py-3 px-2 font-mono text-gray-600 text-[11px] text-center align-middle font-bold">${window.escapeHtml(cand.code) || '---'}</td><td class="py-3 px-3 text-center align-middle"><p class="font-bold ${present && !isAdmin ? 'text-emerald-900' : 'text-gray-900'} text-xs">${window.escapeHtml(cand.name)}${presentNameBadge}</p></td>${attendanceHtml}${extraHtml}${criteriaInputs}<td class="py-3 px-2 text-center border-l border-gray-100 relative align-middle"><span class="font-bold text-base ${isPass ? 'text-emerald-600' : (hasScore ? 'text-rose-600' : 'text-gray-400')}" id="tot-${cand.id}">${totalScore}</span><div id="save-status-${cand.id}" class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-[8px] text-emerald-600 font-bold opacity-0 transition-opacity">Đã lưu</div></td><td class="py-3 px-2 text-center align-middle" id="status-container-${cand.id}">${buildStatusBadge(view)}</td>${groupInfo.gsCasting?.roles?.length?'<td class="gsx-role-cell px-3 py-2 align-middle min-w-[180px]"></td>':''}${groupInfo.gsCasting?.notesEnabled?'<td class="gsx-note-cell px-3 py-2 align-middle min-w-[220px]"></td>':''}</tr>`;
         }).join('');
 
         const nextTable = `<div class="bg-white p-1 rounded-b-2xl shadow-sm border border-gray-100 border-t-0 flex flex-col h-full relative"><div class="flex flex-col lg:flex-row justify-between items-start lg:items-center p-4 border-b border-gray-100 gap-4 shrink-0 bg-gray-50/50 mx-1 mt-1 rounded-t-xl"><div class="flex flex-wrap items-center gap-2 w-full lg:w-auto"><h3 class="text-base font-black text-red-800 uppercase flex items-center flex-wrap gap-1 w-full md:w-auto"><i class="fas fa-folder-open mr-1"></i>${window.escapeHtml(groupInfo.name)} ${timeBadge} ${attBadge}</h3><span class="bg-white text-gray-600 px-2 py-1 rounded text-[11px] font-bold border border-gray-200 ml-2">Điểm Pass: ≥ ${groupInfo.passScore} đ</span></div><div class="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">${actionButtons}</div></div><div class="w-full custom-scrollbar sticky-table-container rounded-b-2xl flex-1 pb-1"><table class="w-full text-left text-sm border-collapse min-w-max"><thead><tr>${tableHeaders}</tr></thead><tbody>${tableRows}</tbody></table></div></div>`;
@@ -5772,6 +5777,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
     el.className=`absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-[8px] text-${color}-600 font-bold transition-opacity`;
   }
   function applyDrafts(){
+    if(window.GS_MANUAL_SCORE_MODE)return;
     const drafts=getDrafts();
     Object.values(drafts).forEach(d=>{
       if(!d || d.graderCode!==window.currentUserData?.code) return;
@@ -5839,6 +5845,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
   };
 
   window.retryQuotaDrafts=async function(force=false){
+    if(window.GS_MANUAL_SCORE_MODE)return false;
     if(navigator.onLine===false) return false;
     const stored=Number(localStorage.getItem(COOLDOWN_KEY)||0);
     if(!force && Date.now()<stored) return false;
@@ -5931,9 +5938,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
   function getGroup(groupId){
     return window._groupMapCache?.[groupId]||null;
   }
-  function sessionModeOn(groupId){
-    return getGroup(groupId)?.sessionSubmitMode===true;
-  }
+  function sessionModeOn(_groupId){return false;}
   function scoreInputs(candidateId,groupId){
     return [...document.querySelectorAll(`input.score-input[data-cand="${candidateId}"][data-group="${groupId}"]`)];
   }
@@ -7660,7 +7665,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 </script>
 
 <script type="module" src="./grader-google-ui.js"></script>
-<script defer src="./offline-score-recovery.js"></script>
+<script type="module" src="./manual-score-editor.js"></script>
 <script src="./live-grid-layout.js" defer></script>
 <script type="module" src="./grader-session-deeplink.js"></script>
 </body>

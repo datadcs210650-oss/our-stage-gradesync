@@ -125,7 +125,7 @@ function readDraftCount(){
  }catch(_e){return 0}
 }
 function showRecoveryStatus(){
- if(!grader())return;
+ if(window.GS_MANUAL_SCORE_MODE||!grader())return;
  const root=document.getElementById("main-content");
  if(!root||!root.querySelector("input.score-input"))return;
  let panel=root.querySelector("#gsx-recovery-panel");

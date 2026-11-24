@@ -14,7 +14,8 @@ test("candidate list fetches one selected group and one page, never scans all se
  assert.match(backend,/\.eq\("group_id",group\.id\)\.order\("code"\)\.range\(offset,offset\+limit-1\)/);
  assert.match(backend,/\.in\("candidate_id",ids\)/);
  assert.match(front,/request\("casting-candidate-roster",\{groupId:gid,offset,limit:state\.limit\}\)/);
- assert.match(front,/legacy\.addEventListener\("toggle"/);
+ assert.match(front,/async function openImport\(/);
+ assert.doesNotMatch(front,/toolsMenu\(legacyArea\)/);
  assert.doesNotMatch(front,/await toolsMenu\(legacyArea\);\s*await loadPage\(\)/);
 });
 

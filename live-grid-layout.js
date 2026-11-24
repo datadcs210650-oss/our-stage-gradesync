@@ -4,6 +4,20 @@
 "use strict";
 const STORAGE_PREFIX="gsx-live-columns-v1:";
 
+// Prevent accidental number stepping in scoring fields without adding UI copy.
+function installScoreInputGuard(doc){
+ const isScore=target=>target?.matches?.("input.score-input[type='number']")===true;
+ doc.addEventListener("wheel",event=>{
+  const input=event.target;
+  if(isScore(input)&&doc.activeElement===input&&!input.disabled)input.blur();
+ },{capture:true,passive:true});
+ doc.addEventListener("keydown",event=>{
+  if(isScore(event.target)&&!event.target.disabled&&(event.key==="ArrowUp"||event.key==="ArrowDown"))event.preventDefault();
+ },true);
+}
+installScoreInputGuard(document);
+
+
 const sheet=document.createElement("style");
 sheet.textContent=[
  ".gsx-live-grid{border-collapse:separate!important;border-spacing:0!important;width:max-content;min-width:100%}",
@@ -136,7 +150,7 @@ function paint(input){
  status.style.color=pending?"#b45309":"#7a1837";
 }
 document.addEventListener("input",e=>{
- if(e.target.matches?.("input.score-input")){
+ if(!window.GS_MANUAL_SCORE_MODE&&e.target.matches?.("input.score-input")){
   paint(e.target);
   if(navigator.onLine===false)window.showToast?.("Điểm chưa được gửi lên máy chủ. Không khóa/nộp khi mất mạng.","error");
  }
