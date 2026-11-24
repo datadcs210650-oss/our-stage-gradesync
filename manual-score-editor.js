@@ -37,12 +37,46 @@ function take(gid,cid){
  return {row,values,...normalize(values)};
 }
 function currentDraft(gid,cid){return drafts()[key(gid,cid)]}
+const policyFor=gid=>window._groupMapCache?.[gid]?.gsCasting||null;
+const candidateFor=(gid,cid)=>(window._allCandidatesCache||[]).find(x=>x.id===cid&&x.groupId===gid);
+const registeredFor=(gid,cid)=>{const p=policyFor(gid),c=candidateFor(gid,cid);return (c?.customFields?.gsRoleIds||[]).filter(x=>p?.roles?.includes(x))};
+const sameEvaluation=(a,b)=>JSON.stringify([...(a?.roles||[])].sort())===JSON.stringify([...(b?.roles||[])].sort())&&String(a?.note||"")===String(b?.note||"");
+const committedEvaluation=base=>({roles:base?.gsProposedRoles||[],note:base?.gsJudgeNote||""});
+function renderEvaluation(controls,gid,cid,disabled){
+ const policy=policyFor(gid),roles=registeredFor(gid,cid),old=controls.querySelector(".gsx-evaluation");
+ if(!policy?.roles?.length&&!policy?.notesEnabled){old?.remove();return}
+ const signature=JSON.stringify([policy,roles]);
+ let pane=old;
+ if(!pane||pane.dataset.signature!==signature){
+  pane=document.createElement("div");pane.className="gsx-evaluation w-full min-w-[150px] text-left border border-rose-100 rounded-lg p-2 space-y-1";pane.dataset.signature=signature;
+  if(policy.roles?.length){
+   const title=document.createElement("p");title.className="font-bold text-[10px] text-red-900";title.textContent="Vai diễn phù hợp · tối đa "+policy.maxProposed;pane.append(title);
+   if(!roles.length){const empty=document.createElement("p");empty.className="text-[10px] text-gray-500";empty.textContent="Chưa đăng ký vai";pane.append(empty)}
+   for(const role of roles){
+    const label=document.createElement("label"),check=document.createElement("input"),text=document.createElement("span");
+    label.className="flex items-center gap-1 text-xs";check.type="checkbox";check.className="gsx-role-tick accent-red-900";check.value=role;text.textContent=role;
+    check.onchange=()=>{if([...pane.querySelectorAll(".gsx-role-tick:checked")].length>policy.maxProposed){check.checked=false;window.showToast?.("Đã đạt số vai tối đa.","error")}record(gid,cid)};
+    label.append(check,text);pane.append(label);
+   }
+  }
+  if(policy.notesEnabled){const label=document.createElement("label"),note=document.createElement("textarea");label.className="block text-[10px] font-bold text-red-900";label.textContent="Ghi chú BGK";note.className="gsx-judge-note w-full rounded-md border p-2 text-xs font-normal";note.rows=2;note.maxLength=1000;note.placeholder="Nhận xét…";note.oninput=()=>record(gid,cid);label.append(note);pane.append(label)}
+  if(old)old.replaceWith(pane);else controls.prepend(pane);
+ }
+ const evaluation=currentDraft(gid,cid)?.evaluation||committedEvaluation(current(gid,cid));
+ for(const x of pane.querySelectorAll(".gsx-role-tick")){x.checked=evaluation.roles.includes(x.value);x.disabled=disabled||(!x.checked&&evaluation.roles.length>=policy.maxProposed)}
+ const note=pane.querySelector(".gsx-judge-note");if(note){if(document.activeElement!==note)note.value=evaluation.note;note.disabled=disabled}
+}
+function readEvaluation(gid,cid){
+ const p=policyFor(gid),pane=document.getElementById("status-container-"+cid)?.querySelector(".gsx-evaluation");
+ if(!p||!pane)return currentDraft(gid,cid)?.evaluation||committedEvaluation(current(gid,cid));
+ return {roles:[...pane.querySelectorAll(".gsx-role-tick:checked")].map(x=>x.value),note:p.notesEnabled?(pane.querySelector(".gsx-judge-note")?.value||""):""};
+}
 function record(gid,cid){
  if(!uid())return;
  const x=take(gid,cid);if(!x.row.length||x.row.every(i=>i.disabled))return;
- const id=key(gid,cid),old=currentDraft(gid,cid),base=current(gid,cid);
- if(!busy.has(id)&&!x.invalid&&equal(x.scores,base?.scores||{})){delete drafts()[id];failures.delete(id)}
- else drafts()[id]={gid,cid,values:x.values,revision:old?.revision??Number(base?.revision||0),at:Date.now()};
+ const id=key(gid,cid),old=currentDraft(gid,cid),base=current(gid,cid),evaluation=readEvaluation(gid,cid);
+ if(!busy.has(id)&&!x.invalid&&equal(x.scores,base?.scores||{})&&sameEvaluation(evaluation,committedEvaluation(base))){delete drafts()[id];failures.delete(id)}
+ else drafts()[id]={gid,cid,values:x.values,evaluation,revision:old?.revision??Number(base?.revision||0),at:Date.now()};
  persist();paint(gid,cid);
 }
 function paint(gid,cid){
@@ -60,6 +94,7 @@ function paint(gid,cid){
   undo.onclick=()=>{if(busy.has(id))return;if(!window.confirm("Bỏ thay đổi chưa lưu của thí sinh này?"))return;delete drafts()[id];failures.delete(id);persist();for(const i of inputs(gid,cid))i.value=String(current(gid,cid)?.scores?.[i.dataset.crit]??"");paint(gid,cid)};
   controls.append(status,button,undo);slot.append(controls);
  }
+ renderEvaluation(controls,gid,cid,row.every(i=>i.disabled));
  const status=controls.querySelector(".gsx-manual-state"),button=controls.querySelector(".gsx-manual-save"),undo=controls.querySelector(".gsx-manual-undo");
  const state=busy.has(id)?"Đang lưu…":failures.has(id)?failures.get(id):d?(base?"Có thay đổi chưa lưu":"Chưa lưu"):base?"Đã lưu ✓":"Chưa chấm";
  if(status.textContent!==state)status.textContent=state;
@@ -92,19 +127,21 @@ async function save(gid,cid){
  if(Object.keys(x.scores).some(k=>!allowed(gid,k))){failures.set(id,"Quyền chấm đã thay đổi");paint(gid,cid);return}
  busy.add(id);failures.delete(id);paint(gid,cid);
  try{
-  const {data,error}=await window.supabase.rpc("gradesync_save_score",{p_candidate_id:cid,p_group_id:gid,p_scores:x.scores,p_total_score:0,p_expected_revision:d.revision});
+  const policy=policyFor(gid),evaluation=d.evaluation||committedEvaluation(current(gid,cid));
+  const args={p_candidate_id:cid,p_group_id:gid,p_scores:x.scores,p_total_score:0,p_expected_revision:d.revision};
+  const {data,error}=await window.supabase.rpc(policy?.roles?.length||policy?.notesEnabled?"gs_save_casting_evaluation":"gradesync_save_score",policy?.roles?.length||policy?.notesEnabled?{...args,p_roles:evaluation.roles,p_note:evaluation.note}:args);
   if(error)throw error;
   const saved=Array.isArray(data)?data[0]:data;
   if(!saved||saved.candidate_id!==cid||saved.group_id!==gid||saved.grader_id!==u||Number(saved.revision)!==d.revision+1)throw Error("Không xác nhận được phiên bản điểm.");
   if(uid()!==u)return;
-  const mapped={id:saved.id,candidateId:cid,groupId:gid,graderId:saved.grader_id,graderCode:saved.grader_code,graderName:saved.grader_name,scores:saved.scores,totalScore:saved.total_score,revision:saved.revision,locked:saved.locked,updatedAt:saved.updated_at,timestamp:{seconds:Math.floor(Date.parse(saved.updated_at)/1000)}};
+  const mapped={gsProposedRoles:saved.extra_data?.gsProposedRoles||[],gsJudgeNote:saved.extra_data?.gsJudgeNote||"",id:saved.id,candidateId:cid,groupId:gid,graderId:saved.grader_id,graderCode:saved.grader_code,graderName:saved.grader_name,scores:saved.scores,totalScore:saved.total_score,revision:saved.revision,locked:saved.locked,updatedAt:saved.updated_at,timestamp:{seconds:Math.floor(Date.parse(saved.updated_at)/1000)}};
   const cache=window._allScoresCache||[];
   if(!cache.some(s=>s.candidateId===cid&&s.graderCode===mapped.graderCode&&Number(s.revision)>Number(mapped.revision))){
    window._allScoresCache=cache.filter(s=>!(s.candidateId===cid&&s.graderCode===mapped.graderCode));window._allScoresCache.push(mapped);
    (window._gradedDataCache||={})[cid]=mapped;
   }
   const latest=currentDraft(gid,cid);
-  if(latest&&latest!==d&&!equal(normalize(latest.values).scores,saved.scores||{})){
+  if(latest&&latest!==d&&(!equal(normalize(latest.values).scores,saved.scores||{})||!sameEvaluation(latest.evaluation,committedEvaluation(mapped)))){
    drafts()[id]={...latest,revision:Number(saved.revision)};
    window.showToast?.("Đã lưu phiên bản trước; thay đổi mới vẫn chưa lưu.");
   }else if(latest&&latest!==d&&normalize(latest.values).invalid){
