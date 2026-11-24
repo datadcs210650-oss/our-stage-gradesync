@@ -2,7 +2,7 @@
 (()=>{
 "use strict";
 const sb=window.supabase;
-const grader=()=>window.currentUserData?.role==="Grader"&&window.auth?.currentUser?.isAnonymous===true;
+const grader=()=>window.currentUserData?.role==="Grader"&&window.auth?.currentUser?.googleGrader===true;
 const notify=(text,isError=false)=>window.showToast?.(text,isError?"error":"success");
 function node(tag,text,cls){const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e}
 async function api(action,groupId,extras={}){
@@ -28,53 +28,31 @@ async function flushPending(groupId){
  }
 }
 function close(){window.closeCustomModal?.()}
-function openOtpDialog(groupId,masked){
- const box=document.getElementById("custom-modal-box");if(!box)throw Error("Không mở được hộp thoại OTP.");
- box.replaceChildren();
- const header=node("h3","Xác nhận & khóa bảng điểm","font-extrabold text-lg text-red-900");
- const explain=node("p","Mã 6 chữ số đã gửi đến "+masked+". Mã hết hạn sau 5 phút.","text-xs text-gray-600");
- const input=node("input");input.inputMode="numeric";input.maxLength=6;input.autocomplete="one-time-code";
- input.placeholder="000000";input.className="border rounded-xl p-3 text-center text-xl tracking-widest w-full";
- const error=node("p","","text-xs text-red-700"),row=node("div","","flex flex-wrap gap-2 mt-2");
- const confirm=node("button","Xác nhận & khóa","bg-red-900 text-white px-4 py-2 rounded-xl font-bold text-xs");
- const cancel=node("button","Hủy","bg-gray-100 px-4 py-2 rounded-xl text-xs");
- const resend=node("button","Gửi lại OTP","border px-4 py-2 rounded-xl text-xs");
- cancel.onclick=close;confirm.onclick=async()=>{
-  if(!/^\d{6}$/.test(input.value))return error.textContent="Nhập đủ 6 chữ số.";
-  confirm.disabled=true;try{
-   const answer=await api("confirm",groupId,{code:input.value});
-   close();notify("Bảng điểm đã xác nhận và khóa thành công.");
-   // BGK chỉ được xem trạng thái xác nhận; PDF bảng điểm dành riêng cho BCN.
-   window._lastInitAuthUid=null;
-   window.loadGradingTable?.(document.getElementById("main-content")).catch(()=>{});
-  }catch(e){error.textContent=e.message}finally{confirm.disabled=false}
- };
- resend.onclick=async()=>{
-  resend.disabled=true;try{const v=await api("request",groupId);explain.textContent="Đã gửi OTP mới đến "+v.emailMasked+". Mã có hiệu lực 5 phút.";error.textContent=""}
-  catch(e){error.textContent=e.message}finally{setTimeout(()=>{resend.disabled=false},60000)}
- };
- row.append(confirm,cancel,resend);box.append(header,explain,input,error,row);window.openModal();input.focus();
+function actionButton(label,fn,primary=false){const x=node("button",label,primary?"bg-red-900 text-white px-4 py-2 rounded-xl font-bold text-xs":"border px-4 py-2 rounded-xl text-xs");x.type="button";x.onclick=fn;return x}
+function success(box,answer){
+ if(!box.isConnected)return;
+ box.replaceChildren(node("h3","✓ Bảng điểm đã được khóa","font-extrabold text-lg text-emerald-800"),node("p","Mã đối chiếu bảng điểm","text-xs text-gray-500"),node("p",answer.comparisonCode||"Chưa có mã đối chiếu","text-3xl font-mono tracking-widest font-black text-red-900"),node("p",answer.mailAccepted===true?"Email xác nhận đã được dịch vụ tiếp nhận.":"Bảng điểm đã khóa. Nếu chưa nhận email, liên hệ Admin để gửi lại.","text-xs text-gray-600"),actionButton("Đóng",()=>{close();window._lastInitAuthUid=null;window.loadGradingTable?.(document.getElementById("main-content")).catch(()=>{})},true));
 }
-const original=window.verifyGroupGrading;
+function openOtpDialog(groupId,partial){
+ const box=document.getElementById("custom-modal-box");if(!box)throw Error("Không mở được hộp thoại OTP.");
+ const header=node("h3","Xác nhận & khóa bảng điểm","font-extrabold text-lg text-red-900"),explain=node("p","Đang gửi mã OTP…","text-xs text-gray-600"),input=node("input"),error=node("p","","text-xs text-red-700"),row=node("div","","flex flex-wrap gap-2 mt-2");
+ input.inputMode="numeric";input.maxLength=6;input.autocomplete="one-time-code";input.placeholder="000000";input.className="border rounded-xl p-3 text-center text-xl tracking-widest w-full";
+ const confirm=actionButton("Xác nhận & khóa",async()=>{
+  if(!/^\d{6}$/.test(input.value))return error.textContent="Nhập đủ 6 chữ số.";
+  confirm.disabled=true;try{const answer=await api("confirm",groupId,{code:input.value});if(box.contains(header))success(box,answer)}
+  catch(e){if(!box.contains(header))return;try{const status=await api("completion-status",groupId);if(status.confirmed){success(box,status);return}}catch(_){}error.textContent=e.message;confirm.disabled=false}
+ },true);
+ const cancel=actionButton("Hủy",close),resend=actionButton("Gửi lại OTP",()=>send());
+ const send=async()=>{confirm.disabled=true;resend.disabled=true;error.textContent="";explain.textContent="Đang gửi mã OTP…";try{const r=await api("request",groupId,{confirmPartial:partial});if(!box.contains(header))return;explain.textContent="Mã 6 chữ số đã gửi đến "+r.emailMasked+". Mã hết hạn sau 5 phút.";confirm.disabled=false;setTimeout(()=>{resend.disabled=false},60000)}catch(e){error.textContent=e.message;resend.disabled=false}};
+ row.append(confirm,cancel,resend);box.replaceChildren(header,explain,input,error,row);window.openModal();input.focus();send();
+}
 window.verifyGroupGrading=async function(groupId){
- if(!grader())return original?.(groupId);
- try{
-  await flushPending(groupId);
-  const check=await api("preflight",groupId);
-  const c=check.completeness||{};
-  const summary="Đã nhập điểm cho "+(c.scoredCandidates||0)+"/"+(c.totalCandidates||0)+
-   " thí sinh; còn "+(c.incompleteCandidates||0)+" hồ sơ chưa đủ tiêu chí, "+(c.missingCriterionCells||0)+
-   " ô điểm còn thiếu.";
-  const details=c.partial?"\nLƯU Ý: điểm chưa chấm sẽ KHÔNG được tự điền 0 hoặc tính PASSED. Khi xác nhận OTP, bảng sẽ khóa vĩnh viễn.":"\nBảng điểm đủ tiêu chí đã phân công. Khi xác nhận OTP, bảng sẽ khóa vĩnh viễn.";
-  const proceed=async()=>{
-   try{
-    const r=await api("request",groupId,{confirmPartial:c.partial===true});
-    openOtpDialog(groupId,r.emailMasked);
-   }catch(e){notify("Không thể gửi OTP: "+e.message,true)}
-  };
-  if(window.showCustomConfirm)window.showCustomConfirm("Xác nhận khóa bảng điểm?\n"+summary+details,proceed);
-  else if(window.confirm(summary+details))await proceed();
- }catch(e){notify("Chưa thể đối soát điểm: "+e.message,true)}
+ if(!grader())return notify("Vui lòng đăng nhập bằng Google.",true);
+ const box=document.getElementById("custom-modal-box");if(!box)return notify("Không mở được hộp thoại xác nhận.",true);
+ const heading=node("h3","Nộp bảng điểm?","font-extrabold text-lg text-red-900"),detail=node("p","Đang đối soát điểm đã lưu…","text-sm text-gray-600");
+ const proceed=actionButton("Xác nhận",()=>openOtpDialog(groupId,partial),true);let partial=false;proceed.disabled=true;
+ box.replaceChildren(heading,detail,actionButton("Quay lại",close),proceed);window.openModal();
+ try{await flushPending(groupId);const check=await api("preflight",groupId);if(!box.contains(heading))return;const c=check.completeness||{};partial=c.partial===true;detail.textContent="Đã nhập điểm "+(c.scoredCandidates||0)+"/"+(c.totalCandidates||0)+" thí sinh; còn "+(c.incompleteCandidates||0)+" hồ sơ chưa đủ tiêu chí, "+(c.missingCriterionCells||0)+" ô điểm thiếu. "+(partial?"Bạn vẫn có thể nộp; ô chưa chấm không được tự điền 0. ":"")+"Bảng điểm sẽ khóa sau xác nhận OTP.";proceed.disabled=false}catch(e){detail.textContent=e.message}
 };
 /* Legacy BGK also receives criterion visibility from its own RLS-scoped grants. */
 const startApp=window.initApp;
