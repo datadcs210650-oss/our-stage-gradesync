@@ -240,3 +240,16 @@ $function$;
 revoke all on function public.gs_finalize_grading_otp(uuid,uuid,text) from public,anon,authenticated;
 grant execute on function public.gs_finalize_grading_otp(uuid,uuid,text) to service_role;
 notify pgrst,'reload schema';
+
+create or replace function public.gs_session_counts()
+returns table(group_id uuid,candidate_count bigint,judge_count bigint,verified_count bigint)
+language sql stable set search_path=pg_catalog,public as $$
+ select g.id,
+ (select count(*) from public.candidates c where c.group_id=g.id),
+ (select count(*) from public.grader_assignments a where a.group_id=g.id),
+ (select count(*) from public.grader_assignments a where a.group_id=g.id and exists(select 1 from public.grader_verifications v where v.group_id=a.group_id and v.grader_id=a.grader_id and v.is_verified))
+ from public.competition_groups g
+$$;
+revoke all on function public.gs_session_counts() from public,anon,authenticated;
+grant execute on function public.gs_session_counts() to service_role;
+notify pgrst,'reload schema';
