@@ -49,7 +49,7 @@ window.loadCastingEmail=async function(host){
  const top=node("div","grid grid-cols-1 md:grid-cols-2 gap-3");
  top.append(label("Tiêu đề Email",subject),label("Hẹn giờ công bố (để trống nếu gửi ngay)",date));
  compose.append(top,label("Lời chào / mở đầu",intro),label("Lời cảm ơn",thanks),
-  node("p","text-xs text-slate-500","Resend tự gửi đúng thời gian đã đặt dù Admin tắt web. Thời gian tối đa 29 ngày tới. Mỗi email có tên, SBD, phiên và trạng thái màu xanh/đỏ. Không đính kèm liên kết tra cứu."));
+  node("p","text-xs text-slate-500","Resend tự gửi đúng thời gian đã đặt dù Admin tắt web. Thời gian tối đa 29 ngày tới. Mỗi email có họ tên, SBD, kết quả và vai chính thức nếu có. Không đính kèm liên kết tra cứu."));
  const sample=card("Xem trước nội dung");
  const sampleBody=node("div","text-xs leading-relaxed space-y-1 text-slate-600","Hãy tải danh sách và chọn thí sinh.");
  sample.append(sampleBody);compose.append(sample);
@@ -78,6 +78,13 @@ window.loadCastingEmail=async function(host){
  const count=()=>summary.textContent=checkAll.checked?
   "Toàn bộ "+eligible().length+" thí sinh đã duyệt, có email và đồng ý nhận thư.":
   "Đã chọn "+selected().length+" / "+eligible().length+" thí sinh đủ điều kiện.";
+ function resultBox(row){
+  const passed=row.outcome==="passed";
+  const box=node("div","my-3 rounded-xl border p-4 text-center "+(passed?"bg-emerald-50 text-emerald-700 border-emerald-200":"bg-rose-50 text-rose-700 border-rose-200"));
+  box.append(node("div","text-2xl font-black",passed?"PASSED":"NOT PASSED"));
+  if(passed&&Array.isArray(row.assignedRoles))for(const role of row.assignedRoles)box.append(node("div","text-sm font-bold mt-1",role));
+  return box;
+ }
  function showSample(){
   sampleBody.replaceChildren();
   const row=(checkAll.checked?eligible():selected())[0]||eligible()[0];
@@ -85,10 +92,9 @@ window.loadCastingEmail=async function(host){
   sampleBody.append(
    node("p","font-black text-slate-900","Chào "+row.name+","),
    node("p","my-2",intro.value),
-   node("p","","Phiên chấm: "+row.groupName),
    node("p","","Họ và tên: "+row.name),
    node("p","","Số báo danh: "+row.code),
-   badge(row),node("p","mt-2",thanks.value),
+   resultBox(row),node("p","mt-2",thanks.value),
    node("p","text-slate-400","Ban Chủ nhiệm Our Stage Club")
   );
  }
@@ -142,9 +148,12 @@ window.loadCastingEmail=async function(host){
    " email PASSED/NOT PASSED?\n"+(at?"Thời gian: "+new Date(at).toLocaleString("vi-VN"):"")+
    "\nKhông có link tra cứu, email chỉ gửi thí sinh đã duyệt và đồng ý nhận."))return;
   notify("Đang gửi yêu cầu tới Resend, vui lòng không bấm gửi lặp lại...");
-  const result=await api("casting-result-email",{task:"dispatch",castingId:casting.value,
+  window.showLoading?.(true,at?"Đang đặt lịch gửi email…":"Đang gửi email…");
+  let result;
+  try{result=await api("casting-result-email",{task:"dispatch",castingId:casting.value,
    groupId:group.value||undefined,allEligible:all,candidateIds:all?[]:recipients.map(x=>x.id),
-   revision,subject:subject.value,intro:intro.value,thankYou:thanks.value,scheduledAt:at});
+   revision,subject:subject.value,intro:intro.value,thankYou:thanks.value,scheduledAt:at});}
+  finally{window.showLoading?.(false)}
   notify(result.message||"Resend đã tiếp nhận yêu cầu.");
   await loadHistory();
  }

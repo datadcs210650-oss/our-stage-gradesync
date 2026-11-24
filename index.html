@@ -133,11 +133,18 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 
 <!-- Quota-safe build: autosave 650ms, no per-keystroke audit, local fallback enabled. -->
 <link rel="stylesheet" href="./live-grid-layout.css">
+<style id="gs-glass-processing-style">
+#loading-overlay{background:rgba(45,19,33,.17);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);padding:16px}
+.gs-glass-processing{width:min(320px,100%);background:rgba(255,255,255,.96);border:1px solid #fff;border-radius:18px;box-shadow:0 14px 45px #38152626;display:flex;flex-direction:column;align-items:center;gap:14px;padding:26px;text-align:center}
+.gs-glass-processing p{font-size:13px;font-weight:700;color:#482b39;margin:0}
+.gs-glass-spinner{height:38px;width:38px;border-radius:50%;border:3px solid #efdee6;border-top-color:#881737;animation:gsGlassSpin .9s linear infinite}
+@keyframes gsGlassSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.gs-glass-spinner{animation:none}}
+</style>
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex relative selection:bg-red-200 selection:text-red-900">
-    <div id="loading-overlay" class="fixed inset-0 bg-white/90 backdrop-blur-sm z-[150] justify-center items-center flex-col gap-3">
-        <div class="relative w-12 h-12 flex items-center justify-center"><div class="absolute inset-0 border-4 border-red-100 rounded-full"></div><div class="absolute inset-0 border-4 border-red-800 rounded-full border-t-transparent animate-spin"></div><span class="logo-g text-sm text-red-800 absolute">G</span></div>
-        <p class="font-bold text-gray-700 text-xs tracking-wide animate-pulse" id="loading-text">Đang đồng bộ máy chủ...</p>
+    <div id="loading-overlay" class="fixed inset-0 z-[150] justify-center items-center" role="status" aria-live="polite" aria-atomic="true">
+        <div class="gs-glass-processing"><div class="gs-glass-spinner" aria-hidden="true"></div><p id="loading-text">Đang đồng bộ máy chủ...</p></div>
     </div>
 
     <!-- Modals -->

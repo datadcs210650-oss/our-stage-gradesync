@@ -309,6 +309,8 @@ async function handle(req,res){
    const {data,error}=await sb().rpc("osc_grading_documents",{ops:b.ops,actor_uid:actor.decoded.uid});
    if(error){
     console.warn("OSC grading document operation",error.code);
+    if(error.message?.includes("Phiên đã duyệt hoặc công bố kết quả."))fail("Không thể mở khóa: phiên đã duyệt hoặc công bố kết quả. Cần xử lý kết quả chính thức trước khi chấm lại.","osc/gradesync-conflict");
+    if(error.message?.includes("Chỉ quản trị OSC có thể mở lại bảng điểm."))fail("Phiên quản trị không đủ quyền mở khóa. Vui lòng đăng nhập lại.","osc/gradesync-forbidden");
     fail(error.message?.includes("SCORE_CONFLICT")?"Điểm vừa được cập nhật. Hãy tải lại.":"Không thể lưu hoặc đọc dữ liệu chấm điểm ("+error.code+").");
    }
    result={ok:true,rows:data};
