@@ -25,7 +25,7 @@ async function showResults(){
  result=response;
  const wrap=el("div","overflow-x-auto border rounded-xl"),t=el("table","w-full min-w-[760px] text-xs border-collapse");
  const head=el("thead","bg-gray-100 text-gray-600"),hr=document.createElement("tr");
- for(const h of ["Chọn","MSSV / SBD","Thí sinh","Nhóm thi","Điểm HĐ","BGK","Đối soát","Kết quả","Duyệt"]){hr.append(el("th","p-3 text-left",h))}
+ for(const h of ["Chọn","MSSV / SBD","Thí sinh","Nhóm thi","Điểm HĐ","BGK","Đối soát","Kết quả","Duyệt","Vai chính thức"]){hr.append(el("th","p-3 text-left",h))}
  head.append(hr);t.append(head);const body=document.createElement("tbody");
  for(const r of result.rows||[]){
   const tr=el("tr","border-t"),td=document.createElement("td"),checkbox=document.createElement("input");
@@ -33,7 +33,19 @@ async function showResults(){
   td.className="p-3";td.append(checkbox);tr.append(td);
   for(const item of [r.mssv||r.code,r.name,r.groupName,r.score==null?"—":Number(r.score).toFixed(2),
     r.judges+"/"+r.expectedJudges,(r.anomalies||[]).join("; ")||(r.incomplete?"Chưa hoàn tất":"Đủ điểm"),r.incomplete?"CHỜ":r.outcome.toUpperCase(),r.review])tr.append(el("td","p-3",String(item||"")));
-  body.append(tr);
+  const roleCell=el("td","p-3 min-w-[230px]");
+  if(r.roleOptions?.length){
+   const selected=new Set(r.assignedRoles||[]),roleInputs=[];
+   const status=el("span","text-xs font-bold block mb-2",r.outcome==="passed"?"PASSED":"NOT PASSED");
+   const refresh=()=>{const pass=r.scoreOutcome==="passed"&&roleInputs.some(x=>x.checked);status.textContent=r.incomplete?"CHỜ":pass?"PASSED":"NOT PASSED";status.className="block mb-2 text-xs font-bold "+(pass?"text-emerald-700":"text-red-800");};
+   const info=el("details","mb-2 text-xs");info.append(el("summary","cursor-pointer text-gray-600","Đề xuất & ghi chú BGK"));
+   for(const g of r.judgeEvaluations||[])info.append(el("p","py-1",g.grader+": "+(g.roles.join(", ")||"—")+(g.note?" · "+g.note:"")));
+   roleCell.append(info,status);
+   const locked=r.incomplete||r.syncState==="synced"||["published","archived"].includes(response.casting.status);
+   for(const role of r.roleOptions){const label=el("label","flex items-center gap-2 py-1");const input=document.createElement("input");input.type="checkbox";input.className="cast-role accent-red-900";input.value=role;input.checked=selected.has(role);input.disabled=locked;input.onchange=refresh;roleInputs.push(input);label.append(input,el("span","",role));roleCell.append(label)}
+   const all=button("Chọn / bỏ tất cả",()=>{const next=!roleInputs.every(x=>x.checked);roleInputs.forEach(x=>x.checked=next);refresh()});all.disabled=locked;roleCell.append(all);refresh();
+  }else roleCell.textContent="—";
+  tr.append(roleCell);body.append(tr);
  }
  t.append(body);wrap.append(t);table.replaceChildren(wrap);
  toast("Đã đối soát "+(result.rows||[]).length+" thí sinh. Chỉ điểm BGK đã khóa/nộp được tính.");
@@ -52,7 +64,10 @@ async function loadCastingHub(parent){
  actions.append(button("Duyệt kết quả đã chọn",async()=>{
   const ids=[...table.querySelectorAll(".cast-chosen:checked")].slice(0,40).map(x=>x.value);
   if(!ids.length)throw Error("Chưa chọn thí sinh đủ điều kiện.");
-  await action("casting-review",{castingId:current,decisions:ids.map(candidateId=>({candidateId,review:"approved"}))});
+  const selected=[...table.querySelectorAll(".cast-chosen:checked")].slice(0,40);
+  const decisions=selected.map(x=>({candidateId:x.value,review:"approved",assignedRoles:[...x.closest("tr").querySelectorAll(".cast-role:checked")].map(i=>i.value)}));
+  if(!window.confirm("Duyệt "+decisions.length+" hồ sơ? Phiên theo vai: không có vai chính thức sẽ NOT PASSED."))return;
+  await action("casting-review",{castingId:current,decisions});
   await showResults();
  }),button("Kiểm tra đồng bộ OSC",async()=>{
   const res=await action("casting-sync-payload",{castingId:current});
