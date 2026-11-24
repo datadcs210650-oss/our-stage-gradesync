@@ -8,15 +8,15 @@
     <meta http-equiv="Expires" content="0">
     <meta name="gradesync-build" content="V29.1-V27-STABLE">
 
-    <!-- GradeSync V29.2 - V27 STABLE HOTFIX: time/PDF/score-clear -->
-    <title>GradeSync - Hệ thống Chấm điểm Live</title>
+    <!-- NỀN TẢNG CHẤM ĐIỂM V29.2 - V27 STABLE HOTFIX: time/PDF/score-clear -->
+    <title>NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live</title>
     <script>window.GS_MANUAL_SCORE_MODE=true;</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='25' fill='%23991b1b'/><text x='50%' y='54%' font-family='Georgia, serif' font-size='75' font-weight='900' fill='white' text-anchor='middle' dominant-baseline='middle'>G</text></svg>">
+    <link rel="icon" type="image/png" href="https://admin.ourstage.io.vn/logo.png"><rect width='100' height='100' rx='25' fill='%23991b1b'/><text x='50%' y='54%' font-family='Georgia, serif' font-size='75' font-weight='900' fill='white' text-anchor='middle' dominant-baseline='middle'>G</text></svg>">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; background-image: radial-gradient(#e5e7eb 1px, transparent 1px); background-size: 20px 20px; font-size: 13px; }
@@ -74,7 +74,7 @@
         @media(max-width:700px){.gs-config-row{grid-template-columns:1fr}.gs-content-tabs{position:sticky;top:0;z-index:25}}
 
     
-/* ===== GradeSync UI ENHANCEMENT ===== */
+/* ===== NỀN TẢNG CHẤM ĐIỂM UI ENHANCEMENT ===== */
 :root{--gs-primary:#991b1b;--gs-primary2:#7f1d1d;--gs-accent:#f59e0b;--gs-bg:#f5f7fb;--gs-card:#ffffff;--gs-text:#111827;--gs-muted:#64748b;--gs-border:#e5e7eb;--gs-sidebar-w:250px;--gs-sidebar-collapsed:76px}
 body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,color .25s}.glass-header, .bg-white, input,select,textarea,.gs-settings{transition:background .25s,color .25s,border-color .25s,box-shadow .25s}
 .sidebar-gradient{width:var(--gs-sidebar-w)!important;transition:width .28s ease,transform .28s ease;position:relative}
@@ -159,8 +159,8 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         <div class="absolute inset-0 bg-gradient-to-br from-red-900/10 to-transparent"></div>
         <div class="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-xl w-[380px] max-w-[90%] border border-white relative animate-fade-up">
             <div class="flex items-center gap-3 mb-6 justify-center">
-                <div class="bg-gradient-to-br from-red-700 to-red-900 p-2 rounded-xl text-white shadow-lg w-12 h-12 flex items-center justify-center"><span class="text-2xl logo-g">G</span></div>
-                <div><h1 class="text-2xl font-black text-gray-900 leading-none">GradeSync</h1><p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Live Grading</p></div>
+                <div class="bg-gradient-to-br from-red-700 to-red-900 p-2 rounded-xl text-white shadow-lg w-12 h-12 flex items-center justify-center"><img src="https://admin.ourstage.io.vn/logo.png" alt="OSC" style="width:100%;height:100%;object-fit:contain"></div>
+                <div><h1 class="text-2xl font-black text-gray-900 leading-none">NỀN TẢNG CHẤM ĐIỂM</h1><p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Live Grading</p></div>
             </div>
             <div class="flex bg-gray-100 p-1 rounded-xl mb-6">
                 <button onclick="window.switchLoginTab('email')" id="tab-email" class="flex-1 py-2 text-[11px] font-bold rounded-lg bg-white shadow-sm text-red-800 transition-all">Quản trị viên</button>
@@ -172,13 +172,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
                 <button onclick="window.handleLoginEmail()" class="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl shadow-md btn-press mt-2 text-xs transition">Đăng Nhập Quản Trị</button>
             </div>
             <div id="form-code" class="space-y-3 animate-fade-up">
- <p class="text-xs text-gray-600 text-center">Giám khảo đăng nhập bằng mã/mật khẩu được BCN cấp, hoặc Google nếu đã được cấp quyền email.</p>
- <label for="login-code" class="block text-[11px] font-bold text-gray-700">Mã giám khảo</label>
- <input id="login-code" type="text" autocomplete="username" maxlength="30" placeholder="Mã BGK" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs outline-none input-focus-effect bg-gray-50">
- <label for="login-grader-password" class="block text-[11px] font-bold text-gray-700">Mật khẩu BGK</label>
- <input id="login-grader-password" type="password" autocomplete="current-password" placeholder="Mật khẩu đã được cấp" class="w-full border border-gray-200 px-4 py-3 rounded-xl text-xs outline-none input-focus-effect bg-gray-50">
- <button type="button" id="login-grader-submit" onclick="window.handleLoginCode()" class="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl shadow-md btn-press mt-2 text-xs transition">Đăng nhập BGK</button>
- <div class="text-xs text-gray-500 text-center">hoặc</div>
+ <p class="text-xs text-gray-600 text-center">Đăng nhập bằng tài khoản Google đã được cấp quyền.</p>
  <button type="button" id="login-google" onclick="window.handleGoogleGraderLogin()" class="w-full bg-white hover:bg-gray-50 border-2 border-red-200 text-gray-900 font-bold py-3 rounded-xl shadow-sm text-xs transition"><i class="fab fa-google text-red-700 mr-2"></i> Đăng nhập bằng Google</button>
  </div></div>
         </div>
@@ -189,8 +183,8 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         <div class="sidebar-gradient w-56 shrink-0 h-full text-white flex flex-col justify-between py-6 px-4 shadow-xl z-20 overflow-y-auto custom-scrollbar">
             <div>
                 <div class="flex items-center gap-3 px-2 mb-8 group cursor-pointer">
-                    <div class="bg-white/20 p-2 rounded-xl backdrop-blur-md w-9 h-9 flex items-center justify-center border border-white/10"><span class="text-xl logo-g drop-shadow-md">G</span></div>
-                    <div class="gs-brand-text"><h1 class="text-base font-black leading-tight">GradeSync</h1><p class="text-[9px] text-red-200 flex items-center gap-1 font-bold mt-0.5"><span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shadow-[0_0_3px_#4ade80]"></span> Trực tuyến</p></div>
+                    <div class="bg-white/20 p-2 rounded-xl backdrop-blur-md w-9 h-9 flex items-center justify-center border border-white/10"><img src="https://admin.ourstage.io.vn/logo.png" alt="OSC" style="width:100%;height:100%;object-fit:contain"></div>
+                    <div class="gs-brand-text"><h1 class="text-base font-black leading-tight">NỀN TẢNG CHẤM ĐIỂM</h1><p class="text-[9px] text-red-200 flex items-center gap-1 font-bold mt-0.5"><span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shadow-[0_0_3px_#4ade80]"></span> Trực tuyến</p></div>
                 </div>
                 <div class="menu-label text-[9px] font-black text-red-300/80 mb-2 px-3 uppercase tracking-widest">Danh mục</div>
                 <nav class="flex flex-col gap-1" id="nav-menu"></nav>
@@ -852,6 +846,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
             }
         };
         window.restoreGraderSession = async function(user){
+            if(!user?.googleGrader)return false;
             if(!user?.isAnonymous) return false;
             if(user.googleGrader)return window.restoreGoogleGrader(user);
             const s=localStorage.getItem('gradeSyncSession');
@@ -4540,7 +4535,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
   } catch(_e){}
 
   window.resetGradeSyncClient = async function(){
-    const proceed = window.confirm('Đặt lại phiên GradeSync trên trình duyệt này? Dữ liệu Firestore và điểm đã lưu sẽ KHÔNG bị xóa.');
+    const proceed = window.confirm('Đặt lại phiên NỀN TẢNG CHẤM ĐIỂM trên trình duyệt này? Dữ liệu Firestore và điểm đã lưu sẽ KHÔNG bị xóa.');
     if(!proceed) return;
     try{
       if(window.stopGraderPresenceHeartbeat) window.stopGraderPresenceHeartbeat();
@@ -4563,7 +4558,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 </script>
 
 <script type="module" id="v29-2-editor-hotfix">
-/* GradeSync V29.2 - Criteria & Interview Editor Hotfix
+/* NỀN TẢNG CHẤM ĐIỂM V29.2 - Criteria & Interview Editor Hotfix
    Fixes:
    - Add/edit/remove group score criteria reliably.
    - Add/edit/remove scoring-content rows/columns reliably.
@@ -5193,7 +5188,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 
 <script type="module" id="gradesync-realtime-10-client-hotfix">
 /*
-  GradeSync realtime stabilization.
+  NỀN TẢNG CHẤM ĐIỂM realtime stabilization.
   Mục tiêu: Admin + tối đa 10 BGK chấm đồng thời với listener nhẹ, cập nhật theo docChanges,
   coalesce render và không ghi grader_sessions trước từng lần lưu điểm.
 */
@@ -5201,7 +5196,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
   const INTERNAL_BUILD='REALTIME-10-CLIENT-STABLE';
 
   // Không hiện số phiên bản trên tên website.
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
   try{
     const meta=document.querySelector('meta[name="gradesync-build"]');
     if(meta) meta.setAttribute('content',INTERNAL_BUILD);
@@ -5730,7 +5725,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 
 <script type="module" id="gradesync-quota-guard">
 (function(){
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
 
   const KEY='gradeSyncQuotaDraftsV1';
   const COOLDOWN_KEY='gradeSyncQuotaCooldownUntil';
@@ -5913,7 +5908,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 <script type="module" id="gradesync-session-submit-mode">
 (function(){
   /*
-    GradeSync - Chế độ chấm theo phiên.
+    NỀN TẢNG CHẤM ĐIỂM - Chế độ chấm theo phiên.
     Khi Admin bật sessionSubmitMode cho nhóm:
     - BGK chấm và lưu trên thiết bị.
     - Không ghi scores lên Firestore trong lúc chấm.
@@ -5922,7 +5917,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
     - Admin chỉ xem điểm của BGK đã khóa/nộp trong nhóm đang bật chế độ này.
   */
 
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
 
   const SESSION_KEY='gradeSyncJudgingSessionDraftsV1';
   const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
@@ -6526,7 +6521,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 
 <script type="module" id="gradesync-session-permission-fix">
 (function(){
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
 
   const isGrader=()=>window.currentUserData?.role==='Grader';
   const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
@@ -6682,7 +6677,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 
 <script type="module" id="gradesync-system-stable-controller">
 (function(){
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
 
   const SESSION_KEY='gradeSyncJudgingSessionDraftsV1';
   const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
@@ -7151,7 +7146,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 
 <script type="module" id="gradesync-admin-excel-pdf-manager">
 (function(){
-  document.title='GradeSync - Hệ thống Chấm điểm Live';
+  document.title='NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live';
 
   const isAdmin=()=>['Admin','SuperAdmin'].includes(window.currentUserData?.role);
   const esc=v=>window.escapeHtml?window.escapeHtml(v==null?'':String(v)):String(v??'');
@@ -7265,7 +7260,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         <div>
           <div class="text-[9px] uppercase font-black text-emerald-700 tracking-widest">NHẬP KẾT QUẢ BGK</div>
           <h3 class="text-lg font-black text-gray-800 mt-1">${esc(grader.name||'Giám khảo')} - ${esc(graderCode)}</h3>
-          <p class="text-[10px] text-gray-500 mt-1">Nhóm: ${esc(group.name||groupId)}. Excel có thể dùng file mẫu hoặc file đã xuất từ GradeSync.</p>
+          <p class="text-[10px] text-gray-500 mt-1">Nhóm: ${esc(group.name||groupId)}. Excel có thể dùng file mẫu hoặc file đã xuất từ NỀN TẢNG CHẤM ĐIỂM.</p>
         </div>
         <button onclick="window.closeCustomModal()" class="w-8 h-8 rounded-xl bg-gray-100 text-gray-500"><i class="fas fa-times"></i></button>
       </div>
@@ -7611,19 +7606,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
  const rand=()=>{const a='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$',x=new Uint32Array(10);crypto.getRandomValues(x);return'Gs!'+[...x].map(n=>a[n%a.length]).join('')};
  async function profile(uid){const r=await sb.from('profiles').select('*').eq('id',uid).maybeSingle();if(r.error)throw r.error;if(!r.data)return null;const d=r.data;return{...(d.extra_data||{}),id:d.id,code:d.code,name:d.name,email:d.email,role:d.role,status:d.status||'Active',assignedGroups:d.assigned_groups||[],allowedMenus:d.allowed_menus||[]}}
 
- window.handleLoginCode=async function(){
-  const c=String(document.getElementById('login-code')?.value||'').trim().toUpperCase(),p=String(document.getElementById('login-grader-password')?.value||'');
-  if(!c||!p)return window.showToast('Nhập mã giám khảo và mật khẩu!','error');
-  window._authFlow='grader-login';window.showLoading(true,'Đang đăng nhập giám khảo...');
-  try{
-   try{await sb.auth.signOut()}catch(_e){}
-   const r=await sb.auth.signInWithPassword({email:mail(c),password:p});if(r.error)throw r.error;
-   const u=await profile(r.data.user.id);if(!u)throw new Error('GRADER_NOT_FOUND');if(u.role!=='Grader')throw new Error('NOT_GRADER');if(String(u.status).toLowerCase()==='inactive')throw new Error('GRADER_DISABLED');if(String(u.code).toUpperCase()!==c)throw new Error('CODE_MISMATCH');
-   window.auth.currentUser={uid:r.data.user.id,email:r.data.user.email,isAnonymous:true,_supabase:r.data.user};window.currentUserData=u;localStorage.setItem('gradeSyncSession',JSON.stringify(u));
-   window._seedAssignedGroupNamesFromUser?.();await window._preloadGraderAssignedGroups?.();window._lastInitAuthUid=r.data.user.id;window.initApp();window.showToast('Đăng nhập giám khảo thành công!');
-  }catch(e){console.error(e);let m=/invalid login/i.test(e.message||'')?'Mã BGK hoặc mật khẩu không đúng.':e.message==='GRADER_DISABLED'?'Tài khoản BGK đang bị khóa.':'Không đăng nhập được BGK: '+(e.message||e);window.showToast(m,'error');window.showLoading(false);try{await sb.auth.signOut()}catch(_e){}}
-  finally{window._authFlow=null}
- };
+ window.handleLoginCode=()=>window.handleGoogleGraderLogin();
  window.handleGoogleGraderLogin=async function(){
    if(navigator.onLine===false)return window.showToast("Cần kết nối mạng để đăng nhập Google.","error");
    try{
@@ -7652,13 +7635,13 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 
  const oldLAM=window.loadAccountManager;if(typeof oldLAM==='function')window.loadAccountManager=async function(c){const r=await oldLAM(c);setTimeout(()=>c?.querySelectorAll('button[onclick*="openEditGraderModal"]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/openEditGraderModal\('([^']+)',\s*'[^']*',\s*'([^']+)'/);if(!m)return;const row=b.parentElement;if(!row||row.querySelector(`[data-rp="${CSS.escape(m[1])}"]`))return;const x=document.createElement('button');x.dataset.rp=m[1];x.className='bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold px-3 py-2.5 rounded-xl text-xs border border-violet-100';x.innerHTML='<i class="fas fa-key"></i>';x.title='Đặt lại mật khẩu';x.onclick=()=>window.resetGraderPassword(m[1],m[2]);row.insertBefore(x,row.lastElementChild)}),0);return r};
 
- // OSC Management is now the ONLY GradeSync administration entry point.
+ // OSC Management is now the ONLY NỀN TẢNG CHẤM ĐIỂM administration entry point.
  // Keep the Supabase Auth grader-by-code login intact.
  window.completeAdminLogin=async function(){
   window.currentUserData=null;
   try{await sb.auth.signOut()}catch(_e){}
   window.showLoading?.(false);
-  window.showToast?.("Quản trị GrandeSync đã chuyển sang OSC Management. Vui lòng đăng nhập bằng tài khoản BCN tại admin.ourstage.io.vn.","error");
+  window.showToast?.("Quản trị NỀN TẢNG CHẤM ĐIỂM đã chuyển sang OSC Management. Vui lòng đăng nhập bằng tài khoản BCN tại admin.ourstage.io.vn.","error");
   return false;
  };
  window.handleLoginEmail=async function(){
