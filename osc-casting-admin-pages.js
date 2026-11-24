@@ -25,166 +25,106 @@ export function installCastingAdminPages(){
  };
  async function sessionSettings(host){
   const data=await api("casting-list"),allCastings=data.castings||[],groups=data.groups||[];
-  const wrap=panel("Tạo phiên chấm theo học kỳ / phân ban",
-   "Tên phiên tự động theo mẫu FA26_DIỄN VIÊN, SU27_BIÊN KỊCH... Có thể mở thêm nhiều phiên riêng trong cùng một học kỳ.");
-  const grid=el("div","","grid grid-cols-1 md:grid-cols-2 gap-4");
-  const term=sel();options(term,semesters(),x=>x.name);
-  term.value=allCastings.find(c=>semesters().some(s=>s.id===c.term))?.term||("FA"+String(new Date().getFullYear()%100).padStart(2,"0"));
-  const division=input("Ví dụ: DIỄN VIÊN & BIÊN KỊCH");
-  const destination=sel();
-  const sessionName=el("p","","text-xs font-bold text-red-800 md:col-span-2");
-  const pass=input("5","number");pass.min="0";pass.max="10";pass.step="0.1";pass.value="5";
-  const existing=()=>{const list=allCastings.filter(c=>c.term===term.value);
-   const current=destination.value;destination.replaceChildren(new Option("Tạo casting riêng cho phiên này",""));
-   for(const c of list)destination.append(new Option(c.name,c.id));
-   destination.value=[...destination.options].some(o=>o.value===current)?current:"";
-  };
-  const naming=()=>{sessionName.textContent="Tên phiên: "+term.value+"_"+(division.value.trim().toUpperCase()||"PHÂN BAN");};
-  term.onchange=()=>{existing();naming()};division.oninput=naming;
-  // Khôi phục trình cấu hình nhóm cũ, nhưng luôn gắn với đúng học kỳ/casting.
-  const mode=sel();
-  mode.append(new Option("Mở thủ công","manual"),new Option("Mở tự động theo lịch","auto"));
-  const start=input("Giờ mở","datetime-local"),end=input("Giờ khóa","datetime-local");
-  const attendance=input("","checkbox");attendance.className="h-4 w-4 accent-red-800";
-  const attendanceBox=el("label","","flex items-center gap-2 text-sm font-semibold text-gray-700");
-  attendanceBox.append(attendance,el("span","Yêu cầu điểm danh khi chấm"));
-  const schedule=el("div","","grid grid-cols-1 md:grid-cols-3 gap-4");
-  schedule.append(field("Chế độ mở",mode),field("Giờ mở (nếu tự động)",start),field("Giờ khóa (tùy chọn nếu thủ công)",end));
-  const criteriaList=el("div","","space-y-2");
-  const addCriterion=(name="",weight="")=>{
-   const row=el("div","","gsx-criterion-row flex flex-col sm:flex-row gap-2");
-   const n=input("Tên tiêu chí"),w=input("Trọng số (%)","number");
-   n.value=name;w.value=String(weight);w.min="0";w.max="100";w.step="0.01";w.classList.add("sm:w-28");
-   const remove=btn("Xóa",()=>row.remove(),true);
-   row.append(n,w,remove);criteriaList.append(row);
-  };
-  [["ĐÀI TỪ TIẾNG NÓI SÂN KHẤU",30],["NĂNG KHIẾU DIỄN XUẤT",30],["ỨNG BIẾN",30],["VẤN ĐÁP",10]].forEach(([n,w])=>addCriterion(n,w));
-  const extraList=el("div","","space-y-2");
-  const addExtra=()=>{
-   const row=el("div","","gsx-extra-row flex flex-col sm:flex-row gap-2 sm:items-center");
-   const n=input("Tên trường phụ, ví dụ: Lớp");
-   const visible=input("","checkbox");visible.checked=true;visible.className="h-4 w-4 accent-red-800";
-   const label=el("label","","flex gap-2 items-center text-xs font-semibold");
-   label.append(visible,el("span","Hiển thị cho BGK"));
-   row.append(n,label,btn("Xóa",()=>row.remove(),true));extraList.append(row);
-  };
-  const scoreSettings=panel("Cấu hình nhóm và cột điểm",
-   "Tùy chỉnh cột điểm, trọng số, trường phụ, điểm danh và lịch mở chấm như GrandSync cũ. Tổng trọng số phải bằng 100%.");
-  scoreSettings.append(schedule,attendanceBox,el("h4","Tiêu chí chấm · Tổng 100%","text-xs font-black text-red-900"),criteriaList,
-   btn("+ Thêm tiêu chí",()=>addCriterion(),true),
-   el("h4","Thông tin bổ sung cho thí sinh","text-xs font-black text-red-900"),extraList,
-   btn("+ Thêm trường phụ",addExtra,true));
-  mode.onchange=()=>{start.disabled=mode.value!=="auto";};
-  mode.onchange();
-  const collectCriteria=()=>{
-   const rows=[...criteriaList.querySelectorAll(".gsx-criterion-row")];
-   if(!rows.length||rows.length>20)throw Error("Cần 1–20 tiêu chí chấm.");
-   const list=rows.map(row=>{const [name,weight]=row.querySelectorAll("input");return{name:name.value.trim(),weight:Number(weight.value)};});
-   if(list.some(x=>!x.name||!Number.isFinite(x.weight)||x.weight<0||x.weight>100)||
-    new Set(list.map(x=>x.name.toLowerCase())).size!==list.length)throw Error("Tên tiêu chí phải khác nhau và trọng số từ 0–100%.");
-   if(Math.abs(list.reduce((a,x)=>a+x.weight,0)-100)>.01)throw Error("Tổng trọng số các tiêu chí phải bằng 100%.");
-   return list;
-  };
-  const collectExtras=()=>{
-   const rows=[...extraList.querySelectorAll(".gsx-extra-row")];
-   if(rows.length>20)throw Error("Tối đa 20 trường phụ.");
-   const values=rows.map(row=>({name:row.querySelector('input[type="text"]').value.trim(),
-    showToGrader:row.querySelector('input[type="checkbox"]').checked})).filter(x=>x.name);
-   if(new Set(values.map(x=>x.name.toLowerCase())).size!==values.length)throw Error("Tên trường phụ bị trùng.");
-   return values;
-  };
-  grid.append(field("Học kỳ",term),field("Phân ban / nhóm chấm",division),field("Lưu trong casting",destination),field("Điểm đạt (0–10)",pass),sessionName);
-  const submit=btn("Tạo phiên chấm",async()=>{
-   const d=division.value.trim();
-   if(!d)throw Error("Vui lòng nhập phân ban.");
-   const passScore=Number(pass.value);
-   if(!Number.isFinite(passScore)||passScore<0||passScore>10)throw Error("Điểm đạt phải từ 0 đến 10.");
-   if(mode.value==="auto"&&(!start.value||!end.value))throw Error("Phiên tự động cần giờ mở và giờ khóa.");
-   if(start.value&&end.value&&new Date(start.value)>=new Date(end.value))throw Error("Giờ khóa phải sau giờ mở.");
-   const response=await api("casting-create-session",{term:term.value,division:d,
-    castingId:destination.value||undefined,passScore,criteria:collectCriteria(),
-    extraFields:collectExtras(),openMode:mode.value,
-    startAt:start.value?new Date(start.value).toISOString():null,
-    endAt:end.value?new Date(end.value).toISOString():null,
-    attendanceEnabled:attendance.checked});
-   window.showToast?.("Đã tạo "+response.group.name+" (mặc định đang đóng).");
-   await window.loadGroupsManager(host);
-  });
-  wrap.append(grid,scoreSettings,submit);
-  const policy=panel("Quy chế tổng hợp & cài đặt theo casting",
-   "Phương pháp trung bình, trọng số giám khảo hoặc loại điểm cao nhất/thấp nhất. Chỉ thay đổi được trước khi BCN duyệt.");
-  const casts=sel(),method=sel(),threshold=input("5","number"),weights=el("div","","grid grid-cols-1 md:grid-cols-2 gap-3");
-  threshold.min="0";threshold.max="10";threshold.step=".1";
-  for(const [v,t] of [["mean","Trung bình BGK"],["weighted","Trọng số BGK"],["trimmed","Bỏ điểm cao nhất & thấp nhất (≥3 BGK)"]])method.append(new Option(t,v));
-  options(casts,allCastings,c=>c.term+" · "+c.name);
-  const refreshPolicy=()=>{
-   const c=allCastings.find(c=>c.id===casts.value);
-   method.value=c?.aggregate_method||"mean";threshold.value=String(c?.pass_score??5);
-   weights.replaceChildren();
-   if(!c)return;
-   const ids=new Set(groups.filter(g=>g.castingId===c.id).map(g=>g.id));
-   const participants=(data.graders||[]).filter(g=>(g.assignedGroups||[]).some(id=>ids.has(id)));
-   for(const g of participants){
-    const w=input("1","number");w.min="0.1";w.max="100";w.step=".1";w.value=String(c.grader_weights?.[g.code]??1);w.dataset.code=g.code;
-    weights.append(field(g.name+" ("+g.code+")",w));
+  if(!host.isConnected)return;
+  const root=el("section","","space-y-4 pb-8"),header=el("div","","flex flex-wrap justify-between items-center gap-3");
+  header.append(el("h2","Quản lý phiên chấm","text-xl font-black text-red-950"),btn("+ Tạo phiên chấm",()=>openEditor(null)));
+  const list=el("div","","grid grid-cols-1 lg:grid-cols-2 gap-4");
+  const dialog=el("dialog","","rounded-2xl border border-rose-100 bg-white shadow-2xl p-0");
+  dialog.style.cssText="width:min(940px,95vw);max-height:90vh;overflow:auto;margin:auto";
+  root.append(header,list,dialog);
+  function localDate(v){if(!v)return "";const d=new Date(v);if(!Number.isFinite(d.getTime()))return "";return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}
+  function openEditor(group){
+   const casting=allCastings.find(x=>x.id===group?.castingId);
+   const original=group?.sessionPolicy,policy=original||{method:casting?.aggregate_method||"mean",weights:casting?.grader_weights||{},roles:[],maxRegistered:1,maxProposed:1,notesEnabled:false};
+   dialog.replaceChildren();
+   const pane=el("div","","p-5 md:p-6 space-y-4");
+   const top=el("div","","flex justify-between items-center gap-3 border-b border-rose-100 pb-3");
+   top.append(el("h3",group?"Chỉnh sửa phiên chấm":"Tạo phiên chấm","text-lg font-black text-red-950"),btn("Đóng",()=>dialog.close(),true));
+   pane.append(top);
+   const general=panel("Thông tin phiên"),grid=el("div","","grid grid-cols-1 sm:grid-cols-2 gap-3");
+   const term=sel();const termItems=semesters();if(casting&&!termItems.some(x=>x.id===casting.term))termItems.push({id:casting.term,name:casting.term});
+   options(term,termItems,x=>x.name);term.value=casting?.term||"FA"+String(new Date().getFullYear()%100).padStart(2,"0");
+   const name=input(group?"Tên phiên":"Phân ban");name.value=group?.name||"";
+   const destination=sel();
+   const syncDest=()=>{destination.replaceChildren(new Option("Tạo casting riêng",""));for(const v of allCastings.filter(x=>x.term===term.value&&!["published","archived"].includes(x.status)))destination.append(new Option(v.name,v.id))};
+   term.onchange=syncDest;syncDest();
+   const pass=input("0–10","number");pass.min="0";pass.max="10";pass.step=".01";pass.value=String(original?group.passScore:casting?.pass_score??group?.passScore??5);
+   grid.append(field("Học kỳ",term),field(group?"Tên phiên":"Phân ban",name),field("Ngưỡng PASSED",pass));
+   if(group){term.disabled=true}else grid.append(field("Lưu trong casting",destination));
+   const mode=sel();mode.append(new Option("Mở thủ công","manual"),new Option("Mở tự động","auto"));mode.value=group?.openMode||"manual";
+   const start=input("","datetime-local"),end=input("","datetime-local");start.value=localDate(group?.startTime);end.value=localDate(group?.endTime);
+   const attendance=input("","checkbox");attendance.className="h-4 w-4 accent-red-900";attendance.checked=group?.attendanceEnabled===true;
+   grid.append(field("Chế độ mở",mode),field("Giờ mở",start),field("Giờ khóa",end),field("Yêu cầu điểm danh",attendance));
+   mode.onchange=()=>{start.disabled=mode.value!=="auto"};mode.onchange();
+   general.append(grid);pane.append(general);
+   const score=panel("Quy chế & tiêu chí"),method=sel();
+   for(const [v,t] of [["mean","Trung bình BGK"],["weighted","Trọng số BGK"],["trimmed","Loại điểm cao nhất và thấp nhất (từ 3 BGK)"]])method.append(new Option(t,v));
+   method.value=policy.method;
+   const weights=el("div","","grid grid-cols-1 sm:grid-cols-2 gap-3");
+   for(const g of (data.graders||[]).filter(g=>group&&(g.assignedGroups||[]).includes(group.id))){
+    const w=input("1","number");w.min=".01";w.max="100";w.step=".01";w.dataset.code=g.code;w.value=String(policy.weights?.[g.code]??1);weights.append(field(g.name+" · "+g.code,w));
    }
-   if(!participants.length)weights.append(el("p","Chưa phân công BGK vào phiên chấm.","text-xs text-gray-500"));
-  };
-  casts.onchange=refreshPolicy;refreshPolicy();
-  policy.append(field("Casting",casts),el("div","","grid grid-cols-1 md:grid-cols-2 gap-3"));
-  policy.lastChild.append(field("Phương pháp",method),field("Ngưỡng PASSED",threshold));
-  policy.append(el("p","Trọng số từng BGK (chỉ áp dụng khi chọn phương pháp trọng số)","text-xs font-semibold text-gray-600"),weights,
-   btn("Lưu quy chế",async()=>{
-    const c=allCastings.find(c=>c.id===casts.value);if(!c)throw Error("Chưa có casting.");
-    const graderWeights={};
-    weights.querySelectorAll("input[data-code]").forEach(x=>{const n=Number(x.value);if(!Number.isFinite(n)||n<=0||n>100)throw Error("Trọng số phải lớn hơn 0 và tối đa 100.");graderWeights[x.dataset.code]=n});
-    await api("casting-save",{id:c.id,term:c.term,name:c.name,method:method.value,passScore:Number(threshold.value),weights:graderWeights});
-    window.showToast?.("Đã lưu quy chế casting.");await window.loadGroupsManager(host);
+   if(!weights.childElementCount)weights.append(el("p","Trọng số mặc định 1 cho BGK chưa được phân công.","text-xs text-gray-500"));
+   method.onchange=()=>weights.hidden=method.value!=="weighted";method.onchange();
+   score.append(field("Phương pháp tổng hợp",method),weights);
+   const criteria=el("div","","space-y-2");
+   function addCriterion(n="",w=""){
+    const row=el("div","","flex gap-2 items-center"),name=input("Tên tiêu chí"),weight=input("Trọng số (%)","number");name.value=n;weight.value=String(w);weight.classList.add("max-w-[110px]");weight.min="0";weight.max="100";weight.step=".01";
+    row.append(name,weight,btn("Xóa",()=>row.remove(),true));criteria.append(row);
+   }
+   (group?.criteria||[{name:"ĐÀI TỪ",weight:30},{name:"DIỄN XUẤT",weight:30},{name:"ỨNG BIẾN",weight:30},{name:"VẤN ĐÁP",weight:10}]).forEach(x=>addCriterion(x.name,x.weight));
+   const extras=el("div","","space-y-2");
+   function addExtra(n="",visible=true){
+    const row=el("div","","flex items-center gap-2"),name=input("Tên trường phụ");name.value=n;
+    const chk=input("","checkbox");chk.className="h-4 w-4 accent-red-900";chk.checked=visible;
+    const label=el("label","BGK","flex items-center gap-1 text-xs whitespace-nowrap");label.prepend(chk);
+    row.append(name,label,btn("Xóa",()=>row.remove(),true));extras.append(row);
+   }
+   (group?.extraFields||[]).forEach(x=>addExtra(x.name,x.showToGrader));
+   score.append(el("h4","Tiêu chí · tổng 100%","font-bold text-xs text-red-900"),criteria,btn("+ Tiêu chí",()=>addCriterion(),true),el("h4","Trường thông tin phụ","font-bold text-xs text-red-900"),extras,btn("+ Trường phụ",()=>addExtra(),true));pane.append(score);
+   const roles=panel("Casting theo vai diễn"),enable=input("","checkbox"),notes=input("","checkbox");
+   enable.className=notes.className="h-4 w-4 accent-red-900";enable.checked=Boolean(policy.roles?.length);notes.checked=policy.notesEnabled===true;
+   const roleFields=el("div","","space-y-3"),roleList=el("div","","space-y-2");
+   function addRole(value=""){const row=el("div","","flex gap-2");const name=input("Tên vai diễn");name.value=value;row.append(name,btn("Xóa",()=>row.remove(),true));roleList.append(row)}
+   (policy.roles||[]).forEach(addRole);
+   const reg=input("","number"),proposed=input("","number");reg.min=proposed.min="1";reg.max=proposed.max="40";reg.step=proposed.step="1";reg.value=String(policy.maxRegistered||1);proposed.value=String(policy.maxProposed||1);
+   const limits=el("div","","grid grid-cols-1 sm:grid-cols-2 gap-3");limits.append(field("Số vai tối đa thí sinh đăng ký",reg),field("Số vai tối đa BGK tick",proposed));
+   roleFields.append(roleList,btn("+ Thêm vai diễn",()=>addRole(),true),limits);
+   enable.onchange=()=>{roleFields.hidden=!enable.checked;if(enable.checked&&!roleList.childElementCount)addRole()};enable.onchange();
+   roles.append(field("Bật casting theo vai diễn",enable),roleFields,field("Cho phép BGK ghi chú",notes));pane.append(roles);
+   const actions=el("div","","flex flex-wrap gap-2 justify-end border-t border-rose-100 pt-4");
+   if(group)actions.append(btn("Hướng dẫn / câu hỏi chấm",()=>{dialog.close();window.openGroupContentModal?.(group.id)},true));
+   actions.append(btn("Hủy",()=>dialog.close(),true),btn(group?"Lưu phiên chấm":"Tạo phiên chấm",async()=>{
+    const passScore=Number(pass.value);
+    if(!name.value.trim()||!pass.value.trim()||!Number.isFinite(passScore)||passScore<0||passScore>10)throw Error("Tên phiên hoặc ngưỡng điểm không hợp lệ.");
+    const criteriaData=[...criteria.children].map(row=>{const [n,w]=row.querySelectorAll("input");return {name:n.value.trim(),weight:w.value.trim()?Number(w.value):NaN}});
+    const extrasData=[...extras.children].map(row=>{const [n,v]=row.querySelectorAll("input");return {name:n.value.trim(),showToGrader:v.checked}});
+    const graderWeights={...policy.weights};
+    weights.querySelectorAll("input[data-code]").forEach(w=>{graderWeights[w.dataset.code]=Number(w.value)});
+    const roleNames=enable.checked?[...roleList.querySelectorAll("input")].map(x=>x.value.trim()):[];
+    if(enable.checked&&(!roleNames.length||roleNames.some(x=>!x)))throw Error("Cần nhập tên các vai diễn.");
+    const sessionPolicy={method:method.value,weights:graderWeights,roles:roleNames,maxRegistered:enable.checked?Number(reg.value):0,maxProposed:enable.checked?Number(proposed.value):0,notesEnabled:notes.checked};
+    // Do not silently alter a legacy policy while editing unrelated settings.
+    const unchangedLegacy=group&&!original&&!enable.checked&&!notes.checked&&method.value===(casting?.aggregate_method||"mean")&&passScore===Number(casting?.pass_score??group.passScore)&&JSON.stringify(graderWeights)===JSON.stringify(policy.weights||{});
+    const body={passScore,criteria:criteriaData,extraFields:extrasData,openMode:mode.value,startAt:mode.value==="auto"&&start.value?new Date(start.value).toISOString():null,endAt:end.value?new Date(end.value).toISOString():null,attendanceEnabled:attendance.checked,...(unchangedLegacy?{}:{sessionPolicy})};
+    if(group)await api("casting-update-session",{...body,groupId:group.id,version:group.version,name:name.value.trim()});
+    else await api("casting-create-session",{...body,term:term.value,division:name.value.trim(),castingId:destination.value||undefined});
+    dialog.close();window.showToast?.("Đã lưu phiên chấm.");await window.loadGroupsManager(host);
    }));
-  const list=panel("Các phiên chấm & đường dẫn BGK","Link chỉ mở đúng phiên khi BGK đã được cấp quyền.");
+   pane.append(actions);dialog.append(pane);dialog.showModal();
+  }
   for(const g of groups){
-   const c=allCastings.find(c=>c.id===g.castingId);
-   const row=el("div","","flex flex-col md:flex-row md:items-center gap-2 py-3 border-b border-gray-100");
-   const left=el("div","","flex-1 min-w-0");left.append(el("div",g.name,"font-bold text-sm"),el("div",c?c.term+" · "+c.name:"Chưa gắn casting","text-xs text-gray-500"));
-   const nameInput=host.querySelector("#e-gn-"+CSS.escape(g.id));
-   if(nameInput&&g.version)nameInput.dataset.version=g.version;
-   const editor=nameInput?.closest("tr");
-   const edit=btn("Chỉnh sửa phiên",()=>{
-    const details=editor?.closest("details");
-    if(details){details.open=true;editor.scrollIntoView({block:"nearest"});editor.querySelector("input")?.focus()}
-   },true);
-   if(editor)row.append(left,edit);else row.append(left);
-   if(!c&&allCastings.length){
-    const link=sel();link.append(new Option("Chọn casting",""));
-    for(const casting of allCastings.filter(c=>!["published","archived"].includes(c.status)))
-     link.append(new Option(casting.term+" · "+casting.name,casting.id));
-    row.append(field("Gắn casting",link),btn("Gắn",async()=>{
-     if(!link.value)throw Error("Hãy chọn casting.");
-     await api("casting-assign-group",{castingId:link.value,groupId:g.id});
-     await window.loadGroupsManager(host);
-    },true));
-   }
-   row.append(btn("Sao chép link BGK",()=>copy(groupLink(g.id)),true));list.append(row);
+   const casting=allCastings.find(c=>c.id===g.castingId),card=panel(g.name);
+   const info=el("div","","flex flex-wrap items-center gap-2 text-xs text-gray-600");
+   info.append(el("span",casting?.term||"Chưa gắn casting","rounded-lg bg-rose-50 px-2 py-1 font-bold text-red-900"),el("span",(g.criteria||[]).length+" tiêu chí"),el("span",g.sessionPolicy?.roles?.length?g.sessionPolicy.roles.length+" vai diễn":"Casting thông thường"));
+   const actions=el("div","","flex flex-wrap gap-2");
+   actions.append(btn("Chỉnh sửa",()=>openEditor(g),true),btn("Sao chép link BGK",()=>copy(groupLink(g.id)),true));
+   if(g.openMode!=="auto")actions.append(btn("Mở chấm",()=>window.toggleManualGroupOpen(g.id,true),true),btn("Đóng chấm",()=>window.toggleManualGroupOpen(g.id,false),true));
+   if(!casting&&allCastings.length){const target=sel();target.append(new Option("Chọn casting",""));for(const x of allCastings.filter(x=>!["published","archived"].includes(x.status)))target.append(new Option(x.term+" · "+x.name,x.id));card.append(field("Gắn casting",target),btn("Gắn",async()=>{if(!target.value)throw Error("Chọn casting.");await api("casting-assign-group",{castingId:target.value,groupId:g.id});await window.loadGroupsManager(host)},true))}
+   card.append(info,actions);list.append(card);
   }
   if(!groups.length)list.append(el("p","Chưa có phiên chấm.","text-xs text-gray-500"));
-  const container=el("div","","space-y-4");
-  const collapse=(label,section)=>{
-   const details=el("details","","mb-3");
-   details.append(el("summary",label,"cursor-pointer font-bold text-sm text-red-900"),section);
-   return details;
-  };
-  container.append(list,collapse("Tạo phiên chấm",wrap),collapse("Quy chế tổng hợp theo casting",policy));
-  // Legacy unscoped group creation conflicts with semester-bound casting sessions.
-  // Keep the existing per-group configuration editor; use this guided creation form instead.
-  for(const child of [...host.children]){
-   if(child.querySelector("h3")?.textContent?.includes("Khởi tạo Nhóm"))child.remove();
-  }
-  const legacy=el("details","","mt-4 bg-white border rounded-2xl p-4");
-  legacy.append(el("summary","Chỉnh sửa phiên và cấu hình điểm","cursor-pointer font-bold text-sm text-red-900"));
-  legacy.append(...host.children);
-  host.append(container,legacy);
-  legacy.querySelectorAll('button[onclick*="deleteGroup"]').forEach(button=>button.remove());
-  existing();naming();
+  host.replaceChildren(root);
  }
  async function graderSettings(host,graderId){
   const data=await api("casting-list");
