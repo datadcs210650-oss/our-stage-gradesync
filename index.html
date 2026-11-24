@@ -157,10 +157,10 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
     <!-- Login View -->
     <div id="login-view" class="fixed inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-slate-50 z-50 flex justify-center items-center">
         <div class="absolute inset-0 bg-gradient-to-br from-red-900/10 to-transparent"></div>
-        <div class="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-xl w-[380px] max-w-[90%] border border-white relative animate-fade-up">
+        <div class="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-xl w-[480px] max-w-[92%] border border-white relative animate-fade-up">
             <div class="flex items-center gap-3 mb-6 justify-center">
                 <div class="bg-white p-1 rounded-xl shadow-sm border border-red-100 w-12 h-12 shrink-0 flex items-center justify-center"><img src="/logo.png?v=osc1" alt="OSC" style="width:100%;height:100%;object-fit:contain" onerror="this.onerror=null;this.style.display='none';this.parentElement.textContent='OSC';this.parentElement.style.color='#991b1b';this.parentElement.style.fontWeight='bold'"></div>
-                <div><h1 class="text-2xl font-black text-gray-900 leading-none">NỀN TẢNG CHẤM ĐIỂM</h1><p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Live Grading</p></div>
+                <div class="min-w-0"><h1 class="font-black text-gray-900 leading-tight text-[clamp(17px,4.5vw,24px)]"><span class="whitespace-nowrap">NỀN TẢNG</span> <span class="whitespace-nowrap">CHẤM ĐIỂM</span></h1><p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Live Grading</p></div>
             </div>
             <div class="flex bg-gray-100 p-1 rounded-xl mb-6">
                 <button onclick="window.switchLoginTab('email')" id="tab-email" class="flex-1 py-2 text-[11px] font-bold rounded-lg bg-white shadow-sm text-red-800 transition-all">Quản trị viên</button>
