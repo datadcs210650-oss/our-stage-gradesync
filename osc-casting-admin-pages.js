@@ -186,57 +186,42 @@ export function installCastingAdminPages(){
   legacy.querySelectorAll('button[onclick*="deleteGroup"]').forEach(button=>button.remove());
   existing();naming();
  }
- async function graderSettings(host){
-  const data=await api("casting-list"),graders=data.graders||[],groups=data.groups||[];
-  const box=panel("Email Google, phân nhóm & quyền chấm của BGK",
-   "Chỉ cho phép BGK chấm đúng nhóm và tiêu chí được phân công. Mã BGK và mật khẩu cũ vẫn sử dụng được.");
-  const judge=sel(),email=input("gmail@domain.com","email"),group=sel(),criteria=el("div","","grid grid-cols-1 md:grid-cols-2 gap-2");
-  options(judge,graders,g=>g.name+" · "+g.code);options(group,groups,g=>g.name);
-  const info=el("p","","text-xs text-gray-600");
-  const refreshJudge=()=>{
-   const g=graders.find(g=>g.id===judge.value);email.value=g?.email||"";
-   const assigned=(g?.assignedGroups||[]).filter(x=>groups.some(item=>item.id===x));
-   const prior=group.value;
-   group.replaceChildren();
-   for(const id of assigned){const x=groups.find(g=>g.id===id);group.append(new Option(x.name,x.id))}
-   if(assigned.includes(prior))group.value=prior;
-   info.textContent=g?"BGK "+g.code+" · "+assigned.length+" phiên được phân công":"Chưa có giám khảo. Hãy tạo BGK ở phía trên trước.";
-   refreshCriteria();
-  };
+ async function graderSettings(host,graderId){
+  const data=await api("casting-list");
+  if(!host.isConnected)return;
+  const grader=(data.graders||[]).find(g=>g.id===graderId);
+  if(!grader)throw Error("Không tìm thấy hồ sơ BGK.");
+  const groups=(data.groups||[]).filter(g=>(grader.assignedGroups||[]).includes(g.id));
+  const box=panel("Quyền chấm theo tiêu chí");
+  const group=sel(),criteria=el("div","","grid grid-cols-1 md:grid-cols-2 gap-2");
+  options(group,groups,g=>g.name);
+  const stored=new Map();
+  for(const g of groups)stored.set(g.id,(data.criteriaGrants||[]).filter(x=>x.graderId===graderId&&x.groupId===g.id).map(x=>x.criterion));
   const refreshCriteria=()=>{
-   const gg=groups.find(g=>g.id===group.value),j=judge.value;
-   const grants=(data.criteriaGrants||[]).filter(x=>x.graderId===j&&x.groupId===group.value).map(x=>x.criterion);
+   const gg=groups.find(g=>g.id===group.value),grants=stored.get(group.value)||[];
    criteria.replaceChildren();
    for(const criterion of gg?.criteria||[]){
     const label=el("label","","flex items-center gap-2 p-2.5 bg-gray-50 rounded-xl text-xs font-semibold");
-    const chk=input("","checkbox");chk.className="w-4 h-4";chk.value=criterion.name;
+    const chk=input("","checkbox");chk.className="w-4 h-4 accent-red-800";chk.value=criterion.name;
     chk.checked=grants.length?grants.includes(criterion.name):true;
     label.append(chk,el("span",criterion.name+" · "+criterion.weight+"%"));criteria.append(label);
    }
   };
-  judge.onchange=refreshJudge;group.onchange=refreshCriteria;refreshJudge();
-  const grants=el("div","","grid grid-cols-1 md:grid-cols-2 gap-4");
-  grants.append(field("Chọn giám khảo",judge),field("Email Google nhận OTP",email),field("Phiên chấm đã phân công",group));
-  const actions=el("div","","flex flex-wrap gap-2");
-  actions.append(
-   btn("Lưu email Google",async()=>{
-    if(!judge.value)throw Error("Chưa có BGK.");
-    const address=email.value.trim();if(!address||!email.checkValidity())throw Error("Email không hợp lệ.");
-    await api("casting-grant-google",{graderId:judge.value,email:address,enabled:true});
-    window.showToast?.("Đã cấp email Google cho BGK.");await window.loadAccountManager(host);
-   }),
-   btn("Lưu quyền tiêu chí",async()=>{
-    if(!judge.value||!group.value)throw Error("Chưa phân công BGK vào phiên chấm. Hãy sửa nhóm được giao ở thẻ BGK.");
-    const selected=[...criteria.querySelectorAll("input:checked")].map(x=>x.value);
+  group.onchange=refreshCriteria;refreshCriteria();
+  if(!groups.length){
+   box.append(el("p","Hãy lưu phân công nhóm trước khi thiết lập tiêu chí.","text-xs text-gray-500"));
+  }else{
+   box.append(field("Phiên chấm đã phân công",group),field("Tiêu chí được phép chấm",criteria));
+   const actions=el("div","","flex flex-wrap gap-2");
+   actions.append(btn("Lưu quyền tiêu chí",async()=>{
+    const groupId=group.value,selected=[...criteria.querySelectorAll("input:checked")].map(x=>x.value);
     if(!selected.length)throw Error("Hãy chọn ít nhất một tiêu chí.");
-    await api("casting-grant-criteria",{graderId:judge.value,groupId:group.value,criteria:selected});
-    window.showToast?.("Đã cấp quyền tiêu chí, áp dụng tại máy chủ.");await window.loadAccountManager(host);
-   },true),
-   btn("Sao chép link phiên BGK",()=>{if(!group.value)throw Error("Hãy phân công một nhóm chấm trước.");return copy(groupLink(group.value))},true),
-   btn("Sao chép cổng BGK",()=>copy("https://gradesyncfinal.vercel.app/"),true)
-  );
-  box.append(grants,field("Tiêu chí được phép chấm",criteria),info,actions);
-  host.append(box);
+    await api("casting-grant-criteria",{graderId,groupId,criteria:selected});
+    stored.set(groupId,selected);window.showToast?.("Đã lưu quyền tiêu chí.");
+   }),btn("Sao chép link phiên BGK",()=>copy(groupLink(group.value)),true));
+   box.append(actions,el("p","Nếu thay đổi nhóm, hãy lưu hồ sơ trước rồi mở lại để thiết lập tiêu chí.","text-xs text-gray-500"));
+  }
+  host.replaceChildren(box);
  }
  const oldGroups=window.loadGroupsManager;
  if(typeof oldGroups==="function")window.loadGroupsManager=async function(host){
@@ -246,6 +231,25 @@ export function installCastingAdminPages(){
  const oldAccounts=window.loadAccountManager;
  if(typeof oldAccounts==="function")window.loadAccountManager=async function(host){
   await oldAccounts(host);
-  if(host)try{await graderSettings(host)}catch(e){window.showToast?.("Không tải được quyền BGK: "+e.message,"error")}
+  const form=host?.querySelector("#acc-name")?.closest(".rounded-3xl");
+  if(!form)return;
+  const dialog=el("dialog","","rounded-2xl bg-white shadow-2xl border border-rose-100 p-0");
+  dialog.style.cssText="width:min(760px,94vw);max-height:88vh;overflow:auto;margin:auto";
+  const bar=el("div","","flex justify-between items-center px-5 py-3 border-b border-rose-100");
+  bar.append(el("h3","Thêm giám khảo","font-bold text-red-900"),btn("Đóng",()=>dialog.close(),true));
+  const launch=el("div","","flex items-center justify-end mb-4");
+  launch.append(btn("+ Thêm giám khảo",()=>dialog.showModal()));
+  form.before(launch,dialog);dialog.append(bar,form);
+  form.classList.remove("mb-6","shadow-sm","border","rounded-3xl");
+ };
+ const editGrader=window.openEditGraderModal;
+ if(typeof editGrader==="function")window.openEditGraderModal=function(graderId,...args){
+  editGrader.call(this,graderId,...args);
+  const modal=document.getElementById("custom-modal-box");
+  if(!modal)return;
+  const pane=el("div","Đang tải quyền chấm…","mb-4 text-xs text-gray-500");
+  modal.querySelector('button[onclick*="saveGraderEdit"]')?.parentElement?.before(pane);
+  if(!pane.isConnected)modal.append(pane);
+  graderSettings(pane,graderId).catch(e=>{if(pane.isConnected)pane.textContent=e.message||"Không tải được quyền chấm."});
  };
 }
