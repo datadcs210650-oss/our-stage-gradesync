@@ -6515,24 +6515,7 @@ window.currentUserData = null; window.activeListeners = [];
   };
 
   // Gắn nút chỉnh thời gian vào Live Monitor hiện tại mà không phá realtime monitor.
-  function enhanceMonitor(container){
-    if(!container) return;
-    container.querySelectorAll('button[onclick*="adminUnlockGrader"]').forEach(btn=>{
-      const onclick=btn.getAttribute('onclick')||'';
-      const m=onclick.match(/adminUnlockGrader\('([^']+)','([^']+)'\)/);
-      if(!m) return;
-      const [_,groupId,graderCode]=m;
-      const parent=btn.parentElement;
-      if(!parent||parent.querySelector(`[data-edit-submit="${CSS.escape(groupId)}_${CSS.escape(graderCode)}"]`)) return;
-      const edit=document.createElement('button');
-      edit.type='button';
-      edit.dataset.editSubmit=`${groupId}_${graderCode}`;
-      edit.className='ml-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-100 px-3 py-2 rounded-lg font-bold text-[10px]';
-      edit.innerHTML='<i class="fas fa-clock mr-1"></i>Sửa giờ ký';
-      edit.onclick=()=>window.adminEditSubmissionTime(groupId,graderCode);
-      parent.appendChild(edit);
-    });
-  }
+  function enhanceMonitor(_container){ /* monitor intentionally limited to status and locking */ }
 
   const oldLoadMonitor=window.loadAdminLiveMonitor;
   if(typeof oldLoadMonitor==='function'){
@@ -7619,36 +7602,7 @@ window.currentUserData = null; window.activeListeners = [];
     }
   };
 
-  function enhanceAdminMonitor(container){
-    if(!container||!isAdmin()) return;
-    container.querySelectorAll('button[onclick*="adminUnlockGrader"]').forEach(unlockBtn=>{
-      const onclick=unlockBtn.getAttribute('onclick')||'';
-      const m=onclick.match(/adminUnlockGrader\('([^']+)','([^']+)'\)/);
-      if(!m) return;
-      const groupId=m[1],graderCode=m[2];
-      const parent=unlockBtn.parentElement;
-      if(!parent||parent.querySelector(`[data-admin-result-tools="${CSS.escape(groupId)}_${CSS.escape(graderCode)}"]`)) return;
-
-      const wrap=document.createElement('div');
-      wrap.dataset.adminResultTools=`${groupId}_${graderCode}`;
-      wrap.className='mt-2 flex flex-wrap gap-1.5 justify-end';
-      wrap.innerHTML=`
-        <button class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold">
-          <i class="fas fa-file-import mr-1"></i>Nhập Excel
-        </button>
-        <button class="bg-red-50 hover:bg-red-100 text-red-700 border border-red-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold">
-          <i class="fas fa-file-pdf mr-1"></i>PDF
-        </button>
-        <button class="bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold">
-          <i class="fas fa-signature mr-1"></i>Chữ ký
-        </button>`;
-      const [importBtn,pdfBtn,sigBtn]=wrap.querySelectorAll('button');
-      importBtn.onclick=()=>window.openAdminImportGraderExcel(groupId,graderCode);
-      pdfBtn.onclick=()=>window.adminExportGraderPDF(groupId,graderCode);
-      sigBtn.onclick=()=>window.adminUploadGraderSignature(groupId,graderCode);
-      parent.appendChild(wrap);
-    });
-  }
+  function enhanceAdminMonitor(_container){ /* monitor intentionally limited to status and locking */ }
 
   const oldLoadMonitor=window.loadAdminLiveMonitor;
   if(typeof oldLoadMonitor==='function'){
@@ -7675,7 +7629,6 @@ import "./casting-email-center.js";
 import "./candidate-editor.js";
 import {installJudgeEmailAdmin} from "./judge-email-admin.js";
 import {installCastingActorRoster} from "./casting-actor-roster.js";
-import {installCastingImportFromOSC} from "./casting-import-osc.js";
 import {installCastingAdminPages} from "./osc-casting-admin-pages.js";
 const call=window.oscGradingCall;
 const renderExports=window.loadAdminOverviewScores;
@@ -7776,8 +7729,26 @@ window.loadAccountManager=async function(container){
 };
 installJudgeEmailAdmin({call});
 installCastingActorRoster();
-installCastingImportFromOSC();
 installCastingAdminPages();
+const renderReview=window.loadCastingHub,renderEmail=window.loadCastingEmail;
+window.loadCastingHub=async function(host){
+ const root=document.createElement("section"),tabs=document.createElement("div"),body=document.createElement("div");
+ root.className="space-y-4 pb-6";tabs.className="flex gap-2 flex-wrap border-b border-rose-100 pb-3";
+ const review=document.createElement("button"),mail=document.createElement("button");
+ review.type=mail.type="button";review.textContent="Đối soát & duyệt";mail.textContent="Công bố & Email";
+ tabs.append(review,mail);root.append(tabs,body);host.replaceChildren(root);
+ let version=0;
+ async function show(which){
+  const id=++version,child=document.createElement("div");
+  review.className="rounded-xl px-4 py-2.5 text-sm font-bold "+(which==="review"?"bg-red-900 text-white":"bg-white border border-rose-100 text-red-900");
+  mail.className="rounded-xl px-4 py-2.5 text-sm font-bold "+(which==="mail"?"bg-red-900 text-white":"bg-white border border-rose-100 text-red-900");
+  review.setAttribute("aria-pressed",String(which==="review"));mail.setAttribute("aria-pressed",String(which==="mail"));
+  body.replaceChildren(child);
+  try{await (which==="review"?renderReview:renderEmail)(child)}catch(e){if(id===version&&child.isConnected)child.textContent=e.message||"Không tải được dữ liệu."}
+ }
+ review.onclick=()=>show("review");mail.onclick=()=>show("mail");
+ await show("review");
+};
 window.handleLogout=()=>call("exit");
 window.repairPublicationIndexes=()=>{};
 window.repairLegacyEncodedTextV27=()=>{};
@@ -7790,9 +7761,8 @@ try{
   ["student_list","Thí sinh","fa-users-rectangle"],
   ["account_manager","Giám khảo","fa-user-shield"],
   ["grading_table","Bảng điểm","fa-clipboard-check"],
-  ["casting_hub","Duyệt kết quả","fa-calendar-check"],
-  ["casting_email","Email","fa-envelope"],
-  ["admin_live_monitor","Mở/khóa điểm","fa-lock"],
+  ["casting_hub","Quản lý kết quả","fa-calendar-check"],
+  ["admin_live_monitor","Giám sát chấm điểm","fa-lock"],
   ["admin_overview_scores","Xuất bảng điểm","fa-download"],
   ["statistics","Thống kê","fa-chart-line"],
   ["audit_logs","Lịch sử chấm","fa-history"]
@@ -7820,7 +7790,7 @@ try{
  if(actor.externalMenu){
   const allowed=window.MENU_CONFIG.filter(m=>m.roles.includes(window.currentUserData.role)&&
    (window.currentUserData.role==="SuperAdmin"||window.currentUserData.allowedMenus.includes(m.id)));
-  const linkFor=(nav,page)=>nav.children[allowed.findIndex(m=>m.id===page)];
+  const linkFor=(nav,page)=>nav.children[allowed.findIndex(m=>m.id===(page==="casting_email"?"casting_hub":page))];
   window.oscInitialLink=nav=>linkFor(nav,actor.page);
   window.oscSelectPage=page=>{const link=linkFor(document.getElementById("nav-menu"),page);if(link&&!link.classList.contains("active"))link.click()};
   document.querySelector("#app-view .sidebar-gradient")?.style.setProperty("display","none","important");
