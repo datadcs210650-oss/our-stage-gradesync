@@ -185,10 +185,7 @@ async function createGrader(actor,body){
   const profile={id,code,name,email,role:"Grader",status:"Active",
    assigned_groups:groupIds,allowed_menus:["grading_table"],extra_data:{}};
   await supa("/rest/v1/profiles",{method:"POST",body:profile,headers:{Prefer:"return=minimal"}});
-  if(groupIds.length){
-   const {error}=await sb().from("grader_assignments").insert(groupIds.map(group_id=>({grader_id:id,group_id})));
-   if(error)fail("Không thể phân công giám khảo.");
-  }
+  // The profile insert triggers assignment synchronization in the same transaction.
   await grantGraderGoogleEmail(id,googleEmail);
   await audit(actor,"grader-created",id);
  }catch(e){await sb().auth.admin.deleteUser(id).catch(()=>{});throw e}
