@@ -200,45 +200,55 @@ async function updateGrader(actor,body){
  const groups=Array.isArray(body.groupIds)?[...new Set(body.groupIds)]:[];
  if(!ID.test(id)||name.length<2||groups.length>30||groups.some(x=>!ID.test(x)))
   fail("Thông tin giám khảo hoặc nhóm không hợp lệ.");
- const exists=await supa(url("profiles",{id:"eq."+id,role:"eq.Grader",select:"id",limit:"1"}));
- if(!exists?.length)fail("Không tìm thấy giám khảo.");
- if(groups.length){
-  const found=await supa(url("competition_groups",{id:"in.("+groups.join(",")+")",select:"id"}));
-  if(found.length!==groups.length)fail("Có nhóm thi không tồn tại.");
- }
- // Server updates actual assignment rows as well as profile UI metadata.
- if(body.googleEmail!==undefined){const email=graderGoogleEmail(body.googleEmail);const d=sb(),[a,l]=await Promise.all([d.from("gs_google_grader_access").select("email").eq("profile_id",id).maybeSingle(),d.rpc("osc_judge_email_locked",{p_grader:id})]);if(a.error||l.error)fail("Không kiểm tra được quyền email BGK.","osc/gradesync-upstream");if(l.data&&a.data?.email!==email)fail("Email BGK đã xác nhận bảng điểm, không thể thay đổi.","osc/gradesync-conflict");}
- const db=sb(),read=await db.from("grader_assignments").select("id,group_id").eq("grader_id",id);
- if(read.error)fail("Không đọc được phân quyền nhóm.","osc/gradesync-upstream");
- const old=read.data||[],wanted=new Set(groups),current=new Set(old.map(x=>x.group_id));
- const remove=old.filter(x=>!wanted.has(x.group_id)).map(x=>x.id);
- const add=groups.filter(x=>!current.has(x)).map(group_id=>({grader_id:id,group_id}));
- await assertMutableGroups([...add.map(x=>x.group_id),...old.filter(x=>!wanted.has(x.group_id)).map(x=>x.group_id)]);
- // Grant new groups before updating the display profile to minimize any gap.
- if(add.length){
-  const ins=await db.from("grader_assignments").insert(add);
-  if(ins.error)fail("Không cấp được phân quyền nhóm mới.","osc/gradesync-upstream");
- }
- if(remove.length){
-  const del=await db.from("grader_assignments").delete().in("id",remove);
-  if(del.error)fail("Không thu hồi được nhóm chấm cũ.","osc/gradesync-upstream");
- }
- await supa("/rest/v1/profiles?id=eq."+id,{method:"PATCH",
-  body:{name,assigned_groups:groups,updated_at:new Date().toISOString()},
-  headers:{Prefer:"return=minimal"}});
- if(body.googleEmail!==undefined)
-  await grantGraderGoogleEmail(id,body.googleEmail,body.revokeGoogleLink===true);
+ const email=body.googleEmail===undefined?null:graderGoogleEmail(body.googleEmail);
+ const db=sb(),result=await db.rpc("osc_update_grader",{
+  p_grader:id,p_name:name,p_groups:groups,p_change_email:body.googleEmail!==undefined,
+  p_email:email,p_revoke_link:body.revokeGoogleLink===true
+ });
+ if(result.error)graderManagementError(result.error);
  await audit(actor,"grader-updated",id);
  return{ok:true};
 }
+function graderManagementError(error){
+ const messages={
+  GS_QUORUM_ROSTER_LOCKED:"Phiên đã có dữ liệu chấm. Hãy giữ phiên cũ đã phân công và chỉ thêm phiên chưa chấm để bảo toàn quorum.",
+  GS_JUDGE_EMAIL_LOCKED:"Email BGK đã xác nhận bảng điểm, không thể thay đổi.",
+  GS_JUDGE_GOOGLE_LINKED:"Email đã liên kết với Google. Hãy xác nhận thu hồi liên kết trước khi đổi.",
+  GS_GRADER_ARCHIVED:"BGK đã lưu trữ. Quyền truy cập chấm đã bị vô hiệu hóa.",
+  GS_GRADER_NOT_FOUND:"Không tìm thấy giám khảo.",
+  GS_GRADER_HISTORY:"BGK thuộc danh sách chấm đã có dữ liệu. Hãy lưu trữ để giữ lịch sử.",
+  "23503":"Có phiên chấm không còn tồn tại.",
+  "23505":"Email đã được cấp cho BGK khác."
+ };
+ const message=messages[error.code]||Object.entries(messages).find(([code])=>String(error.message).includes(code))?.[1];
+ if(message)fail(message,"osc/gradesync-conflict");
+ if(String(error.message).includes("Phiên chấm đã hoàn tất."))fail("Phiên chấm đã hoàn tất.","osc/gradesync-conflict");
+ console.warn("Grader management rejected",error.code);
+ fail("Không lưu được thay đổi của BGK.","osc/gradesync-upstream");
+}
+async function protectedGrader(db,id){
+ const result=await db.rpc("osc_grader_history_protected",{p_grader:id});
+ if(result.error)graderManagementError(result.error);
+ return result.data===true;
+}
+async function archiveGrader(db,actor,id){
+ const result=await db.rpc("osc_archive_grader",{p_grader:id,p_actor:actor.decoded.uid});
+ if(result.error)graderManagementError(result.error);
+ return {ok:true,archived:true,message:"Đã vô hiệu hóa quyền chấm của BGK. Điểm, biên bản và quorum vẫn được lưu."};
+}
 async function lockGrader(actor,body){
  const id=String(body.graderId||"");if(!ID.test(id))fail("Giám khảo không hợp lệ.");
- const docs=await supa(url("profiles",{id:"eq."+id,role:"eq.Grader",select:"id",limit:"1"}));
- if(!docs?.length)fail("Không tìm thấy giám khảo.");
- const active=body.active===true;
- const authUpdate=await sb().auth.admin.updateUserById(id,{ban_duration:active?"none":"876000h"});
- if(authUpdate.error)fail("Không thể cập nhật khóa tài khoản Supabase.","osc/gradesync-upstream");
- await supa("/rest/v1/profiles?id=eq."+id,{method:"PATCH",body:{status:active?"Active":"Inactive"},headers:{Prefer:"return=minimal"}});
+ const db=sb(),active=body.active===true;
+ const read=await db.from("profiles").select("extra_data").eq("id",id).eq("role","Grader").maybeSingle();
+ if(read.error)graderManagementError(read.error);
+ if(!read.data)fail("Không tìm thấy giám khảo.");
+ if(read.data.extra_data?.oscArchivedAt){
+  if(active)graderManagementError({message:"GS_GRADER_ARCHIVED"});
+  return archiveGrader(db,actor,id);
+ }
+ if(!active&&await protectedGrader(db,id))return archiveGrader(db,actor,id);
+ const status=await db.from("profiles").update({status:active?"Active":"Inactive"}).eq("id",id).eq("role","Grader");
+ if(status.error)graderManagementError(status.error);
  await audit(actor,active?"grader-unlocked":"grader-locked",id);
  return{ok:true};
 }
@@ -355,10 +365,20 @@ async function handle(req,res){
    if(!ID.test(id))fail("Mã giám khảo không hợp lệ.");
    const profile=await supa(url("profiles",{id:"eq."+id,role:"eq.Grader",select:"id",limit:"1"}));
    if(!profile?.length)fail("Không tìm thấy giám khảo.");
-   const deleted=await sb().auth.admin.deleteUser(id);
-   if(deleted.error)fail("Không thể xóa giám khảo.");
-   await audit(actor,"grader-deleted",id);
-   result={ok:true};
+   const db=sb();
+   if(await protectedGrader(db,id)){
+    if(b.archiveIfProtected!==true)
+     fail("BGK thuộc danh sách chấm đã có dữ liệu. Dùng Khóa tài khoản để lưu trữ và giữ nguyên điểm, biên bản, quorum.","osc/gradesync-conflict");
+    result=await archiveGrader(db,actor,id);
+   }else{
+    const deleted=await db.auth.admin.deleteUser(id);
+    if(deleted.error){
+     if(await protectedGrader(db,id))graderManagementError({message:"GS_GRADER_HISTORY"});
+     fail("Không thể xóa giám khảo.","osc/gradesync-upstream");
+    }
+    await audit(actor,"grader-deleted",id);
+    result={ok:true,message:"Đã xóa giám khảo chưa có dữ liệu chấm."};
+   }
   }
   else if(action==="create-grader")result=await createGrader(actor,b);
   else if(action==="update-grader")result=await updateGrader(actor,b);

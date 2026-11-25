@@ -7397,7 +7397,7 @@ window.loadAdminOverviewScores=async function(container){
  };
 };
 async function account(action,details){
- window.showLoading(true);try{const r=await call(action,details);window.closeCustomModal();await window.loadAccountManager(document.getElementById("main-content"));window.showToast(action==="create-grader"?(r.mailAccepted?"Đã cấp quyền. Dịch vụ email đã tiếp nhận.":"Đã cấp quyền. Chưa gửi được email; hãy dùng Gửi lại email cấp quyền."):"Đã cập nhật giám khảo.");}catch(e){window.showToast(e.message,"error")}finally{window.showLoading(false)}
+ window.showLoading(true);try{const r=await call(action,details);window.closeCustomModal();await window.loadAccountManager(document.getElementById("main-content"));window.showToast(r.message||(action==="create-grader"?(r.mailAccepted?"Đã cấp quyền. Dịch vụ email đã tiếp nhận.":"Đã cấp quyền. Chưa gửi được email; hãy dùng Gửi lại email cấp quyền."):"Đã cập nhật giám khảo."));}catch(e){window.showToast(e.message,"error")}finally{window.showLoading(false)}
 }
 window.createAccountByCode=async()=>{
  const name=document.getElementById("acc-name"),email=document.getElementById("acc-google-email");
@@ -7407,7 +7407,7 @@ window.createAccountByCode=async()=>{
 };
 window.toggleAccountStatus=(graderId,status)=>account("lock-grader",{graderId,active:status==="Active"});
 window.resetGraderPassword=()=>window.showToast("BGK chỉ đăng nhập bằng Google.","error");
-window.deleteAccount=graderId=>window.showCustomConfirm("Xóa vĩnh viễn giám khảo và dữ liệu liên kết?",()=>account("delete-grader",{graderId}));
+window.deleteAccount=graderId=>window.showCustomConfirm("BGK chưa có dữ liệu sẽ bị xóa. Nếu thuộc danh sách chấm đã có dữ liệu, hệ thống sẽ vô hiệu hóa quyền chấm và giữ điểm, biên bản, quorum. Tiếp tục?",()=>account("delete-grader",{graderId,archiveIfProtected:true}));
 // BGK login belongs to Account Management, not the OSC dashboard.
 const loadAccountsWithPassword=window.loadAccountManager;
 window.loadAccountManager=async function(container){
