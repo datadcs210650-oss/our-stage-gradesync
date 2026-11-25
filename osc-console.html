@@ -7358,6 +7358,7 @@ window.currentUserData = null; window.activeListeners = [];
 <script type="module">
 import "./casting-hub.js";
 import "./osc-pdf-export.js";
+import {installReceiptAdmin} from "./receipt-admin-ui.js";
 import "./casting-email-center.js";
 import "./candidate-editor.js";
 import "./admin-role-score-view.js";
@@ -7426,6 +7427,7 @@ window.loadAccountManager=async function(container){
 installJudgeEmailAdmin({call});
 installCastingActorRoster();
 installCastingAdminPages();
+installReceiptAdmin();
 window.refreshSessionModeUI=()=>{};
 window.enforceSessionModeScoreListener=()=>{};
 const renderReview=window.loadCastingHub,renderEmail=window.loadCastingEmail;

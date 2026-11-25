@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import {createClient} from "@supabase/supabase-js";
 import {restRecoveryOptions} from "../lib/supabase-rest-recovery.js";
 import {sendScoringMail} from "../lib/scoring-mail-relay.js";
+import {receiptMail,retryReceiptMail} from "../lib/receipt-mail.js";
 const URL=process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co";
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const reply=(res,status,data)=>{res.setHeader("Content-Type","application/json; charset=utf-8");res.setHeader("Cache-Control","no-store");res.statusCode=status;res.end(JSON.stringify(data))};
@@ -64,6 +65,7 @@ async function preflight(db,profile,groupId){
  }};
 }
 export default async function handler(req,res){
+ if(req.method==="GET"){const key=process.env.CRON_SECRET||"";const supplied=String(req.headers.authorization||"");if(key.length<32||supplied!=="Bearer "+key)return reply(res,401,{ok:false});try{const jobs=await retryReceiptMail(sb());return reply(res,200,{ok:true,processed:jobs.length});}catch(e){return reply(res,503,{ok:false});}}
  if(req.method!=="POST")return reply(res,405,{ok:false,error:"Chỉ hỗ trợ POST."});
  if(Number(req.headers["content-length"]||0)>12000)return reply(res,413,{ok:false,error:"Yêu cầu quá lớn."});
  const origin=String(req.headers.origin||"");
@@ -98,20 +100,17 @@ export default async function handler(req,res){
   if(body.action==="receipt")throw fail("Giám khảo không có quyền tải hoặc xuất bảng điểm.",403);
   if(body.action==="completion-status"){
    const row=required(await db.from("gs_grading_receipts").select("verified_at,comparison_code").eq("grader_id",profile.id).eq("group_id",gid).maybeSingle());
-   return reply(res,200,{ok:true,confirmed:!!row,comparisonCode:row?.comparison_code||null,confirmedAt:row?.verified_at||null});
+   const job=row?.comparison_code?required(await db.from("osc_receipt_mail_jobs").select("status").eq("comparison_code",row.comparison_code).eq("kind","completion").maybeSingle()):null;
+   return reply(res,200,{ok:true,confirmed:!!row,comparisonCode:row?.comparison_code||null,confirmedAt:row?.verified_at||null,mailStatus:job?.status||null});
   }
   if(body.action==="confirm"){
    const code=String(body.code||"");
    if(!/^\d{6}$/.test(code))throw fail("Mã OTP phải đủ 6 chữ số.");
    const data=required(await db.rpc("gs_finalize_grading_otp",{p_grader:profile.id,p_group:gid,p_digest:digest(profile.id,gid,code)}));
    if(!data?.ok)throw fail(data.code==="OTP_INVALID"?"OTP không đúng.":data.code==="OTP_EXPIRED"?"OTP đã hết hạn.":"Không thể xác nhận: "+(data?.code||"unknown"),409);
-   const saved=required(await db.from("gs_grading_receipts").select("email,comparison_code,verified_at").eq("grader_id",profile.id).eq("group_id",gid).single());
-   const group=required(await db.from("competition_groups").select("name").eq("id",gid).single());
-   let mailAccepted=false;
-   if(/^\d{8}$/.test(saved.comparison_code||"")){
-    try{await sendScoringMail({kind:"completion",to:saved.email,code:saved.comparison_code,groupName:group.name});mailAccepted=true}catch(e){console.warn("Scoring completion email pending",e.code||"transport")}
-   }
-   return reply(res,200,{ok:true,sha256:data.sha256,confirmedAt:saved.verified_at,completeness:data.completeness,comparisonCode:saved.comparison_code,mailAccepted});
+   let mail={mailAccepted:false,mailStatus:"pending"};
+   try{mail=await receiptMail(db,gid,profile.id,false)}catch(e){console.warn("Receipt email pending",e.code||"transport")}
+   return reply(res,200,{ok:true,sha256:data.sha256,confirmedAt:data.confirmedAt,completeness:data.completeness,comparisonCode:data.comparisonCode,...mail});
   }
   throw fail("Tác vụ OTP không hợp lệ.");
  }catch(e){

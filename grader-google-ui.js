@@ -8,7 +8,7 @@ function node(tag,text,cls){const e=document.createElement(tag);if(text)e.textCo
 async function api(action,groupId,extras={}){
  const session=(await sb.auth.getSession()).data.session;
  if(!session?.access_token)throw Error("Phiên Google đã hết hạn. Hãy đăng nhập lại.");
- const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),action==="confirm"?55000:15000);
  try{
   const res=await fetch("/api/grader-confirm",{method:"POST",cache:"no-store",signal:controller.signal,
    headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token},
@@ -31,7 +31,8 @@ function close(){window.closeCustomModal?.()}
 function actionButton(label,fn,primary=false){const x=node("button",label,primary?"bg-red-900 text-white px-4 py-2 rounded-xl font-bold text-xs":"border px-4 py-2 rounded-xl text-xs");x.type="button";x.onclick=fn;return x}
 function success(box,answer){
  if(!box.isConnected)return;
- box.replaceChildren(node("h3","✓ Bảng điểm đã được khóa","font-extrabold text-lg text-emerald-800"),node("p","Mã đối chiếu bảng điểm","text-xs text-gray-500"),node("p",answer.comparisonCode||"Chưa có mã đối chiếu","text-3xl font-mono tracking-widest font-black text-red-900"),node("p",answer.mailAccepted===true?"Email xác nhận đã được dịch vụ tiếp nhận.":"Bảng điểm đã khóa. Nếu chưa nhận email, liên hệ Admin để gửi lại.","text-xs text-gray-600"),actionButton("Đóng",()=>{close();window._lastInitAuthUid=null;window.loadGradingTable?.(document.getElementById("main-content")).catch(()=>{})},true));
+ const verify=node("a","Xác thực biên bản","inline-flex border rounded-xl px-4 py-2 text-xs font-bold text-red-900");verify.href="https://portal.ourstage.io.vn/xac-thuc-bien-ban";verify.target="_blank";verify.rel="noopener noreferrer";
+ box.replaceChildren(node("h3","✓ Bảng điểm đã được khóa","font-extrabold text-lg text-emerald-800"),node("p","Mã đối chiếu bảng điểm","text-xs text-gray-500"),node("p",answer.comparisonCode||"Chưa có mã đối chiếu","text-3xl font-mono tracking-widest font-black text-red-900"),node("p",(answer.mailAccepted===true||answer.mailStatus==="sent")?"Biên bản PDF cá nhân đã được Resend tiếp nhận. Kiểm tra email của bạn.":"Bảng điểm đã khóa. Email đang chờ hoặc chưa gửi thành công; hệ thống sẽ thử lại.","text-xs text-gray-600"),verify,actionButton("Đóng",()=>{close();window._lastInitAuthUid=null;window.loadGradingTable?.(document.getElementById("main-content")).catch(()=>{})},true));
 }
 function openOtpDialog(groupId,partial){
  const box=document.getElementById("custom-modal-box");if(!box)throw Error("Không mở được hộp thoại OTP.");

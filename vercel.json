@@ -40,6 +40,16 @@
     "api/osc-bridge.js": {
       "includeFiles": "lib/pdf-fonts/**",
       "maxDuration": 60
+    },
+    "api/grader-confirm.js": {
+      "includeFiles": "lib/pdf-fonts/**",
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/grader-confirm",
+      "schedule": "0 1 * * *"
+    }
+  ]
 }

@@ -10,13 +10,14 @@ import {createRestRecoveryFetch,restRecoveryOptions} from "../lib/supabase-rest-
 import {CAST_ACTIONS,handleCastingAction} from "../lib/casting-manager.js";
 import {sendScoringMail} from "../lib/scoring-mail-relay.js";
 import {verifyGradingPdf} from "../lib/osc-pdf-service.js";
+import {receiptMail,deliverReceiptJob} from "../lib/receipt-mail.js";
 const sendJson=(res,status,payload)=>{res.statusCode=status;res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");res.end(JSON.stringify(payload))};
 const readJsonBody=req=>typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
 const handleError=(res,error)=>{console.error("OSC GradeSync bridge exception",error?.code);return sendJson(res,500,{ok:false,error:"Lỗi máy chủ NỀN TẢNG CHẤM ĐIỂM."})};
 const GRADER_PORTAL="https://gradesyncfinal.vercel.app/";
 const ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE=/^[A-Z][A-Z0-9_-]{2,19}$/;
-const ALLOWED_ACTIONS=new Set(["overview","group-detail","create-grader","resend-grader-invite","resend-grader-completion","update-grader","lock-grader","create-group","toggle-group","add-candidate","mark-attendance","console-documents","delete-grader"]);
+const ALLOWED_ACTIONS=new Set(["overview","group-detail","create-grader","resend-grader-invite","resend-grader-completion","reopen-grader-receipt","retry-receipt-notice","update-grader","lock-grader","create-group","toggle-group","add-candidate","mark-attendance","console-documents","delete-grader"]);
 function fail(message,code="osc/gradesync-invalid"){const e=new Error(message);e.code=code;throw e}
 function safeText(x,max=120){return String(x??"").trim().replace(/\s+/g," ").slice(0,max)}
 function sb(){return createClient(origin(),key(),restRecoveryOptions(origin()))}
@@ -108,6 +109,7 @@ async function grantGraderGoogleEmail(graderId,rawEmail,revokeLinked=false){
  const email=graderGoogleEmail(rawEmail),db=sb();
  const previous=await db.from("gs_google_grader_access").select("profile_id,email,auth_user_id").eq("profile_id",graderId).maybeSingle();
  if(previous.error)fail("Không đọc được quyền email BGK.","osc/gradesync-upstream");
+ if(previous.data&&previous.data.email!==email){const locked=await db.rpc("osc_judge_email_locked",{p_grader:graderId});if(locked.error||locked.data===true)fail("Email BGK đã xác nhận bảng điểm, không thể thay đổi.","osc/gradesync-conflict");}
  if(previous.data?.auth_user_id&&previous.data.email!==email&&!revokeLinked)
   fail("Email Google BGK đã liên kết tài khoản. Hãy xác nhận thu hồi liên kết cũ trước khi đổi.","osc/gradesync-conflict");
  if(!email){
@@ -142,9 +144,21 @@ async function inviteGrader(id){
 async function resendCompletion(body){
  const id=String(body.graderId||""),gid=String(body.groupId||"");
  if(!ID.test(id)||!ID.test(gid))fail("Giám khảo hoặc phiên chấm không hợp lệ.");
- const db=sb(),[receipt,group]=await Promise.all([db.from("gs_grading_receipts").select("email,comparison_code").eq("grader_id",id).eq("group_id",gid).single(),db.from("competition_groups").select("name").eq("id",gid).single()]);
- if(receipt.error||group.error||!/^\d{8}$/.test(receipt.data?.comparison_code||""))fail("Biên bản chưa có mã đối chiếu 8 số.");
- await sendScoringMail({kind:"completion",to:receipt.data.email,code:receipt.data.comparison_code,groupName:group.data.name});return{ok:true,mailAccepted:true};
+ try{return {ok:true,...await receiptMail(sb(),gid,id,true)}}catch(e){fail(e.message,"osc/gradesync-conflict")}
+}
+async function reopenReceipt(actor,b){
+ const id=String(b.graderId||""),gid=String(b.groupId||""),code=String(b.comparisonCode||""),reason=String(b.reason||"").trim();
+ if(!ID.test(id)||!ID.test(gid)||!/^\d{8}$/.test(code)||reason.length<3||reason.length>500||b.confirm!==true)fail("Cần xác nhận và nhập lý do mở lại bảng điểm.");
+ const db=sb(),r=await db.rpc("osc_reopen_receipt",{p_group:gid,p_grader:id,p_code:code,p_reason:reason,p_actor:actor.decoded.uid});
+ if(r.error){const map={GS_SESSION_FINAL:"Phiên đã duyệt hoặc công bố kết quả.",GS_RECEIPT_CHANGED:"Xác nhận đã thay đổi. Tải lại dữ liệu.",GS_MAIL_IN_PROGRESS:"Email đang được gửi. Hãy thử lại sau khi gửi xong.",GS_REOPEN_REASON_REQUIRED:"Cần nhập lý do mở lại."};const k=Object.keys(map).find(k=>String(r.error.message).includes(k));fail(map[k]||"Không thể mở lại bảng điểm.","osc/gradesync-conflict");}
+ let mail={mailAccepted:false,mailStatus:"pending"};try{mail=await deliverReceiptJob(db,r.data.jobId)}catch(e){console.warn("Reopen notice pending",e.code||"transport")}
+ return {ok:true,comparisonCode:r.data.comparisonCode,...mail};
+}
+async function retryReceiptNotice(b){
+ const id=String(b.jobId||"");if(!ID.test(id))fail("Thông báo không hợp lệ.");
+ const db=sb(),r=await db.from("osc_receipt_mail_jobs").select("id,kind,status").eq("id",id).maybeSingle();
+ if(r.error||!r.data||r.data.kind!=="reopen"||r.data.status==="sent")fail("Không có thông báo thu hồi cần gửi lại.");
+ return{ok:true,...await deliverReceiptJob(db,id,true)};
 }
 async function createGrader(actor,body){
  const code=safeText(body.code,20).toUpperCase(),name=safeText(body.name,100);
@@ -193,7 +207,7 @@ async function updateGrader(actor,body){
   if(found.length!==groups.length)fail("Có nhóm thi không tồn tại.");
  }
  // Server updates actual assignment rows as well as profile UI metadata.
- if(body.googleEmail!==undefined)graderGoogleEmail(body.googleEmail);
+ if(body.googleEmail!==undefined){const email=graderGoogleEmail(body.googleEmail);const d=sb(),[a,l]=await Promise.all([d.from("gs_google_grader_access").select("email").eq("profile_id",id).maybeSingle(),d.rpc("osc_judge_email_locked",{p_grader:id})]);if(a.error||l.error)fail("Không kiểm tra được quyền email BGK.","osc/gradesync-upstream");if(l.data&&a.data?.email!==email)fail("Email BGK đã xác nhận bảng điểm, không thể thay đổi.","osc/gradesync-conflict");}
  const db=sb(),read=await db.from("grader_assignments").select("id,group_id").eq("grader_id",id);
  if(read.error)fail("Không đọc được phân quyền nhóm.","osc/gradesync-upstream");
  const old=read.data||[],wanted=new Set(groups),current=new Set(old.map(x=>x.group_id));
@@ -351,6 +365,8 @@ async function handle(req,res){
   else if(action==="lock-grader")result=await lockGrader(actor,b);
   else if(action==="resend-grader-invite"){if(!ID.test(String(b.graderId||"")))fail("Giám khảo không hợp lệ.");result=await inviteGrader(b.graderId)}
   else if(action==="resend-grader-completion")result=await resendCompletion(b);
+  else if(action==="reopen-grader-receipt")result=await reopenReceipt(actor,b);
+  else if(action==="retry-receipt-notice")result=await retryReceiptNotice(b);
   else if(action==="create-group")result=await createGroup(actor,b);
   else if(action==="toggle-group")result=await toggleGroup(actor,b);
   else if(action==="add-candidate")result=await addCandidate(actor,b);

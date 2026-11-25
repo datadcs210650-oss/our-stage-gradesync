@@ -25,7 +25,7 @@ export function installJudgeEmailAdmin({call}){
    const data=await call("casting-list");
    access.clear();
    for(const g of data.graders||[])access.set(g.id,{
-    email:g.email||"",enabled:g.googleEnabled===true,name:g.name||"",assignedGroups:g.assignedGroups||[]});
+    email:g.email||"",locked:g.emailLocked===true,enabled:g.googleEnabled===true,name:g.name||"",assignedGroups:g.assignedGroups||[]});
    const createName=container.querySelector("#acc-name");
    if(createName&&!container.querySelector("#acc-google-email")){
     const {wrapper,e}=input();
@@ -54,7 +54,7 @@ export function installJudgeEmailAdmin({call}){
   const box=document.getElementById("custom-modal-box");
   if(!box||box.querySelector("#edit-grader-google-email"))return;
   const {wrapper,e}=input(access.get(graderId)?.email||"");
-  e.id="edit-grader-google-email";
+  e.id="edit-grader-google-email";if(access.get(graderId)?.locked){e.disabled=true;const note=document.createElement("small");note.className="block mt-2 text-emerald-700";note.textContent="Email đã được khóa vĩnh viễn sau khi xác nhận OTP. Mở lại bảng điểm không mở khóa email.";wrapper.append(note);}
   const base=box.querySelector("#edit-grader-name-modal")?.closest("div");
   if(base)base.after(wrapper);else box.append(wrapper);
  };
