@@ -35,5 +35,11 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/osc-bridge.js": {
+      "includeFiles": "lib/pdf-fonts/**",
+      "maxDuration": 60
+    }
+  }
 }
