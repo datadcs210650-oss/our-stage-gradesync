@@ -20,7 +20,7 @@ for(const key of ["localStorage","sessionStorage"]){
     <script defer src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <link rel="icon" type="image/png" href="https://admin.ourstage.io.vn/logo.png">
+    <link rel="icon" type="image/png" href="/logo-ui-centered.png?v=osc2">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; background-image: radial-gradient(#e5e7eb 1px, transparent 1px); background-size: 20px 20px; font-size: 13px; }
@@ -167,6 +167,9 @@ html,body{background:#fff!important;background-image:none!important}
 @keyframes gsGlassSpin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.gs-glass-spinner{animation:none}}
 </style>
+<style>/* OSC pre-centered official image; no extra crop or padding. */
+.osc-brand-holder{width:40px;height:40px;min-width:40px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:11px;flex-shrink:0;padding:0!important;overflow:hidden}.osc-brand-holder-lg{width:64px;height:64px;min-width:64px;border-radius:14px}.osc-brand-holder img,.osc-brand-loading{display:block;object-fit:contain;object-position:center;width:100%;height:100%;padding:0;margin:0;transform:none}.osc-brand-loading{width:56px;height:56px;min-width:56px;border-radius:13px}@media(max-width:380px){.osc-brand-holder-lg{width:52px;height:52px;min-width:52px}}
+</style>
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex relative selection:bg-red-200 selection:text-red-900">
     <div id="loading-overlay" class="fixed inset-0 z-[150] justify-center items-center" role="status" aria-live="polite" aria-atomic="true">
@@ -185,7 +188,7 @@ html,body{background:#fff!important;background-image:none!important}
         <div class="absolute inset-0 bg-gradient-to-br from-red-900/10 to-transparent"></div>
         <div class="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-xl w-[380px] max-w-[90%] border border-white relative animate-fade-up">
             <div class="flex items-center gap-3 mb-6 justify-center">
-                <div class="bg-gradient-to-br from-red-700 to-red-900 p-2 rounded-xl text-white shadow-lg w-12 h-12 flex items-center justify-center"><img src="https://admin.ourstage.io.vn/logo.png" alt="OSC" style="width:100%;height:100%;object-fit:contain"></div>
+                <div class="osc-brand-holder osc-brand-holder-lg bg-white rounded-xl shadow-lg flex items-center justify-center"><img src="/logo-ui-centered.png?v=osc2" alt="OSC" style="width:100%;height:100%;object-fit:contain"></div>
                 <div><h1 class="text-2xl font-black text-gray-900 leading-none">NỀN TẢNG CHẤM ĐIỂM</h1><p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Live Grading</p></div>
             </div>
             <div class="flex bg-gray-100 p-1 rounded-xl mb-6">
@@ -210,7 +213,7 @@ html,body{background:#fff!important;background-image:none!important}
         <div class="sidebar-gradient w-56 shrink-0 h-full text-white flex flex-col justify-between py-6 px-4 shadow-xl z-20 overflow-y-auto custom-scrollbar">
             <div>
                 <div class="flex items-center gap-3 px-2 mb-8 group cursor-pointer">
-                    <div class="bg-white/20 p-2 rounded-xl backdrop-blur-md w-9 h-9 flex items-center justify-center border border-white/10"><img src="https://admin.ourstage.io.vn/logo.png" alt="OSC" style="width:100%;height:100%;object-fit:contain"></div>
+                    <div class="osc-brand-holder bg-white rounded-xl flex items-center justify-center"><img src="/logo-ui-centered.png?v=osc2" alt="OSC" style="width:100%;height:100%;object-fit:contain"></div>
                     <div class="gs-brand-text"><h1 class="text-base font-black leading-tight">NỀN TẢNG CHẤM ĐIỂM</h1><p class="text-[9px] text-red-200 flex items-center gap-1 font-bold mt-0.5"><span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shadow-[0_0_3px_#4ade80]"></span> Trực tuyến</p></div>
                 </div>
                 <div class="menu-label text-[9px] font-black text-red-300/80 mb-2 px-3 uppercase tracking-widest">Danh mục</div>

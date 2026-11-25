@@ -16,7 +16,7 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <link rel="icon" type="image/png" href="/logo.png?v=osc1">
+    <link rel="icon" type="image/png" href="/logo-ui-centered.png?v=osc2">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; background-image: radial-gradient(#e5e7eb 1px, transparent 1px); background-size: 20px 20px; font-size: 13px; }
@@ -141,10 +141,13 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
 @keyframes gsGlassSpin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.gs-glass-spinner{animation:none}}
 </style>
+<style>/* OSC pre-centered official image; no extra crop or padding. */
+.osc-brand-holder{width:40px;height:40px;min-width:40px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:11px;flex-shrink:0;padding:0!important;overflow:hidden}.osc-brand-holder-lg{width:64px;height:64px;min-width:64px;border-radius:14px}.osc-brand-holder img,.osc-brand-loading{display:block;object-fit:contain;object-position:center;width:100%;height:100%;padding:0;margin:0;transform:none}.osc-brand-loading{width:56px;height:56px;min-width:56px;border-radius:13px}@media(max-width:380px){.osc-brand-holder-lg{width:52px;height:52px;min-width:52px}}
+</style>
 </head>
 <body class="text-gray-800 h-screen overflow-hidden flex relative selection:bg-red-200 selection:text-red-900">
     <div id="loading-overlay" class="fixed inset-0 z-[150] justify-center items-center" role="status" aria-live="polite" aria-atomic="true">
-        <div class="gs-glass-processing"><img src="/logo.png?v=osc1" alt="OSC" width="48" height="48" style="object-fit:contain"><div class="gs-glass-spinner" aria-hidden="true"></div><p id="loading-text">Đang đồng bộ máy chủ...</p></div>
+        <div class="gs-glass-processing"><img class="osc-brand-holder osc-brand-loading" src="/logo-ui-centered.png?v=osc2" alt="OSC" width="48" height="48"><div class="gs-glass-spinner" aria-hidden="true"></div><p id="loading-text">Đang đồng bộ máy chủ...</p></div>
     </div>
 
     <!-- Modals -->
@@ -159,7 +162,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         <div class="absolute inset-0 bg-gradient-to-br from-red-900/10 to-transparent"></div>
         <div class="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-xl w-[480px] max-w-[92%] border border-white relative animate-fade-up">
             <div class="flex items-center gap-3 mb-6 justify-center">
-                <div class="bg-white p-1 rounded-xl shadow-sm border border-red-100 w-12 h-12 shrink-0 flex items-center justify-center"><img src="/logo.png?v=osc1" alt="OSC" style="width:100%;height:100%;object-fit:contain" onerror="this.onerror=null;this.style.display='none';this.parentElement.textContent='OSC';this.parentElement.style.color='#991b1b';this.parentElement.style.fontWeight='bold'"></div>
+                <div class="osc-brand-holder osc-brand-holder-lg bg-white rounded-xl shadow-sm border border-red-100 shrink-0 flex items-center justify-center"><img src="/logo-ui-centered.png?v=osc2" alt="OSC" style="width:100%;height:100%;object-fit:contain" onerror="this.onerror=null;this.style.display='none';this.parentElement.textContent='OSC';this.parentElement.style.color='#991b1b';this.parentElement.style.fontWeight='bold'"></div>
                 <div class="min-w-0"><h1 class="font-black text-gray-900 leading-tight text-[clamp(17px,4.5vw,24px)]"><span class="whitespace-nowrap">NỀN TẢNG</span> <span class="whitespace-nowrap">CHẤM ĐIỂM</span></h1><p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Live Grading</p></div>
             </div>
             <div class="flex bg-gray-100 p-1 rounded-xl mb-6">
@@ -183,7 +186,7 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         <div class="sidebar-gradient w-56 shrink-0 h-full text-white flex flex-col justify-between py-6 px-4 shadow-xl z-20 overflow-y-auto custom-scrollbar">
             <div>
                 <div class="flex items-center gap-3 px-2 mb-8 group cursor-pointer">
-                    <div class="bg-white p-0.5 rounded-lg w-9 h-9 shrink-0 flex items-center justify-center"><img src="/logo.png?v=osc1" alt="OSC" style="width:100%;height:100%;object-fit:contain" onerror="this.onerror=null;this.style.display='none';this.parentElement.textContent='OSC';this.parentElement.style.color='#991b1b';this.parentElement.style.fontWeight='bold'"></div>
+                    <div class="osc-brand-holder bg-white rounded-lg shrink-0 flex items-center justify-center"><img src="/logo-ui-centered.png?v=osc2" alt="OSC" style="width:100%;height:100%;object-fit:contain" onerror="this.onerror=null;this.style.display='none';this.parentElement.textContent='OSC';this.parentElement.style.color='#991b1b';this.parentElement.style.fontWeight='bold'"></div>
                     <div class="gs-brand-text"><h1 class="text-base font-black leading-tight">NỀN TẢNG CHẤM ĐIỂM</h1><p class="text-[9px] text-red-200 flex items-center gap-1 font-bold mt-0.5"><span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shadow-[0_0_3px_#4ade80]"></span> Trực tuyến</p></div>
                 </div>
                 <div class="menu-label text-[9px] font-black text-red-300/80 mb-2 px-3 uppercase tracking-widest">Danh mục</div>
