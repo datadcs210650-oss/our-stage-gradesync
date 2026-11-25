@@ -97,10 +97,10 @@ export function installCastingAdminPages(){
    const roles=panel("Casting theo vai diễn"),enable=input("","checkbox"),notes=input("","checkbox");
    enable.className=notes.className="h-4 w-4 accent-red-900";enable.checked=Boolean(policy.roles?.length);notes.checked=policy.notesEnabled===true;
    const roleFields=el("div","","space-y-3"),roleList=el("div","","space-y-2");
-   function addRole(value=""){const row=el("div","","flex gap-2");const name=input("Tên vai diễn");name.value=value;row.append(name,btn("Xóa",()=>row.remove(),true));roleList.append(row)}
+   function addRole(value=""){const row=el("div","","grid grid-cols-[minmax(0,1fr)_minmax(80px,110px)_auto] items-end gap-2");const name=input("Tên vai diễn");name.value=value;name.dataset.roleName="1";const cap=input("Số lượng","number");cap.min="1";cap.max="1000";cap.step="1";cap.value=String(group?.roleLimits?.capacity?.[value]??1);cap.dataset.capacity="1";row.append(field("Tên vai",name),field("Tối đa",cap),btn("Xóa",()=>row.remove(),true));roleList.append(row)}
    (policy.roles||[]).forEach(addRole);
    const reg=input("","number"),proposed=input("","number");reg.min=proposed.min="1";reg.max=proposed.max="40";reg.step=proposed.step="1";reg.value=String(policy.maxRegistered||1);proposed.value=String(policy.maxProposed||1);
-   const limits=el("div","","grid grid-cols-1 sm:grid-cols-2 gap-3");limits.append(field("Số vai tối đa thí sinh đăng ký",reg),field("Số vai tối đa BGK tick",proposed));
+   const official=input("","number");official.min="1";official.max="40";official.step="1";official.value=String(group?.roleLimits?.maxOfficialRoles??1);const limits=el("div","","grid grid-cols-1 sm:grid-cols-3 gap-3");limits.append(field("Số vai tối đa thí sinh đăng ký",reg),field("Số vai tối đa BGK tick",proposed),field("Số vai chính thức mỗi thí sinh",official));
    roleFields.append(roleList,btn("+ Thêm vai diễn",()=>addRole(),true),limits);
    enable.onchange=()=>{roleFields.hidden=!enable.checked;if(enable.checked&&!roleList.childElementCount)addRole()};enable.onchange();
    roles.append(field("Bật casting theo vai diễn",enable),roleFields,field("Cho phép BGK ghi chú",notes));pane.append(roles);
@@ -113,12 +113,13 @@ export function installCastingAdminPages(){
     const extrasData=[...extras.children].map(row=>{const [n,v]=row.querySelectorAll("input");return {name:n.value.trim(),showToGrader:v.checked}});
     const graderWeights={...policy.weights};
     if(method.value==="weighted")weights.querySelectorAll("input[data-code]").forEach(w=>{graderWeights[w.dataset.code]=Number(w.value)});
-    const roleNames=enable.checked?[...roleList.querySelectorAll("input")].map(x=>x.value.trim()):[];
+    const roleNames=enable.checked?[...roleList.querySelectorAll("input[data-role-name]")].map(x=>x.value.trim()):[];
     if(enable.checked&&(!roleNames.length||roleNames.some(x=>!x)))throw Error("Cần nhập tên các vai diễn.");
+    const cap=Object.fromEntries([...roleList.children].filter(()=>enable.checked).map(row=>[row.querySelector("[data-role-name]").value.trim().normalize("NFC"),Number(row.querySelector("[data-capacity]").value)]));const roleLimits={capacity:cap,maxOfficialRoles:enable.checked?Number(official.value):1};if(!Number.isInteger(roleLimits.maxOfficialRoles)||roleLimits.maxOfficialRoles<1||roleLimits.maxOfficialRoles>Math.max(1,roleNames.length)||Object.values(cap).some(x=>!Number.isInteger(x)||x<1||x>1000))throw Error("Kiểm tra số vai chính thức và số lượng tối đa từng vai.");
     const sessionPolicy={method:method.value,weights:graderWeights,roles:roleNames,maxRegistered:enable.checked?Number(reg.value):0,maxProposed:enable.checked?Number(proposed.value):0,notesEnabled:notes.checked};
     // Do not silently alter a legacy policy while editing unrelated settings.
     const unchangedLegacy=group&&!original&&!enable.checked&&!notes.checked&&method.value===(casting?.aggregate_method||"mean")&&passScore===Number(casting?.pass_score??group.passScore)&&JSON.stringify(graderWeights)===JSON.stringify(policy.weights||{});
-    const body={passScore,criteria:criteriaData,extraFields:extrasData,openMode:mode.value,startAt:mode.value==="auto"&&start.value?new Date(start.value).toISOString():null,endAt:end.value?new Date(end.value).toISOString():null,attendanceEnabled:attendance.checked,...(unchangedLegacy?{}:{sessionPolicy})};
+    const body={passScore,criteria:criteriaData,extraFields:extrasData,openMode:mode.value,startAt:mode.value==="auto"&&start.value?new Date(start.value).toISOString():null,endAt:end.value?new Date(end.value).toISOString():null,attendanceEnabled:attendance.checked,...(unchangedLegacy?{}:{sessionPolicy,roleLimits})};
     if(group)await api("casting-update-session",{...body,groupId:group.id,version:group.version,name:name.value.trim()});
     else await api("casting-create-session",{...body,term:term.value,division:name.value.trim(),castingId:destination.value||undefined});
     dialog.close();window.showToast?.("Đã lưu phiên chấm.");await window.loadGroupsManager(host);

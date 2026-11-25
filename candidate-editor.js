@@ -24,7 +24,7 @@ window.loadStudentList=async function(host){
  const approveBtn=button("✓ Duyệt nhanh",async()=>bulkApprove());
  const importBtn=button("Nhập Excel",async()=>openImport(),true);
  const exportBtn=button("Xuất Excel",async()=>exportRoster(),true);
- actions.append(addBtn,importBtn,exportBtn,approveBtn,refresh);title.append(name,actions);shell.append(title);
+ const consentBtn=button("✓ Đồng ý nhận mail",()=>bulkConsent(true));const revokeBtn=button("Bỏ đồng ý mail",()=>bulkConsent(false),true);actions.append(addBtn,importBtn,exportBtn,consentBtn,revokeBtn,approveBtn,refresh);title.append(name,actions);shell.append(title);
  const toolbar=make("div","bg-white border border-rose-100 rounded-2xl shadow-sm p-4 grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_minmax(220px,1fr)_auto] gap-3");
  const group=make("select","w-full rounded-xl border border-slate-200 p-3 text-xs bg-white");
  const search=input("search","","Tìm tên, SBD, MSSV, email, số điện thoại trong trang");
@@ -83,7 +83,7 @@ window.loadStudentList=async function(host){
   stats[0].textContent=String(state.total);
   stats[1].textContent=String(state.items.filter(c=>c.emailConsent).length)+" / trang";
   stats[2].textContent=String(state.items.filter(c=>c.review==="approved").length)+" / trang";
-  stats[3].textContent=String(state.selectedIds.size);
+  stats[3].textContent=String(state.selectedIds.size);consentBtn.disabled=!state.selectedIds.size||["published","archived"].includes(current()?.castingStatus);revokeBtn.disabled=!state.selectedIds.size;
  }
  async function loadPage(){
   addBtn.disabled=importBtn.disabled=true;state.defs=[];state.policy=null;state.selectedIds.clear();
@@ -295,26 +295,31 @@ window.loadStudentList=async function(host){
   };
   if(!alive())throw Error("Trang đã thay đổi.");if(!modal.isConnected)document.body.append(modal);if(!modal.open)modal.showModal();
  }
+ async function bulkConsent(consent){
+  const gid=state.selected,ids=[...state.selectedIds];if(!gid||!ids.length)throw Error("Hãy chọn thí sinh.");
+  if(!window.confirm(consent?"Xác nhận "+ids.length+" thí sinh đã thực sự đồng ý nhận email kết quả? Chỉ ghi nhận khi có sự đồng ý của từng người.":"Bỏ đồng ý nhận email của "+ids.length+" thí sinh?"))return;
+  const r=await request("casting-bulk-consent",{groupId:gid,candidateIds:ids,consent,confirm:true});
+  window.showToast?.("Đã cập nhật "+r.updated+"/"+ids.length+" hồ sơ. Hồ sơ không đổi hoặc thiếu email hợp lệ được giữ nguyên.");if(gid===state.selected)await loadPage();
+ }
  async function bulkApprove(){
   const groupInfo=current();if(!groupInfo)throw Error("Chọn phiên chấm.");
   if(state.policy?.roles?.length)throw Error("Phiên theo vai cần phân vai chính thức tại Quản lý kết quả.");
   const selected=[...state.selectedIds];if(!selected.length)throw Error("Hãy chọn thí sinh trước.");
-  const consenting=state.items.filter(x=>state.selectedIds.has(x.id)&&x.emailConsent===true);
-  if(!consenting.length)throw Error("Các thí sinh đã chọn chưa đồng ý nhận email.");
+  const consenting=state.items.filter(x=>state.selectedIds.has(x.id));
   const response=await request("casting-results",{castingId:groupInfo.castingId});
   const allowed=new Set(consenting.map(x=>x.id));
   const ready=(response.rows||[]).filter(x=>allowed.has(x.id)&&!x.incomplete&&["passed","failed"].includes(x.outcome)&&x.review!=="approved");
   if(!ready.length)throw Error("Chưa có thí sinh đủ điểm khóa để duyệt hoặc tất cả đã được duyệt.");
-  if(!window.confirm("Duyệt kết quả "+ready.length+" thí sinh đã đồng ý nhận email? Trạng thái Passed/Not Passed sẽ theo điểm BGK đã xác nhận."))return;
-  let completed=0;
+  if(!window.confirm("Duyệt kết quả "+ready.length+" thí sinh? Trạng thái Passed/Not Passed sẽ theo điểm BGK đã xác nhận."))return;
+  let completed=0,failures=[];
   for(let i=0;i<ready.length;i+=40){
    const chunk=ready.slice(i,i+40);
-   await request("casting-review",{castingId:groupInfo.castingId,
+   const r=await request("casting-review",{castingId:groupInfo.castingId,
     decisions:chunk.map(x=>({candidateId:x.id,review:"approved"}))});
-   completed+=chunk.length;
+   completed+=r.updated||0;failures.push(...(r.failures||[]));
   }
-  window.showToast?.("Đã duyệt "+completed+" kết quả. Chuyển sang Quản lý kết quả để công bố.");
-  await loadPage();
+  window.showToast?.("Đã duyệt "+completed+" kết quả. "+(failures.length?"Còn "+failures.length+" hồ sơ bị chặn.":"Chuyển sang Quản lý kết quả để công bố."));
+  await loadPage();if(failures.length)banner.textContent=failures.map(x=>(state.items.find(r=>r.id===x.candidateId)?.code||x.candidateId)+": "+x.reason).join(" · ");
  }
  try{await loadGroups()}catch(e){banner.textContent="Không tải được danh sách phiên chấm: "+e.message}
 };
