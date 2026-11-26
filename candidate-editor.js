@@ -19,12 +19,13 @@ window.loadStudentList=async function(host){
  const name=make("div");
  name.append(make("p","text-[10px] uppercase tracking-[.18em] font-black text-red-700","NỀN TẢNG CHẤM ĐIỂM / QUẢN LÝ THÍ SINH"),make("h2","text-xl font-black text-slate-900","Quản lý thí sinh"));
  const actions=make("div","flex flex-wrap gap-2");
- const refresh=button("↻ Làm mới",async()=>loadPage(),true);
+ const refresh=button("↻ Làm mới",async()=>loadGroups(),true);
  const addBtn=button("+ Thêm thí sinh",async()=>openCreate());
  const approveBtn=button("✓ Duyệt nhanh",async()=>bulkApprove());
  const importBtn=button("Nhập Excel",async()=>openImport(),true);
  const exportBtn=button("Xuất Excel",async()=>exportRoster(),true);
- const consentBtn=button("✓ Đồng ý nhận mail",()=>bulkConsent(true));const revokeBtn=button("Bỏ đồng ý mail",()=>bulkConsent(false),true);actions.append(addBtn,importBtn,exportBtn,consentBtn,revokeBtn,approveBtn,refresh);title.append(name,actions);shell.append(title);
+ const deleteBtn=button("Xóa hồ sơ đã chọn",()=>deleteRecords(state.items.filter(x=>state.selectedIds.has(x.id))),true);deleteBtn.classList.add("text-red-700","border-red-300");deleteBtn.disabled=true;
+ const consentBtn=button("✓ Đồng ý nhận mail",()=>bulkConsent(true));const revokeBtn=button("Bỏ đồng ý mail",()=>bulkConsent(false),true);actions.append(addBtn,importBtn,exportBtn,consentBtn,revokeBtn,approveBtn,deleteBtn,refresh);title.append(name,actions);shell.append(title);
  const toolbar=make("div","bg-white border border-rose-100 rounded-2xl shadow-sm p-4 grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_minmax(220px,1fr)_auto] gap-3");
  const group=make("select","w-full rounded-xl border border-slate-200 p-3 text-xs bg-white");
  const search=input("search","","Tìm tên, SBD, MSSV, email, số điện thoại trong trang");
@@ -50,6 +51,8 @@ window.loadStudentList=async function(host){
  const clean=()=>{if(!alive()){modal.remove();observer.disconnect()}};
  const observer=new MutationObserver(clean);observer.observe(document.getElementById("main-content")||host.parentNode||host,{childList:true,subtree:true});
  const current=()=>state.groups.find(x=>x.id===state.selected);
+ async function deleteRecords(items){const session=current();if(!session||state.locked||!items.length)throw Error("Chọn hồ sơ thuộc phiên chưa khóa.");if(!window.confirm("Xóa "+items.length+" hồ sơ khỏi "+session.name+"?\nChỉ xóa hồ sơ chưa có điểm, kết quả hoặc đồng bộ. Hồ sơ được bảo vệ sẽ giữ nguyên."))return;const result=await request("casting-candidate-delete",{groupId:session.id,castingId:session.castingId,confirm:true,rows:items.map(x=>({id:x.id,code:x.code,version:x.version,identityVersion:x.identityVersion??null}))});if(state.selected!==session.id)return;if(result.updated>=state.items.length&&state.offset>0)state.offset=Math.max(0,state.offset-state.limit);await loadPage();const message="Đã xóa "+result.updated+"/"+items.length+" hồ sơ."+(result.failures?.length?" "+result.failures.map(f=>(f.code||f.id)+": "+f.reason).join(" · "):"");banner.textContent=message;window.showToast?.(message,result.failures?.length?"error":"success");}
+
  function formatReview(v){return v==="approved"?"Đã duyệt":v==="rejected"?"Từ chối":v==="absent"?"Vắng mặt – không xét":"Chờ duyệt"}
  function rerender(){
   const searchTerm=search.value.toLocaleLowerCase("vi").trim();
@@ -72,7 +75,7 @@ window.loadStudentList=async function(host){
    if(!items.length&&!state.policy?.roles?.length)extra.textContent="—";tr.append(extra);
    const agree=make("td","px-3 py-3");agree.append(flag(item.emailConsent?"Đã đồng ý":"Chưa đồng ý",item.emailConsent));tr.append(agree);
    const review=make("td","px-3 py-3");review.append(flag(formatReview(item.review),item.review==="approved"));tr.append(review);
-   const edit=make("td","px-3 py-3");edit.append(button("Xem / Sửa",async()=>openProfile(item),true));tr.append(edit);tbody.append(tr);
+   const edit=make("td","px-3 py-3");edit.append(button("Xem / Sửa",async()=>openProfile(item),true));const del=button("Xóa",()=>deleteRecords([item]),true);del.classList.add("text-red-700","border-red-300","ml-1");del.disabled=state.locked||item.review==="approved"||item.review==="rejected";edit.append(del);tr.append(edit);tbody.append(tr);
   }
   if(!filtered.length){const r=make("tr"),c=make("td","text-center p-10 text-slate-400",state.items.length?"Không có hồ sơ khớp từ khóa.":"Chưa có thí sinh trong nhóm. Bạn có thể thêm ngay hoặc dùng công cụ Import.");c.colSpan=10;r.append(c);tbody.append(r)}
   counter.textContent="Trang "+(Math.floor(state.offset/state.limit)+1)+" · "+state.items.length+" / "+state.total+" thí sinh";
@@ -83,22 +86,22 @@ window.loadStudentList=async function(host){
   stats[0].textContent=String(state.total);
   stats[1].textContent=String(state.items.filter(c=>c.emailConsent).length)+" / trang";
   stats[2].textContent=String(state.items.filter(c=>c.review==="approved").length)+" / trang";
-  stats[3].textContent=String(state.selectedIds.size);consentBtn.disabled=!state.selectedIds.size||["published","archived"].includes(current()?.castingStatus);revokeBtn.disabled=!state.selectedIds.size;
+  stats[3].textContent=String(state.selectedIds.size);deleteBtn.disabled=state.locked||!state.selectedIds.size||state.loading;consentBtn.disabled=!state.selectedIds.size||["published","archived"].includes(current()?.castingStatus);revokeBtn.disabled=!state.selectedIds.size;
  }
  async function loadPage(){
-  addBtn.disabled=importBtn.disabled=true;state.defs=[];state.policy=null;state.selectedIds.clear();
+  state.loading=true;state.locked=true;deleteBtn.disabled=true;addBtn.disabled=importBtn.disabled=true;state.defs=[];state.policy=null;state.selectedIds.clear();
   if(!state.selected){state.items=[];state.total=0;banner.textContent="Chưa có phiên chấm.";rerender();return}
   const token=++state.token,gid=state.selected,offset=state.offset;
   banner.textContent="Đang tải thí sinh của phiên đã chọn…";refresh.disabled=true;
   try{
    const response=await request("casting-candidate-roster",{groupId:gid,offset,limit:state.limit});
    if(!alive()||token!==state.token||state.selected!==gid)return;
-   addBtn.disabled=importBtn.disabled=["published","archived"].includes(current()?.castingStatus);state.items=response.rows||[];state.total=response.total||0;state.defs=response.fields||[];state.policy=response.group?.sessionPolicy||null;
+   state.locked=!!response.group?.rosterLocked||["published","archived"].includes(current()?.castingStatus);state.loading=false;addBtn.disabled=importBtn.disabled=state.locked;state.items=response.rows||[];state.total=response.total||0;state.defs=response.fields||[];state.policy=response.group?.sessionPolicy||null;
    state.selectedIds.clear();all.checked=false;search.value="";
    banner.textContent=current()?.term+" · "+current()?.name;
    rerender();
   }catch(e){if(token===state.token){banner.textContent="Không tải được hồ sơ: "+e.message;state.items=[];rerender()}}
-  finally{if(token===state.token)refresh.disabled=false}
+  finally{if(token===state.token){state.loading=false;refresh.disabled=false;updateStats()}}
  }
  all.onchange=()=>{if(all.checked)for(const r of state.items)state.selectedIds.add(r.id);else state.selectedIds.clear();rerender()};
  search.addEventListener("input",rerender);
@@ -180,7 +183,7 @@ window.loadStudentList=async function(host){
   code.disabled=true;
   fields.append(label("Họ tên",name),label("SBD (không thay đổi tại đây)",code),label("MSSV",mssv),label("Email liên hệ",email),label("Số điện thoại",phone));
   const extras=extraInputs(fields,item),consent=consentBox(item.emailConsent);fields.append(consent.wrap);const getRoles=rolePicker(fields,item.registeredRoles||[]);
-  const locked=["published","archived"].includes(current().castingStatus);
+  const locked=["published","archived"].includes(current().castingStatus)||state.locked;
   if(locked){fields.querySelectorAll("input,select").forEach(x=>x.disabled=true);footer.append(make("p","text-xs text-amber-800","Kết quả đã công bố: hồ sơ chỉ xem."))}
   else footer.append(button("Lưu hồ sơ",async()=>{
    if(!name.value.trim()||!email.checkValidity())throw Error("Họ tên hoặc email không hợp lệ.");
@@ -230,23 +233,23 @@ window.loadStudentList=async function(host){
  }
  async function openImport(){
   const session=current();
-  if(!session||["published","archived"].includes(session.castingStatus))throw Error("Chọn phiên chấm chưa công bố.");
+  if(!session||state.locked||["published","archived"].includes(session.castingStatus))throw Error("Chọn phiên chấm chưa khóa.");
   const policy=state.policy;
   const {fields,footer}=modalShell("Nhập Excel · "+session.name);
   fields.className="space-y-3";
   const norm=v=>String(v??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/đ/g,"d").replace(/[^a-z0-9]/g,"");
-  const fixed=new Map([["sbd","code"],["sobao danh".replace(/ /g,""),"code"],["code","code"],["hoten","name"],["hovaten","name"],["name","name"],["mssv","mssv"],["masosinhvien","mssv"],["email","email"],["sdt","phone"],["sodienthoai","phone"],["phone","phone"],["vaidangky","registeredRoles"],["vaidiendangky","registeredRoles"]]);
+  const fixed=new Map([["sbd","code"],["sobao danh".replace(/ /g,""),"code"],["code","code"],["hoten","name"],["hovaten","name"],["name","name"],["mssv","mssv"],["masosinhvien","mssv"],["email","email"],["sdt","phone"],["sodienthoai","phone"],["phone","phone"],["vaidien","registeredRoles"],["vaidangky","registeredRoles"],["vaidiendangky","registeredRoles"],["roles","registeredRoles"]]);
   const defs=state.defs.filter(d=>!["name","mssv","email","phone","castingEmailConsent"].includes(d.field_key));
   const aliases=new Map(fixed);
   for(const d of defs)for(const a of [norm(d.field_key),norm(d.label)])if(a&&!aliases.has(a))aliases.set(a,d.field_key);
   const file=input("file");file.accept=".xlsx,.xls,.csv";
-  const info=make("p","text-xs text-slate-600","Chọn file chứa SBD, Họ và tên, MSSV, Email, Số điện thoại và các trường phụ của phiên. Tối đa 100 hồ sơ mỗi lượt.");
+  const info=make("p","text-xs text-slate-600","Chọn file chứa SBD, Họ và tên, MSSV, Email, Số điện thoại, Vai diễn và các trường phụ. Vai diễn ngăn cách bằng dấu phẩy, chấm phẩy hoặc xuống dòng. Tối đa 100 hồ sơ mỗi lượt.");
   const report=make("div","text-xs whitespace-pre-wrap max-h-56 overflow-auto border rounded-xl p-3");
   const consent=make("p","text-xs text-slate-600","Hồ sơ nhập mới mặc định chưa đồng ý nhận email; xác nhận riêng trong hồ sơ.");
   const template=button("Tải mẫu Excel",async()=>{
    await window.oscEnsureAsset("XLSX");
    const w=window.XLSX.utils.book_new();
-   const sh=window.XLSX.utils.aoa_to_sheet([["SBD","Họ và tên","MSSV","Email","Số điện thoại",...(policy?.roles?.length?["Vai đăng ký"]:[]),...defs.map(d=>d.label)]]);
+   const sh=window.XLSX.utils.aoa_to_sheet([["SBD","Họ và tên","MSSV","Email","Số điện thoại",...(policy?.roles?.length?["Vai diễn"]:[]),...defs.map(d=>d.label)]]);
    window.XLSX.utils.book_append_sheet(w,sh,"Thi sinh");window.XLSX.writeFile(w,"OSC-Cham-diem-mau-thi-sinh.xlsx");
   },true);
   fields.append(info,template,file,report,consent);
@@ -256,11 +259,7 @@ window.loadStudentList=async function(host){
    if(!window.confirm("Nhập "+ready.length+" hồ sơ vào "+session.name+"?"))return;
    submitting=true;file.disabled=true;const failures=[];let done=0;
    try{
-    for(const row of ready){
-     try{await request("casting-candidate-add",{castingId:session.castingId,groupId:session.id,code:row.code,name:row.name,mssv:row.mssv,email:row.email,phone:row.phone,fields:row.fields,registeredRoles:row.registeredRoles,emailConsent:false,confirmConsent:false});done++}
-     catch(e){failures.push(row.code+": "+e.message)}
-     report.textContent="Đã nhập "+done+"/"+ready.length+" hồ sơ.\n"+failures.join("\n");
-    }
+    const result=await request("casting-candidate-import",{castingId:session.castingId,groupId:session.id,rows:ready,confirm:true});done=result.updated||0;failures.push(...(result.failures||[]).map(f=>(f.code||"Dòng lỗi")+": "+f.reason));report.textContent="Đã nhập "+done+"/"+ready.length+" hồ sơ.\n"+failures.join("\n");
     ready=[];state.offset=0;await loadPage();
     window.showToast?.("Đã nhập "+done+" hồ sơ; "+failures.length+" lỗi cần kiểm tra.");
    }finally{submitting=false;file.disabled=false}
@@ -276,20 +275,23 @@ window.loadStudentList=async function(host){
     if(token!==version)return;
     const data=window.XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]],{header:1,raw:false,defval:""});
     const headers=data.shift()||[],keys=headers.map(h=>aliases.get(norm(h))||"");
+    const unknown=headers.filter((h,i)=>String(h).trim()&&!keys[i]);if(unknown.length)throw Error("Cột không thuộc cấu hình phiên: "+unknown.join(", ")+". Hãy kiểm tra trước khi nhập.");
     if(!keys.includes("code")||!keys.includes("name"))throw Error("Tệp thiếu cột SBD hoặc Họ và tên.");
     if(new Set(keys.filter(Boolean)).size!==keys.filter(Boolean).length)throw Error("Có tiêu đề cột bị trùng.");
     const rows=data.filter(row=>row.some(v=>String(v).trim()));
     if(rows.length>100)throw Error("Tối đa 100 hồ sơ mỗi lượt nhập.");
-    const seenCode=new Set(),seenMssv=new Set(),errors=[];
+    const seenCode=new Set(),seenMssv=new Set(),errors=[],emails=new Map();
+    const canonicalRole=v=>String(v).trim().normalize("NFC").replace(/\s+/g," ").toLocaleLowerCase("vi");
+    const roleMap=new Map((policy?.roles||[]).map(r=>[canonicalRole(r),r]));
     rows.forEach((values,i)=>{
      const rec={code:"",name:"",mssv:"",email:"",phone:"",fields:{},registeredRoles:[]};
-     for(let j=0;j<keys.length;j++){const k=keys[j],v=String(values[j]??"").trim();if(!k)continue;if(["code","name","mssv","email","phone"].includes(k))rec[k]=v;else if(k==="registeredRoles")rec.registeredRoles=v.split(";").map(x=>x.trim()).filter(Boolean);else rec.fields[k]=v}
+     for(let j=0;j<keys.length;j++){const k=keys[j],v=String(values[j]??"").trim();if(!k)continue;if(["code","name","mssv","email","phone"].includes(k))rec[k]=v;else if(k==="registeredRoles")rec.registeredRoles=v.split(/[,;\n\r|]+/).map(x=>x.trim()).filter(Boolean).map(x=>roleMap.get(canonicalRole(x))||x);else rec.fields[k]=v}
      rec.code=rec.code.toUpperCase();rec.mssv=rec.mssv.toUpperCase();
-     if(rec.registeredRoles.length>(policy?.maxRegistered||0)||new Set(rec.registeredRoles).size!==rec.registeredRoles.length||rec.registeredRoles.some(r=>!policy?.roles?.includes(r))){errors.push("Dòng "+(i+2)+": vai đăng ký sai hoặc vượt giới hạn.");return}
+     if(rec.registeredRoles.length>(policy?.maxRegistered||0)||new Set(rec.registeredRoles).size!==rec.registeredRoles.length||rec.registeredRoles.some(r=>!policy?.roles?.includes(r))){errors.push("Dòng "+(i+2)+": vai không thuộc phiên hoặc vượt giới hạn: "+rec.registeredRoles.join(", "));return}
      if(!/^[A-Z0-9_-]{2,40}$/.test(rec.code)||rec.name.length<2||(rec.mssv&&!/^[A-Z0-9_-]{3,50}$/.test(rec.mssv))||(rec.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rec.email))||seenCode.has(rec.code)||(rec.mssv&&seenMssv.has(rec.mssv))){errors.push("Dòng "+(i+2)+": thiếu, sai hoặc trùng thông tin.");return}
-     seenCode.add(rec.code);if(rec.mssv)seenMssv.add(rec.mssv);ready.push(rec);
+     seenCode.add(rec.code);if(rec.mssv)seenMssv.add(rec.mssv);if(rec.email){const e=rec.email.toLowerCase();emails.set(e,(emails.get(e)||0)+1)}ready.push(rec);
     });
-    report.textContent=ready.length+" hồ sơ hợp lệ để kiểm tra trên máy chủ.\n"+errors.join("\n")+"\n"+ready.slice(0,12).map(x=>x.code+" · "+x.name).join("\n");
+    const shared=[...emails.values()].filter(n=>n>1).length;report.textContent=ready.length+" hồ sơ hợp lệ để kiểm tra trên máy chủ.\n"+(shared?"Lưu ý: "+shared+" địa chỉ email dùng chung cho nhiều thí sinh; kiểm tra trước khi gửi kết quả.\n":"")+errors.join("\n")+"\n"+ready.map(x=>x.code+" · "+x.name+(x.registeredRoles.length?" · "+x.registeredRoles.join(" / "):"")).join("\n");
     submit.disabled=!ready.length;
    }catch(e){if(token===version)report.textContent=e.message}
   };
