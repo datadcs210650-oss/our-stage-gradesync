@@ -30,7 +30,7 @@ async function showResults(){
  head.append(hr);t.append(head);const body=document.createElement("tbody");
  for(const r of result.rows||[]){
   const tr=el("tr","border-t"),td=document.createElement("td"),checkbox=document.createElement("input");
-  checkbox.type="checkbox";checkbox.value=r.id;checkbox.className="cast-chosen";checkbox.disabled=r.outcome==="pending"||r.incomplete;
+  checkbox.type="checkbox";checkbox.value=r.id;checkbox.className="cast-chosen";checkbox.disabled=["published","archived"].includes(response.casting.status)||r.incomplete&&r.review!=="approved"||r.outcome==="pending"&&r.review!=="approved";
   td.className="p-3";td.append(checkbox);tr.append(td);
   for(const item of [r.mssv||r.code,r.name,r.groupName,r.score==null?"—":Number(r.score).toFixed(2),
     r.judges+"/"+r.expectedJudges+" · cần "+r.requiredJudges,(r.anomalies||[]).join("; ")||(r.incomplete?"Chưa hoàn tất":"Đủ điểm"),r.incomplete?"CHỜ":r.outcome==="passed"?"PASSED":"NOT PASSED",r.review])tr.append(el("td","p-3",String(item||"")));
@@ -65,11 +65,14 @@ async function loadCastingHub(parent){
  actions.append(button("Duyệt kết quả đã chọn",async()=>{
   const ids=[...table.querySelectorAll(".cast-chosen:checked")].map(x=>x.value);if(ids.length>40)throw Error("Mỗi lần duyệt tối đa 40 hồ sơ. Hãy giảm số lượng chọn.");
   if(!ids.length)throw Error("Chưa chọn thí sinh đủ điều kiện.");
-  const selected=[...table.querySelectorAll(".cast-chosen:checked")].slice(0,40);
+  const selected=[...table.querySelectorAll(".cast-chosen:checked")].filter(x=>result.rows.find(r=>r.id===x.value)?.review!=="approved").slice(0,40);if(!selected.length)throw Error("Các hồ sơ đã duyệt. Hãy chọn hồ sơ chưa duyệt.");
   const decisions=selected.map(x=>({candidateId:x.value,review:"approved",assignedRoles:[...x.closest("tr").querySelectorAll(".cast-role:checked")].map(i=>i.value)}));
   if(!window.confirm("Duyệt "+decisions.length+" hồ sơ? Phiên theo vai: không có vai chính thức sẽ NOT PASSED."))return;
   const response=await api("casting-review",{castingId:current,decisions});
   await showResults();const failures=response.failures||[];toast("Đã duyệt "+response.updated+"/"+decisions.length+" hồ sơ."+ (failures.length?" "+failures.map(f=>(result.rows.find(r=>r.id===f.candidateId)?.code||f.candidateId)+": "+f.reason).join(" · "):""),failures.length>0);
+ }),button("Hủy duyệt đã chọn",async()=>{
+  const ids=[...table.querySelectorAll(".cast-chosen:checked")].map(x=>x.value).filter(id=>result.rows.find(r=>r.id===id)?.review==="approved");if(!ids.length||ids.length>40)throw Error("Chọn 1–40 hồ sơ đã duyệt.");if(!window.confirm("Hủy duyệt "+ids.length+" hồ sơ? Điểm BGK vẫn được giữ nguyên. Không hủy hồ sơ đã công bố hoặc đồng bộ OSC."))return;
+  const r=await api("casting-cancel-review",{castingId:current,candidateIds:ids,confirm:true});await showResults();toast("Đã hủy duyệt "+r.cancelled+" hồ sơ.");
  }),button("Kiểm tra đồng bộ OSC",async()=>{
   const res=await action("casting-sync-payload",{castingId:current});
   toast("Đã đối chiếu "+res.candidates.length+" hồ sơ học kỳ "+res.term+". Chưa ghi vào OSC khi chưa xác nhận.");
