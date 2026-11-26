@@ -183,7 +183,7 @@ window.loadStudentList=async function(host){
   code.disabled=true;
   fields.append(label("Họ tên",name),label("SBD (không thay đổi tại đây)",code),label("MSSV",mssv),label("Email liên hệ",email),label("Số điện thoại",phone));
   const extras=extraInputs(fields,item),consent=consentBox(item.emailConsent);fields.append(consent.wrap);const getRoles=rolePicker(fields,item.registeredRoles||[]);
-  const locked=["published","archived"].includes(current().castingStatus)||state.locked;
+  const locked=["published","archived"].includes(current().castingStatus);
   if(locked){fields.querySelectorAll("input,select").forEach(x=>x.disabled=true);footer.append(make("p","text-xs text-amber-800","Kết quả đã công bố: hồ sơ chỉ xem."))}
   else footer.append(button("Lưu hồ sơ",async()=>{
    if(!name.value.trim()||!email.checkValidity())throw Error("Họ tên hoặc email không hợp lệ.");
@@ -252,16 +252,16 @@ window.loadStudentList=async function(host){
    const sh=window.XLSX.utils.aoa_to_sheet([["SBD","Họ và tên","MSSV","Email","Số điện thoại",...(policy?.roles?.length?["Vai diễn"]:[]),...defs.map(d=>d.label)]]);
    window.XLSX.utils.book_append_sheet(w,sh,"Thi sinh");window.XLSX.writeFile(w,"OSC-Cham-diem-mau-thi-sinh.xlsx");
   },true);
-  fields.append(info,template,file,report,consent);
+  const fillRoles=input("checkbox");fillRoles.className="h-4 w-4 accent-red-800";fillRoles.checked=!!policy?.roles?.length;const fillBox=make("label","flex gap-2 items-center text-xs font-semibold text-slate-700");fillBox.append(fillRoles,make("span","","Bổ sung vai còn thiếu cho hồ sơ đã tồn tại (khớp SBD và MSSV, không ghi đè vai cũ)"));if(!policy?.roles?.length)fillBox.hidden=true;fields.append(info,template,file,fillBox,report,consent);
   let ready=[],version=0,submitting=false;
   const submit=button("Nhập hồ sơ hợp lệ",async()=>{
    if(submitting||!ready.length)return;
-   if(!window.confirm("Nhập "+ready.length+" hồ sơ vào "+session.name+"?"))return;
+   if(!window.confirm("Nhập "+ready.length+" hồ sơ vào "+session.name+"?"+(fillRoles.checked?"\nHồ sơ trùng SBD và MSSV sẽ chỉ được bổ sung vai còn thiếu, không đổi thông tin cũ.":"")))return;
    submitting=true;file.disabled=true;const failures=[];let done=0;
    try{
-    const result=await request("casting-candidate-import",{castingId:session.castingId,groupId:session.id,rows:ready,confirm:true});done=result.updated||0;failures.push(...(result.failures||[]).map(f=>(f.code||"Dòng lỗi")+": "+f.reason));report.textContent="Đã nhập "+done+"/"+ready.length+" hồ sơ.\n"+failures.join("\n");
+    const result=await request("casting-candidate-import",{castingId:session.castingId,groupId:session.id,rows:ready,confirm:true,fillMissingRoles:fillRoles.checked});done=result.updated||0;failures.push(...(result.failures||[]).map(f=>(f.code||"Dòng lỗi")+": "+f.reason));report.textContent="Thêm mới "+(result.inserted||0)+" · Bổ sung vai "+(result.filled||0)+" · Đã khớp "+(result.skipped||0)+" · Lỗi "+failures.length+"\n"+failures.join("\n");
     ready=[];state.offset=0;await loadPage();
-    window.showToast?.("Đã nhập "+done+" hồ sơ; "+failures.length+" lỗi cần kiểm tra.");
+    window.showToast?.("Đã cập nhật "+done+" hồ sơ; "+failures.length+" lỗi cần kiểm tra.");
    }finally{submitting=false;file.disabled=false}
   });
   submit.disabled=true;footer.append(submit);
@@ -275,7 +275,7 @@ window.loadStudentList=async function(host){
     if(token!==version)return;
     const data=window.XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]],{header:1,raw:false,defval:""});
     const headers=data.shift()||[],keys=headers.map(h=>aliases.get(norm(h))||"");
-    const unknown=headers.filter((h,i)=>String(h).trim()&&!keys[i]);if(unknown.length)throw Error("Cột không thuộc cấu hình phiên: "+unknown.join(", ")+". Hãy kiểm tra trước khi nhập.");
+    const readOnlyHeaders=new Set(["ketqua","duyet"]);const unknown=headers.filter((h,i)=>String(h).trim()&&!keys[i]&&!readOnlyHeaders.has(norm(h)));if(unknown.length)throw Error("Cột không thuộc cấu hình phiên: "+unknown.join(", ")+". Hãy kiểm tra trước khi nhập.");
     if(!keys.includes("code")||!keys.includes("name"))throw Error("Tệp thiếu cột SBD hoặc Họ và tên.");
     if(new Set(keys.filter(Boolean)).size!==keys.filter(Boolean).length)throw Error("Có tiêu đề cột bị trùng.");
     const rows=data.filter(row=>row.some(v=>String(v).trim()));

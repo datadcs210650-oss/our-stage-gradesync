@@ -1,0 +1,1 @@
+grant select on table gradesync_internal.attendance_locks to service_role;
