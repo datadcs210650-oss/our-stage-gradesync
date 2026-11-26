@@ -81,7 +81,10 @@ export default async function handler(req,res){
   if(!UUID.test(gid))throw fail("Phiên chấm không hợp lệ.");
   const db=sb(),{profile,email}=await actor(db,token);
   const assignment=required(await db.from("grader_assignments").select("id").eq("group_id",gid).eq("grader_id",profile.id).maybeSingle());if(!assignment)throw fail("BGK không được phân công phiên này.",403);
-  const scope=required(await db.from("competition_groups").select("casting_id,extra_data").eq("id",gid).single());if(scope.casting_id&&scope.extra_data?.blockGraderAfterPublish!==false){const casting=required(await db.from("gs_castings").select("status").eq("id",scope.casting_id).single());if(["published","archived"].includes(casting.status))throw fail("Phiên đã công bố, không còn quyền truy cập.",403);}
+  const scope=required(await db.from("competition_groups").select("casting_id,extra_data").eq("id",gid).single());
+  const publication=required(await db.from("osc_group_publications").select("scheduled_at").eq("group_id",gid).is("cancelled_at",null).order("scheduled_at").limit(1));
+  if(publication.length&&body.action!=="completion-status")throw fail("Phiên đã khóa để công bố kết quả.",409);
+  if(scope.casting_id&&scope.extra_data?.blockGraderAfterPublish!==false){const casting=required(await db.from("gs_castings").select("status").eq("id",scope.casting_id).single());if(["published","archived"].includes(casting.status)||publication.some(x=>Date.parse(x.scheduled_at)<=Date.now()))throw fail("Phiên đã công bố, không còn quyền truy cập.",403);}
   if(body.action==="preflight"){
    const info=await preflight(db,profile,gid);
    return reply(res,200,{ok:true,groupName:info.group.name,completeness:info.completeness});

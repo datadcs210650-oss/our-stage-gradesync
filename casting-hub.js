@@ -30,10 +30,10 @@ async function showResults(){
  head.append(hr);t.append(head);const body=document.createElement("tbody");
  for(const r of result.rows||[]){
   const tr=el("tr","border-t"),td=document.createElement("td"),checkbox=document.createElement("input");
-  checkbox.type="checkbox";checkbox.value=r.id;checkbox.className="cast-chosen";checkbox.disabled=["published","archived"].includes(response.casting.status)||r.incomplete&&r.review!=="approved"||r.outcome==="pending"&&r.review!=="approved";
+  checkbox.type="checkbox";checkbox.value=r.id;checkbox.className="cast-chosen";checkbox.disabled=!!r.publicationAt||["published","archived"].includes(response.casting.status)||r.incomplete&&r.review!=="approved"||r.outcome==="pending"&&r.review!=="approved";
   td.className="p-3";td.append(checkbox);tr.append(td);
   for(const item of [r.mssv||r.code,r.name,r.groupName,r.score==null?"—":Number(r.score).toFixed(2),
-    r.judges+"/"+r.expectedJudges+" · cần "+r.requiredJudges,(r.anomalies||[]).join("; ")||(r.incomplete?"Chưa hoàn tất":"Đủ điểm"),r.incomplete?"CHỜ":r.outcome==="passed"?"PASSED":"NOT PASSED",r.review])tr.append(el("td","p-3",String(item||"")));
+    r.judges+"/"+r.expectedJudges+" · cần "+r.requiredJudges,(r.anomalies||[]).join("; ")||(r.incomplete?"Chưa hoàn tất":"Đủ điểm"),r.incomplete?"CHỜ":r.outcome==="passed"?"PASSED":"NOT PASSED",r.publicationAt?(Date.parse(r.publicationAt)>Date.now()?"Đã đặt lịch công bố":"Đã công bố"):r.review])tr.append(el("td","p-3",String(item||"")));
   const roleCell=el("td","p-3 min-w-[230px]");
   if(r.roleOptions?.length){
    const selected=new Set(r.assignedRoles||[]),roleInputs=[];
@@ -42,7 +42,7 @@ async function showResults(){
    const info=el("details","mb-2 text-xs");info.append(el("summary","cursor-pointer text-gray-600","Đề xuất & ghi chú BGK"));
    for(const g of r.judgeEvaluations||[])info.append(el("p","py-1",g.grader+": "+(g.roles.join(", ")||"—")+(g.note?" · "+g.note:"")));
    roleCell.append(info,status);
-   const locked=r.incomplete||r.syncState==="synced"||["published","archived"].includes(response.casting.status);
+   const locked=!!r.publicationAt||r.incomplete||r.syncState==="synced"||["published","archived"].includes(response.casting.status);
    for(const role of r.roleOptions){const label=el("label","flex items-center gap-2 py-1");const input=document.createElement("input");input.type="checkbox";input.className="cast-role accent-red-900";input.value=role;input.checked=selected.has(role);input.disabled=locked;input.onchange=()=>{if(input.checked&&roleInputs.filter(x=>x.checked).length>r.maxOfficialRoles){input.checked=false;toast("Tối đa "+r.maxOfficialRoles+" vai chính thức mỗi thí sinh.",true)}refresh()};roleInputs.push(input);const used=(result.rows||[]).filter(x=>x.groupId===r.groupId&&x.review==="approved"&&x.outcome==="passed"&&x.assignedRoles?.includes(role)).length;const cap=Object.hasOwn(r.roleCapacity||{},role)?r.roleCapacity[role]:1;label.append(input,el("span","",role+" · "+used+"/"+cap));roleCell.append(label)}
    roleCell.append(el("p","text-[10px] text-gray-500 mt-1","Tối đa "+r.maxOfficialRoles+" vai chính thức"));refresh();
   }else roleCell.textContent="—";

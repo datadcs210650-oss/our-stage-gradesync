@@ -49,7 +49,7 @@ window.loadCastingEmail=async function(host){
  const top=node("div","grid grid-cols-1 md:grid-cols-2 gap-3");
  top.append(label("Tiêu đề Email",subject),label("Hẹn giờ công bố (để trống nếu gửi ngay)",date));
  compose.append(top,label("Lời chào / mở đầu",intro),label("Lời cảm ơn",thanks),
-  node("p","text-xs text-slate-500","Resend tự gửi đúng thời gian đã đặt dù Admin tắt web. Thời gian tối đa 29 ngày tới. Mỗi email có họ tên, SBD, kết quả và vai chính thức nếu có. Không đính kèm liên kết tra cứu."));
+  node("p","text-xs text-slate-500","Resend tự gửi đúng thời gian đã đặt dù Admin tắt web. Phiên bị khóa chỉnh sửa khi xác nhận gửi hoặc đặt lịch; chỉ mở lại nếu hủy toàn bộ lịch thành công trước giờ công bố. Thời gian tối đa 29 ngày tới. Mỗi email có họ tên, SBD, kết quả và vai chính thức nếu có. Không đính kèm liên kết tra cứu."));
  const sample=card("Xem trước nội dung");
  const sampleBody=node("div","text-xs leading-relaxed space-y-1 text-slate-600","Hãy tải danh sách và chọn thí sinh.");
  sample.append(sampleBody);compose.append(sample);
@@ -170,7 +170,7 @@ window.loadCastingEmail=async function(host){
     " · "+job.count+" email · "+(job.scheduledAt?
       new Date(job.scheduledAt).toLocaleString("vi-VN"):
       new Date(job.createdMs).toLocaleString("vi-VN"))));
-   if(job.status==="scheduled")row.append(btn("Hủy lịch",async()=>{
+   if(["scheduled","cancelled-lock-pending"].includes(job.status))row.append(btn("Hủy lịch",async()=>{
     if(!window.confirm("Hủy lịch gửi "+job.count+" email?"))return;
     const r=await api("casting-result-email",{task:"cancel",castingId:casting.value,jobId:job.id});
     notify("Đã hủy "+r.cancelled+"/"+r.requested+" email hẹn giờ.");
