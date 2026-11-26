@@ -34,7 +34,7 @@ for(const key of ["localStorage","sessionStorage"]){
  window.oscGradingCall=async function(action,details={}){
   await connected;
   return new Promise((resolve,reject)=>{
-   const isRead=action==="console-documents"&&details.ops?.every(o=>o.kind==="read")||["casting-list","casting-group-options","casting-report-data","casting-results","casting-receipt-list","casting-candidate-list","console-identity"].includes(action);const end=window.OSCProgress?.foreground()||!isRead?window.OSCProgress?.begin(isRead?"Đang tải dữ liệu…":"Đang xử lý…"):null;
+   const isRead=action==="console-documents"&&details.ops?.every(o=>o.kind==="read")||["casting-account-list","casting-list","casting-group-options","casting-report-data","casting-results","casting-receipt-list","casting-candidate-list","console-identity"].includes(action);const end=window.OSCProgress?.foreground()||!isRead?window.OSCProgress?.begin(isRead?"Đang tải dữ liệu…":"Đang xử lý…"):null;
    const id=crypto.randomUUID(),timer=setTimeout(()=>{pending.delete(id);end?.();reject(Error("Yêu cầu quá thời gian phản hồi. Kiểm tra dữ liệu trước khi thực hiện lại."));},70000);
    pending.set(id,{resolve,reject,timer,end});
    try{wire.postMessage({id,action,details})}catch(e){pending.delete(id);clearTimeout(timer);end?.();reject(e)}
@@ -831,9 +831,9 @@ window.currentUserData = null; window.activeListeners = [];
         };
         window.toggleSidebar = function(){ const mobile=window.matchMedia('(max-width:900px)').matches; if(mobile){ document.body.classList.toggle('gs-mobile-hidden'); } else { document.body.classList.toggle('gs-collapsed'); localStorage.setItem('gsSidebarCollapsed', document.body.classList.contains('gs-collapsed')); } };
         window.toggleThemePanel = function(){ document.getElementById('gs-settings')?.classList.toggle('open'); };
-        window.setTheme = function(mode){ const d=document.body; d.classList.remove('dark-mode'); if(mode==='dark') d.classList.add('dark-mode'); if(mode==='system' && matchMedia('(prefers-color-scheme: dark)').matches) d.classList.add('dark-mode'); localStorage.setItem('gsTheme',mode); };
+        window.setTheme = function(mode){window.OSCAppearance?.set(mode);};
         window.setAccent = function(c){ const map={red:['#991b1b','#7f1d1d'],blue:['#1d4ed8','#1e3a8a'],purple:['#6d28d9','#4c1d95'],green:['#047857','#065f46']}; const a=map[c]||map.red; document.documentElement.style.setProperty('--gs-primary',a[0]); document.documentElement.style.setProperty('--gs-primary2',a[1]); localStorage.setItem('gsAccent',c); document.querySelectorAll('.sidebar-gradient').forEach(x=>x.style.background=`linear-gradient(180deg,${a[0]} 0%,${a[1]} 100%)`); };
-        (function(){ const t=localStorage.getItem('gsTheme')||'light'; window.setTheme(t); const a=localStorage.getItem('gsAccent')||'red'; window.setAccent(a); if(localStorage.getItem('gsSidebarCollapsed')==='true' && !matchMedia('(max-width:900px)').matches) document.body.classList.add('gs-collapsed'); })();
+        (function(){ const t=window.OSCAppearance?.get()?.mode||'system';document.querySelectorAll('.gs-theme-select').forEach(s=>s.value=t); const a=localStorage.getItem('gsAccent')||'red'; window.setAccent(a); if(localStorage.getItem('gsSidebarCollapsed')==='true' && !matchMedia('(max-width:900px)').matches) document.body.classList.add('gs-collapsed'); })();
 
         // ===== V15: ĐĂNG NHẬP ỔN ĐỊNH CHO ADMIN + GIÁM KHẢO =====
         window._authFlow = null;
@@ -2816,7 +2816,7 @@ window.currentUserData = null; window.activeListeners = [];
             document.body.appendChild(element);
 
             window.showLoading(true, "Đang tạo PDF Lịch sử..."); const safeTitle = selectedGrader ? selectedGrader.replace(/[^a-zA-Z0-9]/g, '_') : 'TatCa';
-            var opt = { margin: [0.3, 0.2, 0.3, 0.2], filename: `Lich_Su_Cham_Diem_${safeTitle}.pdf`, image: { type: 'jpeg', quality: 1 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'in', format: 'a4', orientation: 'landscape' }, pagebreak: { mode: ['css', 'legacy'], avoid: 'tr' } };
+            var opt = { margin: [0.3, 0.2, 0.3, 0.2], filename: `Lich_Su_Cham_Diem_${safeTitle}.pdf`, image: { type: 'jpeg', quality: 1 }, html2canvas: { onclone:doc=>{doc.documentElement.dataset.oscTheme="light";doc.documentElement.style.colorScheme="light";doc.body?.classList.remove("dark-mode")},scale: 2, useCORS: true }, jsPDF: { unit: 'in', format: 'a4', orientation: 'landscape' }, pagebreak: { mode: ['css', 'legacy'], avoid: 'tr' } };
             await window.html2pdf().set(opt).from(element).save().then(() => { document.body.removeChild(element); window.showLoading(false); window.showToast("Đã tải PDF!"); }).catch(e => { document.body.removeChild(element); window.showLoading(false); window.showToast("Lỗi in PDF", "error"); });
         };
 

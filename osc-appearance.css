@@ -42,3 +42,6 @@ html[data-osc-theme="dark"] :is(.primary,.btn.primary) :is(h1,h2,h3,h4,small,spa
 html[data-osc-theme="dark"] :is(.text-red-900,.text-red-950,.text-red-800).font-black{color:var(--osc-ui-accent-text)!important}
 }
 @media(max-width:640px){.osc-theme-floating{top:8px;right:8px}.osc-theme-control select{max-width:105px!important;font-size:11px!important}.osc-theme-control{padding:2px 4px;gap:2px}.osc-theme-icon{font-size:14px}.osc-progress-label{max-width:80vw}}
+
+@media screen{html[data-osc-theme="dark"] #osc-boot-status{background:var(--osc-ui-card)!important;color:var(--osc-ui-text)!important;border-color:var(--osc-ui-line)!important}}
+button[aria-busy=true]{cursor:progress;opacity:.75}

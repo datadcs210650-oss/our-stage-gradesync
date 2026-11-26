@@ -14,14 +14,14 @@
     <!-- NỀN TẢNG CHẤM ĐIỂM V29.2 - V27 STABLE HOTFIX: time/PDF/score-clear -->
     <title>NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live</title>
     <script>window.GS_MANUAL_SCORE_MODE=true;</script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script defer src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script async src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" media="print" onload="this.media='all'">
+    
+    
+    
     <link rel="icon" type="image/png" href="/logo-ui-centered.png?v=osc2">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        /* Use system fonts without blocking the sign-in screen. */
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; background-image: radial-gradient(#e5e7eb 1px, transparent 1px); background-size: 20px 20px; font-size: 13px; }
         .sidebar-gradient { background: linear-gradient(180deg, rgba(153, 27, 27, 0.95) 0%, rgba(127, 29, 29, 0.95) 100%); backdrop-filter: blur(10px); }
         .menu-item { transition: all 0.3s ease; } .menu-item.active { background: rgba(255, 255, 255, 0.2); border-radius: 0.5rem; font-weight: 600; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); } .menu-item:hover:not(.active) { background: rgba(255, 255, 255, 0.1); border-radius: 0.5rem; transform: translateX(4px); }
@@ -704,9 +704,9 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         };
         window.toggleSidebar = function(){ const mobile=window.matchMedia('(max-width:900px)').matches; if(mobile){ document.body.classList.toggle('gs-mobile-hidden'); } else { document.body.classList.toggle('gs-collapsed'); localStorage.setItem('gsSidebarCollapsed', document.body.classList.contains('gs-collapsed')); } };
         window.toggleThemePanel = function(){ document.getElementById('gs-settings')?.classList.toggle('open'); };
-        window.setTheme = function(mode){ const d=document.body; d.classList.remove('dark-mode'); if(mode==='dark') d.classList.add('dark-mode'); if(mode==='system' && matchMedia('(prefers-color-scheme: dark)').matches) d.classList.add('dark-mode'); localStorage.setItem('gsTheme',mode); };
+        window.setTheme = function(mode){window.OSCAppearance?.set(mode);};
         window.setAccent = function(c){ const map={red:['#991b1b','#7f1d1d'],blue:['#1d4ed8','#1e3a8a'],purple:['#6d28d9','#4c1d95'],green:['#047857','#065f46']}; const a=map[c]||map.red; document.documentElement.style.setProperty('--gs-primary',a[0]); document.documentElement.style.setProperty('--gs-primary2',a[1]); localStorage.setItem('gsAccent',c); document.querySelectorAll('.sidebar-gradient').forEach(x=>x.style.background=`linear-gradient(180deg,${a[0]} 0%,${a[1]} 100%)`); };
-        (function(){ const t=localStorage.getItem('gsTheme')||'light'; window.setTheme(t); const a=localStorage.getItem('gsAccent')||'red'; window.setAccent(a); if(localStorage.getItem('gsSidebarCollapsed')==='true' && !matchMedia('(max-width:900px)').matches) document.body.classList.add('gs-collapsed'); })();
+        (function(){ const t=window.OSCAppearance?.get()?.mode||'system';document.querySelectorAll('.gs-theme-select').forEach(s=>s.value=t); const a=localStorage.getItem('gsAccent')||'red'; window.setAccent(a); if(localStorage.getItem('gsSidebarCollapsed')==='true' && !matchMedia('(max-width:900px)').matches) document.body.classList.add('gs-collapsed'); })();
 
         // ===== V15: ĐĂNG NHẬP ỔN ĐỊNH CHO ADMIN + GIÁM KHẢO =====
         window._authFlow = null;
@@ -1097,7 +1097,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                         <div class="bg-white p-5 rounded-3xl shadow-sm border hover-lift"><h3 class="text-sm font-black mb-4 flex items-center"><i class="fas fa-chart-bar text-red-800 mr-2"></i>Hoạt động hệ thống</h3><div class="w-full h-56 flex justify-center items-center"><canvas id="aChart"></canvas></div></div>
                     </div>
                 `;
-                setTimeout(() => { new Chart(document.getElementById('pChart').getContext('2d'), { type: 'doughnut', data: { labels: ['Đạt', 'Chưa đạt'], datasets: [{ data: [pC, nP], backgroundColor: ['#10b981', '#f43f5e'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } } }); new Chart(document.getElementById('aChart').getContext('2d'), { type: 'bar', data: { labels: ['Nhóm', 'Thí Sinh', 'Lượt Chấm'], datasets: [{ label: 'Số lượng', data: [tG, tC, aS.length], backgroundColor: ['#991b1b', '#3b82f6', '#10b981'], borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } }); }, 100);
+                setTimeout(async () => { try{await window.oscEnsureAsset('Chart'); if(!document.getElementById('pChart')||!document.getElementById('aChart'))return;  new Chart(document.getElementById('pChart').getContext('2d'), { type: 'doughnut', data: { labels: ['Đạt', 'Chưa đạt'], datasets: [{ data: [pC, nP], backgroundColor: ['#10b981', '#f43f5e'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } } }); new Chart(document.getElementById('aChart').getContext('2d'), { type: 'bar', data: { labels: ['Nhóm', 'Thí Sinh', 'Lượt Chấm'], datasets: [{ label: 'Số lượng', data: [tG, tC, aS.length], backgroundColor: ['#991b1b', '#3b82f6', '#10b981'], borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } }); }catch(e){window.showToast?.(e.message,'error')} }, 100);
             } catch(e) { window.renderErrorState(container, e.message); }
         };
 
@@ -1157,7 +1157,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                     <div class="bg-white p-5 rounded-3xl shadow-sm flex flex-col h-64"><h3 class="text-sm font-black mb-2"><i class="fas fa-chart-bar text-red-800 mr-2"></i>Phổ điểm</h3><div class="flex-1 w-full relative"><canvas id="cChart"></canvas></div></div>
                 </div>
             `;
-            setTimeout(() => { if(window._cI) window._cI.destroy(); window._cI = new Chart(document.getElementById('cChart').getContext('2d'), { type: 'bar', data: { labels: cL.map(l => l.length > 10 ? l.substring(0, 10) + '...' : l), datasets: [{ data: cD, backgroundColor: '#991b1b', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { max: 100 } }, plugins: { legend: { display: false } } } }); }, 100);
+            setTimeout(async () => { try{await window.oscEnsureAsset('Chart'); if(!document.getElementById('cChart'))return;  if(window._cI) window._cI.destroy(); window._cI = new Chart(document.getElementById('cChart').getContext('2d'), { type: 'bar', data: { labels: cL.map(l => l.length > 10 ? l.substring(0, 10) + '...' : l), datasets: [{ data: cD, backgroundColor: '#991b1b', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { max: 100 } }, plugins: { legend: { display: false } } } }); }catch(e){window.showToast?.(e.message,'error')} }, 100);
         };
         // --- CẮT XUỐNG PHẦN 3 ---
 // --- BẮT ĐẦU PHẦN 3 ---
@@ -1642,12 +1642,14 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         };
         window.dC = function(id) { window.showCustomConfirm("Xóa thí sinh này?", async () => { window.showLoading(true, "Xóa..."); try { await window.deleteDoc(window.doc(window.db, "candidates", id)); window.fRC(); window.showToast("Đã xóa!"); } catch(e){} window.showLoading(false); }); };
 
-        window.dLT = function() {
+        window.dLT = async function() {
+            try{await window.oscEnsureAsset("XLSX")}catch(e){window.showToast(e.message,"error");return;}
             const g = document.getElementById('c-g').value; let o = { "Mã số": "SBD01", "Họ tên": "Nguyễn A" }; 
             if(g && window._gMap[g] && window._gMap[g].extraFields) { window._gMap[g].extraFields.forEach(f => o[f.name] = "Điền..."); } else { o["Khác"] = "Điền..."; } 
             const ws = window.XLSX.utils.json_to_sheet([o]); const wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, ws, "Mẫu"); window.XLSX.writeFile(wb, "Mau_ThiSinh.xlsx"); 
         };
         window.eEC = async function() {
+            try{await window.oscEnsureAsset("XLSX")}catch(e){window.showToast(e.message,"error");return;}
             const cs = await window.getDocs(window.collection(window.db, "candidates")); let dt = []; 
             cs.forEach(d => { const x = d.data(); let r = { "Mã số": x.code || "", "Họ tên": x.name, "Nhóm": window._gMap[x.groupId]?.name || "" }; let eD = x.extraData || {}; if(x.extraInfo && Object.keys(eD).length === 0) eD["Khác"] = x.extraInfo; Object.assign(r, eD); dt.push(r); }); 
             const ws = window.XLSX.utils.json_to_sheet(dt); const wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, ws, "DS"); window.XLSX.writeFile(wb, "DS_ThiSinh.xlsx"); 
@@ -1656,6 +1658,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         window.iEx = async function(e) {
             const f = e.target.files && e.target.files[0];
             if (!f) return;
+            try{await window.oscEnsureAsset("XLSX")}catch(_e){}
             if (!window.XLSX) {
                 window.showToast("Không tải được thư viện đọc Excel. Hãy tải lại trang.", "error");
                 e.target.value = "";
@@ -2695,6 +2698,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         };
 
         window.exportLogsPDF = async function() {
+            try{await window.oscEnsureAsset("html2pdf")}catch(e){window.showToast(e.message,"error");return;}
             if(!["Admin","SuperAdmin"].includes(window.currentUserData?.role)){
               window.showToast?.("Chỉ BCN quản trị được tải hoặc xuất dữ liệu chấm điểm.","error");
               return;
@@ -2712,7 +2716,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
             document.body.appendChild(element);
 
             window.showLoading(true, "Đang tạo PDF Lịch sử..."); const safeTitle = selectedGrader ? selectedGrader.replace(/[^a-zA-Z0-9]/g, '_') : 'TatCa';
-            var opt = { margin: [0.3, 0.2, 0.3, 0.2], filename: `Lich_Su_Cham_Diem_${safeTitle}.pdf`, image: { type: 'jpeg', quality: 1 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'in', format: 'a4', orientation: 'landscape' }, pagebreak: { mode: ['css', 'legacy'], avoid: 'tr' } };
+            var opt = { margin: [0.3, 0.2, 0.3, 0.2], filename: `Lich_Su_Cham_Diem_${safeTitle}.pdf`, image: { type: 'jpeg', quality: 1 }, html2canvas: { onclone:doc=>{doc.documentElement.dataset.oscTheme="light";doc.documentElement.style.colorScheme="light";doc.body?.classList.remove("dark-mode")},scale: 2, useCORS: true }, jsPDF: { unit: 'in', format: 'a4', orientation: 'landscape' }, pagebreak: { mode: ['css', 'legacy'], avoid: 'tr' } };
             await window.html2pdf().set(opt).from(element).save().then(() => { document.body.removeChild(element); window.showLoading(false); window.showToast("Đã tải PDF!"); }).catch(e => { document.body.removeChild(element); window.showLoading(false); window.showToast("Lỗi in PDF", "error"); });
         };
 
@@ -2814,7 +2818,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                     const hasScore=cS.length>0; const isPass=hasScore && total>=Number(groupInfo.passScore); if(rF==='PASS'&&(!hasScore||!isPass))return;if(rF==='FAIL'&&(!hasScore||isPass))return;
                     n++; data.push([n,cd.code||'-',cd.name||'-',...eFs.map(f=>cd.extraData?.[f.name]||'-'),...(groupInfo.criteria||[]).map(c=>fS[c.name]??'-'),hasScore?Number(total):'-',hasScore?(isPass?'ĐẠT':'TRƯỢT'):'CHỜ']);
                 });
-                const ws=window.XLSX.utils.aoa_to_sheet(data); const lastCol=headers.length-1;
+                await window.oscEnsureAsset("XLSX");const ws=window.XLSX.utils.aoa_to_sheet(data); const lastCol=headers.length-1;
                 ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:lastCol}}];
                 ws['!cols']=[{wch:6},{wch:16},{wch:30},...eFs.map(()=>({wch:16})),...(groupInfo.criteria||[]).map(()=>({wch:18})),{wch:12},{wch:12}];
                 const border={top:{style:'thin',color:{rgb:'000000'}},bottom:{style:'thin',color:{rgb:'000000'}},left:{style:'thin',color:{rgb:'000000'}},right:{style:'thin',color:{rgb:'000000'}}};
@@ -2970,11 +2974,11 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                     .signature{border:1.5px solid #16a34a;color:#b91c1c;text-align:left;padding:2.5mm 3mm;font-size:10px;line-height:1.35}.sig-title{font-weight:700;font-size:12px;margin-bottom:1mm}.not-verified{color:#991b1b;font-style:italic;margin-top:3mm}
                 </style>`;
                 const pdfName=window.sanitizeFileName(requestedFileName,`Bien_Ban_${title}_${graderCode==='ALL'?'HoiDong':signerName}`);
-                await window.html2pdf().set({
+                await window.oscEnsureAsset("html2pdf");await window.html2pdf().set({
                     margin:[6,6,6,6],
                     filename:pdfName.toLowerCase().endsWith('.pdf')?pdfName:`${pdfName}.pdf`,
                     image:{type:'jpeg',quality:0.98},
-                    html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff',logging:false},
+                    html2canvas:{onclone:doc=>{doc.documentElement.dataset.oscTheme="light";doc.documentElement.style.colorScheme="light";doc.body?.classList.remove("dark-mode")},scale:2,useCORS:true,backgroundColor:'#fff',logging:false},
                     jsPDF:{unit:'mm',format:'a4',orientation:'landscape'},
                     pagebreak:{mode:['css','legacy'],avoid:['tr','.sign-wrap']}
                 }).from(style+`<div class="pdf-root">${pages}</div>`).save();
@@ -7252,6 +7256,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
       const c=d.data();
       rows.push([c.code||'',c.name||'',...(g.criteria||[]).map(()=>''),'','']);
     });
+    try{await window.oscEnsureAsset("XLSX")}catch(e){window.showToast?.(e.message,"error");return;}
     const ws=window.XLSX.utils.aoa_to_sheet(rows);
     ws['!cols']=[{wch:14},{wch:30},...(g.criteria||[]).map(()=>({wch:18})),{wch:12},{wch:12}];
     const wb=window.XLSX.utils.book_new();
@@ -7320,7 +7325,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
       const file=document.getElementById('gs-import-excel-file')?.files?.[0];
       if(!file) return window.showToast?.('Hãy chọn file Excel.','error');
       try{
-        const buf=await file.arrayBuffer();
+        await window.oscEnsureAsset("XLSX");const buf=await file.arrayBuffer();
         const wb=window.XLSX.read(buf,{type:'array'});
         const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=window.XLSX.utils.sheet_to_json(ws,{defval:''});
@@ -7543,11 +7548,11 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
       </div>`;
 
       const filename=window.sanitizeFileName(`KetQua_${group.name||groupId}_${graderCode}`)+'.pdf';
-      await window.html2pdf().set({
+      await window.oscEnsureAsset("html2pdf");await window.html2pdf().set({
         margin:[8,8,8,8],
         filename,
         image:{type:'jpeg',quality:0.98},
-        html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff',logging:false},
+        html2canvas:{onclone:doc=>{doc.documentElement.dataset.oscTheme="light";doc.documentElement.style.colorScheme="light";doc.body?.classList.remove("dark-mode")},scale:2,useCORS:true,backgroundColor:'#fff',logging:false},
         jsPDF:{unit:'mm',format:'a4',orientation:'landscape'},
         pagebreak:{mode:['css','legacy'],avoid:['tr','.footer']}
       }).from(htmlPdf).save();

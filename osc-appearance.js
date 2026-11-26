@@ -1,10 +1,10 @@
 /* OSC appearance + nonblocking progress */
 (function(){"use strict";if(window.OSCAppearance)return;
 const key="osc-appearance-v1",modes=["system","light","dark"],names={system:"Theo hệ thống",light:"Sáng",dark:"Tối"},media=matchMedia("(prefers-color-scheme: dark)"),embedded=parent!==window;
-let mode="system",external=null,select=null;try{const v=localStorage.getItem(key);if(modes.includes(v))mode=v}catch(_){}
+let mode="system",external=null,select=null;try{const v=localStorage.getItem(key)||(!embedded?localStorage.getItem("gsTheme"):null);if(modes.includes(v))mode=v}catch(_){}
 const get=()=>({mode:external?.mode||mode,theme:external?.theme||(mode==="system"?(media.matches?"dark":"light"):mode)});
-function apply(notify=true){const v=get();document.documentElement.dataset.oscTheme=v.theme;document.documentElement.style.colorScheme=v.theme;if(select)select.value=v.mode;if(notify)window.dispatchEvent(new CustomEvent("osc-appearance-change",{detail:v}))}
-function choose(v){if(!modes.includes(v))return;mode=v;external=null;try{localStorage.setItem(key,v)}catch(_){}apply()}
+function apply(notify=true){const v=get();document.documentElement.dataset.oscTheme=v.theme;document.documentElement.style.colorScheme=v.theme;if(select)select.value=v.mode;for(const el of document.querySelectorAll(".gs-theme-select"))el.value=v.mode;document.body?.classList.remove("dark-mode");if(notify)window.dispatchEvent(new CustomEvent("osc-appearance-change",{detail:v}))}
+function choose(v){if(!modes.includes(v))return;if(embedded){if(window.oscGradingCall)window.oscGradingCall("console-theme",{mode:v}).catch(()=>{});return}mode=v;external=null;try{localStorage.setItem(key,v)}catch(_){}apply()}
 window.OSCAppearance={get,set:choose,receive(v){if(embedded&&v&&modes.includes(v.mode)&&["light","dark"].includes(v.theme)){external={mode:v.mode,theme:v.theme};apply(false)}}};
 media.addEventListener?.("change",()=>{if(!external&&mode==="system")apply()});window.addEventListener("storage",e=>{if(e.key===key&&!external){mode=modes.includes(e.newValue)?e.newValue:"system";apply()}});apply(false);
 const active=new Map();let seq=0,bar,label,showTimer,hideTimer,lastGesture=-Infinity;
@@ -15,9 +15,21 @@ function pulse(message="Đang chuyển trang…"){const end=begin(message);reque
 window.OSCProgress={begin,pulse,foreground:()=>performance.now()-lastGesture<1400};
 document.addEventListener("click",e=>{if(e.isTrusted){lastGesture=performance.now();if(e.target.closest(".nav button[data-tab],.gsx-page,#nav-menu .menu-item,#workspaceDock button,[data-osc-page]"))pulse()}},true);
 document.addEventListener("change",e=>{if(e.isTrusted)lastGesture=performance.now()},true);document.addEventListener("submit",e=>{if(e.isTrusted){lastGesture=performance.now();pulse("Đang xử lý biểu mẫu…")}},true);
-if(typeof window.fetch==="function"){const original=window.fetch;window.fetch=function(input,opts){let url;try{url=new URL(typeof input==="string"?input:input.url||String(input),location.href)}catch(_){}const end=url?.origin===location.origin&&url.pathname.startsWith("/api/")&&window.OSCProgress.foreground()?begin("Đang xử lý yêu cầu…"):null;try{return original.apply(this,arguments).finally(()=>end?.())}catch(e){end?.();throw e}}}
+if(typeof window.fetch==="function"){const original=window.fetch;window.fetch=function(input,opts){let url;try{url=new URL(typeof input==="string"?input:input.url||String(input),location.href)}catch(_){}const end=((url?.origin===location.origin&&url.pathname.startsWith("/api/"))||(!embedded&&url?.origin==="https://nkpfzjhqtdjcfypkishv.supabase.co"))&&window.OSCProgress.foreground()?begin("Đang xử lý yêu cầu…"):null;try{return original.apply(this,arguments).finally(()=>end?.())}catch(e){end?.();throw e}}}
 function controls(){if(embedded||!document.body)return;if(!select){const wrap=document.createElement("label");wrap.className="osc-theme-control";wrap.title="Giao diện website";const icon=document.createElement("span");icon.className="osc-theme-icon";icon.setAttribute("aria-hidden","true");icon.textContent="◐";select=document.createElement("select");select.setAttribute("aria-label","Chọn giao diện sáng, tối hoặc theo hệ thống");for(const value of modes){const o=document.createElement("option");o.value=value;o.textContent=names[value];select.append(o)}select.value=mode;select.onchange=()=>choose(select.value);wrap.append(icon,select);document.body.append(wrap)}const app=document.querySelector("#app,#app-view"),visible=app&&!app.classList.contains("hidden")&&getComputedStyle(app).display!=="none",host=visible?(document.querySelector(".top-actions")||document.getElementById("header-role-badge")?.parentElement):null,wrap=select.parentElement;if(host&&!host.contains(wrap)){wrap.classList.remove("osc-theme-floating");host.prepend(wrap)}else if(!host){wrap.classList.add("osc-theme-floating");if(wrap.parentElement!==document.body)document.body.append(wrap)}}
+// Optional assets are not required for Google sign-in or manual scoring.
+if(!window.oscEnsureAsset&&!embedded){
+ const assets={XLSX:"https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js",Chart:"https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js",html2pdf:"https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"},jobs=new Map();
+ window.oscEnsureAsset=function(name){
+  if(!Object.hasOwn(assets,name))return Promise.reject(Error("Thư viện không hợp lệ."));
+  if(window[name])return Promise.resolve(window[name]);if(jobs.has(name))return jobs.get(name);
+  const task=new Promise((resolve,reject)=>{const script=document.createElement("script");script.async=true;script.src=assets[name];let done=false;
+   const finish=ok=>{if(done)return;done=true;clearTimeout(timer);if(ok&&window[name])resolve(window[name]);else{script.remove();reject(Error("Không tải được thư viện "+name+". Hãy thử lại."))}};
+   const timer=setTimeout(()=>finish(false),15000);script.onload=()=>finish(true);script.onerror=()=>finish(false);document.head.append(script);
+  });jobs.set(name,task);task.catch(()=>{if(jobs.get(name)===task)jobs.delete(name)});return task;
+ };
+}
 const initial=begin("Đang tải website…");function wrapAsyncNavigation(){for(const name of ["renderRoomBooking","renderRehearsalSchedules","renderDriveHub","renderBoardDirectors","renderFreeLookup","renderMemberQrAdmin","loadApprovalRequests","loadAuditLogs","loadTrashBin","downloadSemesterEndReportPDF","downloadFinanceReportPDF"]){const original=window[name];if(typeof original!=="function"||original.__oscProgressWrapped)continue;const wrapped=function(){const end=window.OSCProgress.foreground()?begin("Đang tải dữ liệu…"):null;try{const value=original.apply(this,arguments);if(value&&typeof value.then==="function")return value.finally(()=>end?.());end?.();return value}catch(e){end?.();throw e}};wrapped.__oscProgressWrapped=true;window[name]=wrapped}}
-function boot(){mount();controls();wrapAsyncNavigation();initial();for(const id of ["app","app-view"]){const target=document.getElementById(id);if(target)new MutationObserver(controls).observe(target,{attributes:true,attributeFilter:["class","style"]})}}
+function boot(){apply(false);mount();controls();wrapAsyncNavigation();initial();for(const id of ["app","app-view"]){const target=document.getElementById(id);if(target)new MutationObserver(controls).observe(target,{attributes:true,attributeFilter:["class","style"]})}}
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});else boot();
 })();

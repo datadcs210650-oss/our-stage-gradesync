@@ -4,7 +4,7 @@ export function installCastingAdminPages(){
  const el=(tag,text="",cls="")=>{const x=document.createElement(tag);if(text)x.textContent=text;if(cls)x.className=cls;return x};
  const sel=()=>el("select","","w-full rounded-xl border border-rose-100 bg-white px-3 py-2.5 text-sm");
  const input=(placeholder="",type="text")=>{const x=el("input","","w-full rounded-xl border border-rose-100 bg-white px-3 py-2.5 text-sm");x.placeholder=placeholder;x.type=type;return x};
- const btn=(text,fn,secondary=false)=>{const b=el("button",text,(secondary?"bg-white text-red-900 border border-red-200 hover:bg-rose-50":"bg-red-900 text-white hover:bg-red-800")+" rounded-xl px-4 py-2.5 text-xs font-extrabold");b.type="button";b.onclick=async()=>{if(b.disabled)return;b.disabled=true;try{await fn()}catch(e){window.showToast?.(e.message||"Yêu cầu không thành công.","error")}finally{b.disabled=false}};return b};
+ const btn=(text,fn,secondary=false)=>{const b=el("button",text,(secondary?"bg-white text-red-900 border border-red-200 hover:bg-rose-50":"bg-red-900 text-white hover:bg-red-800")+" rounded-xl px-4 py-2.5 text-xs font-extrabold");b.type="button";b.onclick=async()=>{if(b.disabled)return;b.disabled=true;b.setAttribute("aria-busy","true");const end=window.OSCProgress?.begin(text+"…");try{await fn()}catch(e){window.showToast?.(e.message||"Yêu cầu không thành công.","error")}finally{end?.();b.removeAttribute("aria-busy");b.disabled=false}};return b};
  const field=(label,x)=>{const p=el("label","","block text-xs font-semibold text-gray-700");p.append(el("span",label,"block mb-2"),x);return p};
  const panel=(heading,sub="")=>{const box=el("section","","bg-white border border-rose-100 rounded-2xl p-5 mt-4 shadow-sm space-y-4");box.append(el("h3",heading,"text-sm font-black text-red-900"));if(sub)box.append(el("p",sub,"text-xs text-gray-500"));return box};
  const options=(element,items,format)=>{const prev=element.value;element.replaceChildren();for(const item of items){const opt=el("option",format(item));opt.value=item.id;element.append(opt)}if(items.some(x=>x.id===prev))element.value=prev;return element.value};
@@ -233,7 +233,8 @@ export function installCastingAdminPages(){
  };
  // Standalone account directory: never edits group assignments or sends invitation mail.
  window.loadAccountManager=async function(host){
-  const data=await api("casting-list");if(!host?.isConnected)return;
+  let data;try{data=await api("casting-account-list")}catch(e){if(!/không (được |)hỗ trợ|không được cho phép|không hợp lệ/i.test(e.message))throw e;data=await api("casting-list")}
+  if(!host?.isConnected)return;
   const root=el("section","","space-y-4 pb-8"),top=el("div","","flex flex-wrap justify-between items-center gap-3");
   const dialog=el("dialog","","rounded-2xl border border-rose-100 bg-white p-0 shadow-2xl");dialog.style.cssText="width:min(600px,94vw);max-height:90vh;overflow:auto;margin:auto";
   const search=input("Tìm tên, mã BGK hoặc email"),list=el("div","","overflow-x-auto bg-white border border-rose-100 rounded-2xl");
