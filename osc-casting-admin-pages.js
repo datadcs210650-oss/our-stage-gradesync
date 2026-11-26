@@ -112,6 +112,7 @@ export function installCastingAdminPages(){
    const roster=panel("Phân công Ban Giám khảo","Chỉ phân công tại phiên. Tài khoản chưa phân công không nhận email.");
    const rosterList=el("div","","space-y-2 max-h-[360px] overflow-auto");
    const timing=sel();for(const [value,label] of [["now","Gửi ngay"],["m30","Trước giờ chấm 30 phút"],["h1","Trước giờ chấm 1 giờ"],["h3","Trước giờ chấm 3 giờ"],["d1","Trước giờ chấm 1 ngày"]])timing.append(new Option(label,value));
+   if(group){timing.prepend(new Option("Giữ lịch hiện tại · BGK mới nhận thư ngay","keep"));timing.value="keep";}
    const picks=new Map(),historyLocked=!!group&&(group.verifiedCount>0||group.approvedCount>0);
    const currentCriteria=()=>[...criteria.children].map(r=>r.querySelector("input")?.value.trim()).filter(Boolean);
    function renderRoster(){
@@ -130,10 +131,26 @@ export function installCastingAdminPages(){
     }
    }
    const readRoster=()=>[...picks].filter(([_,s])=>s.selected).map(([graderId,s])=>({graderId,criteria:currentCriteria().filter(n=>s.all||s.criteria.has(n))}));
-   renderRoster();criteria.addEventListener("change",renderRoster);roster.append(rosterList,field("Email khi phân công mới",timing));
-   if(historyLocked)roster.append(el("p","Đã có lịch sử chấm hoặc duyệt; hội đồng và phân quyền được giữ nguyên.","text-xs text-amber-800"));
+   renderRoster();
+   const initialRoster=JSON.stringify(readRoster());
+   criteria.addEventListener("change",renderRoster);
+   timing.disabled=historyLocked;
+   roster.append(rosterList,field("Thời điểm gửi lời mời BGK",timing));
+   if(historyLocked)roster.append(el("p","Phiên đã có lịch sử chấm hoặc duyệt. Hội đồng đã khóa.","text-xs text-amber-800"));
+   async function saveRoster(groupId,judges){
+    const result=await api("casting-session-assignments",{groupId,judges,inviteTiming:timing.value==="keep"?"now":timing.value,updateScheduled:!!group&&timing.value!=="keep"});
+    const waiting=result.mailPending?" · "+result.mailPending+" lời mời chờ xử lý":"";
+    const updated=result.rescheduled?" · đã đổi lịch "+result.rescheduled+" thư":"";
+    return "Đã lưu phân công. Resend tiếp nhận "+result.accepted+" lời mời mới"+updated+waiting+".";
+   }
    if(group){
-    if(!historyLocked)roster.append(btn("Lưu phân công BGK",async()=>{if(JSON.stringify(currentCriteria())!==JSON.stringify((group.criteria||[]).map(c=>c.name)))throw Error("Hãy lưu cấu hình tiêu chí trước khi phân công.");const judges=readRoster();if(judges.some(j=>!j.criteria.length))throw Error("Chọn ít nhất một tiêu chí cho từng BGK.");if(!window.confirm("Lưu hội đồng giám khảo? Email chỉ được gửi cho BGK mới được phân công."))return;const r=await api("casting-session-assignments",{groupId:group.id,judges,inviteTiming:timing.value});window.showToast?.("Đã phân công "+r.assigned+" BGK. Email tiếp nhận "+r.accepted+"/"+r.inviteJobs+(r.mailPending?" · còn "+r.mailPending+" chờ xử lý":""));dialog.close();await sessionSettings(host);},true));
+    if(!historyLocked)roster.append(btn("Lưu phân công BGK",async()=>{
+     if(JSON.stringify(currentCriteria())!==JSON.stringify((group.criteria||[]).map(c=>c.name)))throw Error("Hãy lưu phiên chấm để cập nhật tiêu chí cùng phân công.");
+     const judges=readRoster();
+     if(judges.some(j=>!j.criteria.length))throw Error("Chọn ít nhất một tiêu chí cho từng BGK.");
+     if(!window.confirm("Lưu phân công và áp dụng thời điểm gửi đã chọn?"))return;
+     window.showToast?.(await saveRoster(group.id,judges));dialog.close();await sessionSettings(host);
+    },true));
     roster.append(btn("Thử gửi lại email cấp quyền đang chờ",async()=>{const r=await api("casting-session-invite-retry",{groupId:group.id});window.showToast?.("Đã xử lý "+r.processed+" lời mời, tiếp nhận "+r.accepted+".");},true));
    }
    pane.append(roster);
@@ -154,6 +171,9 @@ export function installCastingAdminPages(){
     const unchangedLegacy=group&&!original&&!enable.checked&&!notes.checked&&method.value===(casting?.aggregate_method||"mean")&&passScore===Number(casting?.pass_score??group.passScore)&&JSON.stringify(graderWeights)===JSON.stringify(policy.weights||{});
     if(!sessionAt.value||!sessionAt.checkValidity())throw Error("Hãy nhập ngày giờ chấm (GMT+7).");
     const body={sessionAt:new Date(sessionAt.value+"+07:00").toISOString(),passScore,criteria:criteriaData,extraFields:extrasData,openMode:mode.value,startAt:mode.value==="auto"&&start.value?new Date(start.value).toISOString():null,endAt:end.value?new Date(end.value).toISOString():null,attendanceEnabled:attendance.checked,blockGraderAfterPublish:blockAfter.checked,...(unchangedLegacy?{}:{sessionPolicy,roleLimits})};
+    const judges=readRoster();
+    const saveAssignments=group?!historyLocked&&(JSON.stringify(judges)!==initialRoster||timing.value!=="keep"):judges.length>0;
+    if(saveAssignments&&judges.some(j=>!j.criteria.length))throw Error("Chọn ít nhất một tiêu chí cho từng BGK.");
     let saved;
     if(group){
      const changes=JSON.stringify(criteriaData)!==JSON.stringify(group.criteria||[])||passScore!==Number(group.passScore)||(!unchangedLegacy&&JSON.stringify(sessionPolicy)!==JSON.stringify(original))||(!unchangedLegacy&&JSON.stringify(roleLimits)!==JSON.stringify(group.roleLimits));
@@ -161,11 +181,14 @@ export function installCastingAdminPages(){
      if(confirmRevision&&!window.confirm("Thay đổi quy chế điểm có thể tạo phiên bản mới, thu hồi biên bản cũ, chuyển kết quả về chờ đối soát và yêu cầu BGK xác nhận OTP lại. Điểm gốc được lưu lịch sử. Tiếp tục?"))return;
      saved=await api("casting-update-session",{...body,groupId:group.id,version:group.version,name:name.value.trim(),confirmRevision});
     }else{
-     const judges=readRoster();if(judges.some(j=>!j.criteria.length))throw Error("Chọn ít nhất một tiêu chí cho từng BGK.");
      saved=await api("casting-create-session",{...body,term:term.value,division:name.value.trim(),castingId:destination.value||undefined});
-     if(judges.length){try{const x=await api("casting-session-assignments",{groupId:saved.group.id,judges,inviteTiming:timing.value});saved.mailPending=x.mailPending}catch(e){dialog.close();await window.loadGroupsManager(host);throw Error("Đã tạo phiên; phân công chưa lưu: "+e.message+" — mở Chỉnh sửa phiên để phân công lại.");}}
     }
-    dialog.close();window.showToast?.(saved.version?"Đã lưu phiên bản "+saved.version+". Mã cũ hết hiệu lực; BGK cần xác nhận lại. "+(saved.mailPending?"Email chờ xử lý: "+saved.mailPending:""):"Đã lưu phiên chấm."+(saved.mailPending?" Email chờ xử lý: "+saved.mailPending:""));await window.loadGroupsManager(host);
+    let message=saved.version?"Đã lưu phiên bản "+saved.version+".":"Đã lưu phiên chấm.";
+    if(saveAssignments){
+     try{message+=" "+await saveRoster(group?.id||saved.group.id,judges);}
+     catch(e){dialog.close();await window.loadGroupsManager(host);throw Error(message+" Phân công hoặc email cần kiểm tra: "+e.message);}
+    }
+    dialog.close();window.showToast?.(message);await window.loadGroupsManager(host);
    }));
    pane.append(actions);dialog.append(pane);dialog.showModal();
   }
