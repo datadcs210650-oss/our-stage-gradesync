@@ -824,6 +824,49 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
             }
         };
 
+        // Authoritative, per-BGK visibility; no interval polling or Vercel request.
+        let visibilityTimer=null,visibilityDebounce=null,visibilityChannel=null,visibilityInFlight=null;
+        window.refreshPublishedSessionVisibility=async function(render=true){
+            const uid=window.currentUserData?.id;
+            if(!uid||window.currentUserData?.role!=="Grader")return;
+            if(visibilityInFlight)return visibilityInFlight;
+            visibilityInFlight=(async()=>{
+                const result=await supabase.rpc("osc_grader_visible_sessions");
+                if(result.error)throw result.error;
+                if(window.currentUserData?.id!==uid)return;
+                const rows=result.data||[],ids=new Set(rows.map(x=>x.group_id));
+                window._gsVisibleGroupIds=ids;
+                window.currentUserData.assignedGroups=[...ids];
+                const rt=window._graderRealtime;
+                if(rt){
+                    rt.assigned=[...ids];
+                    for(const gid of Object.keys(window._groupMapCache||{}))if(!ids.has(gid)){
+                        rt.groupState?.delete(gid);window._stopOpenGroupDataListeners?.(gid);delete window._groupMapCache[gid];
+                    }
+                }
+                if(!ids.has(window._selectedGradingGroupId))window._selectedGradingGroupId=null;
+                clearTimeout(visibilityTimer);
+                const next=Math.min(...rows.map(x=>Date.parse(x.hide_at||"")).filter(t=>Number.isFinite(t)&&t>Date.now()));
+                if(Number.isFinite(next))visibilityTimer=setTimeout(()=>queueVisibility(),Math.min(2147483647,Math.max(100,next-Date.now()+100)));
+                if(render&&rt?.started){window.refreshAssignedGroupSubscriptions?.();window.refreshGraderGroupSelector?.();window._rerenderGraderRealtime?.();}
+            })();
+            try{return await visibilityInFlight}finally{visibilityInFlight=null}
+        };
+        function queueVisibility(){
+            clearTimeout(visibilityDebounce);
+            visibilityDebounce=setTimeout(()=>window.refreshPublishedSessionVisibility(true).catch(e=>console.warn("BGK visibility refresh",e?.code||e?.message)),250);
+        }
+        function watchVisibility(){
+            if(visibilityChannel)supabase.removeChannel(visibilityChannel);
+            visibilityChannel=supabase.channel("bgk-visible-sessions-"+window.currentUserData.id)
+                .on("postgres_changes",{event:"UPDATE",schema:"public",table:"gs_change_signal",filter:"scope=eq.competition_groups"},queueVisibility)
+                .on("postgres_changes",{event:"UPDATE",schema:"public",table:"gs_change_signal",filter:"scope=eq.gs_castings"},queueVisibility)
+                .on("postgres_changes",{event:"UPDATE",schema:"public",table:"gs_change_signal",filter:"scope=eq.profiles"},queueVisibility)
+                .subscribe(status=>{if(status==="SUBSCRIBED")queueVisibility()});
+        }
+        document.addEventListener("visibilitychange",()=>{if(!document.hidden&&window.currentUserData?.role==="Grader")queueVisibility()});
+        window.addEventListener("online",()=>{if(window.currentUserData?.role==="Grader")queueVisibility()});
+        supabase.auth.onAuthStateChange(event=>{if(event==="SIGNED_OUT"){clearTimeout(visibilityTimer);clearTimeout(visibilityDebounce);window._gsVisibleGroupIds=new Set();if(visibilityChannel){supabase.removeChannel(visibilityChannel);visibilityChannel=null}}});
         window.restoreGoogleGrader = async function(user){
             if(!user?.googleGrader)return false;
             try{
@@ -832,6 +875,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 const p=result.data;
                 if(p?.role!=="Grader"||p?.status!=="Active"||!p.code)throw Error("EMAIL_NOT_AUTHORIZED");
                 window.currentUserData={...p,role:"Grader",assignedGroups:p.assignedGroups||[],allowedMenus:["grading_table"]};
+                await window.refreshPublishedSessionVisibility(false);
                 localStorage.setItem("gradeSyncSession",JSON.stringify(window.currentUserData));
                 const scopes=await supabase.from("gs_criterion_grants")
                     .select("group_id,criterion").eq("grader_id",p.id);
@@ -843,7 +887,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 window._lastInitAuthUid=user.uid;
                 window._seedAssignedGroupNamesFromUser?.();
                 await window._preloadGraderAssignedGroups?.();
-                window.initApp();
+                window.initApp();watchVisibility();
                 return true;
             }catch(error){
                 console.warn("Grader Google authorization denied:",error.code||"denied");
@@ -1987,7 +2031,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
 
         window._syncGraderRealtimeGroups=async function(){
             const rt=window._graderRealtime;
-            const assigned=new Set(rt.assigned||[]);
+            const assigned=new Set((rt.assigned||[]).filter(id=>window._gsVisibleGroupIds?.has(id)));
             const available=new Set();
             const openNow=new Set();
             for(const [gid,g] of (rt.groupState||new Map()).entries()){
@@ -3889,7 +3933,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         if(window.currentUserData?.role !== 'Grader') return [];
         window._seedAssignedGroupNamesFromUser();
 
-        const assigned = Array.isArray(window.currentUserData.assignedGroups) ? [...window.currentUserData.assignedGroups] : [];
+        const assigned = (Array.isArray(window.currentUserData.assignedGroups) ? [...window.currentUserData.assignedGroups] : []).filter(id=>window._gsVisibleGroupIds?.has(id));
         const rt = window._graderRealtime = window._graderRealtime || {};
         rt.groupState = rt.groupState || new Map();
         rt.assigned = assigned;
@@ -3935,14 +3979,13 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 rt.groupState.set(id,g);
                 if(g.name) window._groupNameCache[id] = g.name;
             }else{
-                // Vẫn giữ nhóm trong selector vì Admin đã phân quyền.
-                // Listener realtime sẽ cập nhật khi Firestore sẵn sàng.
-                valid.push(id);
+                // Chỉ hiển thị phiên còn quyền đọc từ máy chủ.
+                delete window._groupMapCache[id];rt.groupState.delete(id);
             }
         });
         window._saveGroupNameCache();
         window._allowedGroupIdsCache = [...valid];
-        if(!window._selectedGradingGroupId && valid.length) window._selectedGradingGroupId = valid[0];
+        if(!valid.includes(window._selectedGradingGroupId)) window._selectedGradingGroupId = valid[0]||null;
         return valid;
     };
 
@@ -3953,9 +3996,9 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         if(!sel) return;
 
         window._seedAssignedGroupNamesFromUser();
-        const assigned = Array.isArray(window._graderRealtime?.assigned)
+        const assigned = (Array.isArray(window._graderRealtime?.assigned)
             ? window._graderRealtime.assigned
-            : (Array.isArray(window.currentUserData?.assignedGroups) ? window.currentUserData.assignedGroups : []);
+            : (Array.isArray(window.currentUserData?.assignedGroups) ? window.currentUserData.assignedGroups : [])).filter(id=>window._gsVisibleGroupIds?.has(id));
 
         if(!assigned.length){
             sel.innerHTML = '<option value="">-- Chưa được phân quyền nhóm --</option>';
@@ -3986,7 +4029,8 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
     const _oldRefreshAssignedGroupSubscriptionsV25 = window.refreshAssignedGroupSubscriptions;
     window.refreshAssignedGroupSubscriptions = function(){
         const rt = window._graderRealtime;
-        const assigned = Array.isArray(rt?.assigned) ? [...rt.assigned] : [];
+        const assigned = (Array.isArray(rt?.assigned) ? [...rt.assigned] : []).filter(id=>window._gsVisibleGroupIds?.has(id));
+        if(rt)rt.assigned=assigned;
 
         window._allowedGroupIdsCache = [...assigned];
         window._groupMapCache = window._groupMapCache || {};

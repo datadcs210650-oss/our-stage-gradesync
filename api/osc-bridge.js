@@ -60,7 +60,7 @@ function groupSummary(g){return{id:g.id,name:g.name||"",passScore:g.pass_score??
  isOpen:g.is_open===true,criteria:g.criteria||[],openMode:g.open_mode||"",openAt:g.open_at||"",closeAt:g.close_at||""}}
 async function overview(){
  const [groups,profiles,candidates,scores]=await Promise.all([
-  supa(url("competition_groups",{order:"created_at.desc"})),
+  supa(url("competition_groups",{osc_deleted_at:"is.null",order:"created_at.desc"})),
   supa(url("profiles",{role:"eq.Grader",order:"code.asc"})),
   supa(url("candidates",{select:"id,group_id,is_present"})),
   supa(url("scores",{select:"id,group_id,grader_id,locked,total_score"}))
@@ -78,7 +78,7 @@ async function overview(){
 async function groupDetail(body){
  const id=String(body.groupId||"");if(!ID.test(id))fail("Nhóm thi không hợp lệ.");
  const [groups,candidates,scores,verified]=await Promise.all([
-  supa(url("competition_groups",{id:"eq."+id,limit:"1"})),
+  supa(url("competition_groups",{id:"eq."+id,osc_deleted_at:"is.null",limit:"1"})),
   supa(url("candidates",{group_id:"eq."+id,order:"code.asc"})),
   supa(url("scores",{group_id:"eq."+id})),
   supa(url("grader_verifications",{group_id:"eq."+id}))
