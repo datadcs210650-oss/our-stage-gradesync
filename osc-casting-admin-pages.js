@@ -109,10 +109,8 @@ export function installCastingAdminPages(){
    enable.onchange=()=>{roleFields.hidden=!enable.checked;if(enable.checked&&!roleList.childElementCount)addRole()};enable.onchange();
    roles.append(field("Bật casting theo vai diễn",enable),roleFields,field("Cho phép BGK ghi chú",notes));pane.append(roles);
 
-   const roster=panel("Phân công Ban Giám khảo","Chỉ phân công tại phiên. Tài khoản chưa phân công không nhận email.");
+   const roster=panel("Phân công Ban Giám khảo","Khi lưu, hệ thống gửi ngay email cấp quyền cho BGK mới được phân công.");
    const rosterList=el("div","","space-y-2 max-h-[360px] overflow-auto");
-   const timing=sel();for(const [value,label] of [["now","Gửi ngay"],["m30","Trước giờ chấm 30 phút"],["h1","Trước giờ chấm 1 giờ"],["h3","Trước giờ chấm 3 giờ"],["d1","Trước giờ chấm 1 ngày"]])timing.append(new Option(label,value));
-   if(group){timing.prepend(new Option("Giữ lịch hiện tại · BGK mới nhận thư ngay","keep"));timing.value="keep";}
    const picks=new Map(),historyLocked=!!group&&(group.verifiedCount>0||group.approvedCount>0);
    const currentCriteria=()=>[...criteria.children].map(r=>r.querySelector("input")?.value.trim()).filter(Boolean);
    function renderRoster(){
@@ -134,21 +132,19 @@ export function installCastingAdminPages(){
    renderRoster();
    const initialRoster=JSON.stringify(readRoster());
    criteria.addEventListener("change",renderRoster);
-   timing.disabled=historyLocked;
-   roster.append(rosterList,field("Thời điểm gửi lời mời BGK",timing));
+   roster.append(rosterList);
    if(historyLocked)roster.append(el("p","Phiên đã có lịch sử chấm hoặc duyệt. Hội đồng đã khóa.","text-xs text-amber-800"));
    async function saveRoster(groupId,judges){
-    const result=await api("casting-session-assignments",{groupId,judges,inviteTiming:timing.value==="keep"?"now":timing.value,updateScheduled:!!group&&timing.value!=="keep"});
+    const result=await api("casting-session-assignments",{groupId,judges});
+    if(!result.inviteJobs)return "Đã lưu phân công. Không có BGK mới cần gửi thư.";
     const waiting=result.mailPending?" · "+result.mailPending+" lời mời chờ xử lý":"";
-    const updated=result.rescheduled?" · đã đổi lịch "+result.rescheduled+" thư":"";
-    return "Đã lưu phân công. Resend tiếp nhận "+result.accepted+" lời mời mới"+updated+waiting+".";
+    return "Đã lưu phân công. Resend tiếp nhận "+result.accepted+" lời mời mới"+waiting+".";
    }
    if(group){
     if(!historyLocked)roster.append(btn("Lưu phân công BGK",async()=>{
      if(JSON.stringify(currentCriteria())!==JSON.stringify((group.criteria||[]).map(c=>c.name)))throw Error("Hãy lưu phiên chấm để cập nhật tiêu chí cùng phân công.");
      const judges=readRoster();
      if(judges.some(j=>!j.criteria.length))throw Error("Chọn ít nhất một tiêu chí cho từng BGK.");
-     if(!window.confirm("Lưu phân công và áp dụng thời điểm gửi đã chọn?"))return;
      window.showToast?.(await saveRoster(group.id,judges));dialog.close();await sessionSettings(host);
     },true));
     roster.append(btn("Thử gửi lại email cấp quyền đang chờ",async()=>{const r=await api("casting-session-invite-retry",{groupId:group.id});window.showToast?.("Đã xử lý "+r.processed+" lời mời, tiếp nhận "+r.accepted+".");},true));
@@ -172,7 +168,7 @@ export function installCastingAdminPages(){
     if(!sessionAt.value||!sessionAt.checkValidity())throw Error("Hãy nhập ngày giờ chấm (GMT+7).");
     const body={sessionAt:new Date(sessionAt.value+"+07:00").toISOString(),passScore,criteria:criteriaData,extraFields:extrasData,openMode:mode.value,startAt:mode.value==="auto"&&start.value?new Date(start.value).toISOString():null,endAt:end.value?new Date(end.value).toISOString():null,attendanceEnabled:attendance.checked,blockGraderAfterPublish:blockAfter.checked,...(unchangedLegacy?{}:{sessionPolicy,roleLimits})};
     const judges=readRoster();
-    const saveAssignments=group?!historyLocked&&(JSON.stringify(judges)!==initialRoster||timing.value!=="keep"):judges.length>0;
+    const saveAssignments=group?!historyLocked&&JSON.stringify(judges)!==initialRoster:judges.length>0;
     if(saveAssignments&&judges.some(j=>!j.criteria.length))throw Error("Chọn ít nhất một tiêu chí cho từng BGK.");
     let saved;
     if(group){
