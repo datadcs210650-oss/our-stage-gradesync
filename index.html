@@ -1,21 +1,24 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
+<link rel="stylesheet" href="/osc-appearance.css?v=20261126">
+<script src="/osc-appearance.js?v=20261126"></script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <meta name="gradesync-build" content="V29.1-V27-STABLE">
+    <meta name="gradesync-build" content="2026.11.26-theme">
 
     <!-- NỀN TẢNG CHẤM ĐIỂM V29.2 - V27 STABLE HOTFIX: time/PDF/score-clear -->
     <title>NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live</title>
     <script>window.GS_MANUAL_SCORE_MODE=true;</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="icon" type="image/png" href="/logo-ui-centered.png?v=osc2">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -1066,13 +1069,15 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
             if(aBtn) { aBtn.classList.add('active', 'bg-white/20'); aBtn.querySelector('i').classList.add('text-white'); } document.getElementById('page-title').innerText = tit;
             const mc = document.getElementById('main-content'); mc.innerHTML = '<div class="flex justify-center mt-20"><div class="relative w-10 h-10 flex items-center justify-center"><div class="absolute inset-0 border-4 border-red-800 rounded-full border-t-transparent animate-spin"></div></div></div>';
             
+            const navEnd=window.OSCProgress?.begin('Đang tải '+tit+'…');const navVersion=(window._oscNavVersion||0)+1;window._oscNavVersion=navVersion;
             setTimeout(async () => {
+                if(navVersion!==window._oscNavVersion){navEnd?.();return;}
                 const w = document.createElement('div'); w.className = 'animate-fade-up h-full flex flex-col min-w-0'; mc.innerHTML = ''; mc.appendChild(w);
                 try { 
                     const mFn = { 'dashboard': window.loadDashboard, 'statistics': window.loadStatistics, 'groups_manager': window.loadGroupsManager, 'student_list': window.loadStudentList, 'grading_table': window.loadGradingTable, 'admin_live_monitor': window.loadAdminLiveMonitor, 'audit_logs': window.loadAuditLogs, 'admin_overview_scores': window.loadAdminOverviewScores, 'account_manager': window.loadAccountManager }; 
                     if(mFn[vId]) await mFn[vId](w); 
-                } catch(e) { window.renderErrorState(w, e.message); }
-            }, 50);
+                } catch(e) { if(w.isConnected)window.renderErrorState(w, e.message); }finally{navEnd?.()}
+            }, 0);
         };
 
         window.loadDashboard = async function(container) {

@@ -52,7 +52,7 @@ export function installUnifiedScoring(){
   for(const [id,title] of [["score","Bảng điểm"],["monitor","Giám sát BGK"],["report","Báo cáo & Xuất"]]){tabButtons[id]=button(title,()=>switchTab(id));tabs.append(tabButtons[id]);}
   head.append(header,bar,summary,state,tabs);
   const grid=el("div","flex flex-col min-h-0 min-w-0"),monitor=el("div","min-w-0"),reportPanel=el("div","min-w-0 space-y-3");root.append(head,grid,monitor,reportPanel);host.replaceChildren(root);
-  const onFocus=()=>{if(active&&root.isConnected)refreshAll(true)};
+  const onFocus=()=>{if(active&&root.isConnected&&!aggregate)refreshAll(false)};
   function dispose(){active=false;revision++;reportSeq++;clearTimeout(timer);unwatch();window.removeEventListener("osc-score-group-change",event);window.removeEventListener("focus",onFocus);if(window.oscUnifiedRefresh===onFocus)window.oscUnifiedRefresh=null;}
   cleanup=dispose;window.activeListeners.push(dispose);window.oscUnifiedRefresh=onFocus;window.addEventListener("focus",onFocus);
   function getGroup(){return window._groupMapCache?.[group.value]||{}}
@@ -111,7 +111,7 @@ export function installUnifiedScoring(){
    }search.oninput=body;body();reportPanel.replaceChildren(tools,status,wrap);
   }
   async function fetchReport(force=false){
-   const gid=group.value,j=judge.value;if(!gid||!active)return;const gen=++reportSeq;
+   const gid=group.value,j=judge.value;if(!gid||!active)return;const gen=++reportSeq;const end=window.OSCProgress?.foreground()?window.OSCProgress?.begin("Đang tải bảng điểm…"):null;
    if(force||!aggregate){state.textContent="Đang đối soát dữ liệu...";}
    try{
     if(force||!aggregate){const a=await call("casting-report-data",{groupId:gid,graderCode:"ALL",expHidden:false});if(gen!==reportSeq||!active||gid!==group.value)return;aggregate=a;}
@@ -123,14 +123,14 @@ export function installUnifiedScoring(){
      const d=j==="ALL"?aggregate:(!force&&report?.key===gid+"|"+j?report.data:await call("casting-report-data",{groupId:gid,graderCode:j,expHidden:false}));
      if(gen!==reportSeq||!active||group.value!==gid||judge.value!==j)return;report={key:gid+"|"+j,data:d};renderReport(d);
     }
-   }catch(e){if(gen===reportSeq&&active){aggregate=null;state.textContent="Chưa xác định trạng thái đối soát: "+e.message;state.className="text-xs text-red-700";if(currentTab!=="monitor"&&reportPanel.style.display!=="none")reportPanel.replaceChildren(el("p","text-sm text-red-700",e.message));}}
+   }catch(e){if(gen===reportSeq&&active){aggregate=null;state.textContent="Chưa xác định trạng thái đối soát: "+e.message;state.className="text-xs text-red-700";if(currentTab!=="monitor"&&reportPanel.style.display!=="none")reportPanel.replaceChildren(el("p","text-sm text-red-700",e.message));}}finally{end?.()}
   }
   async function mountMonitor(force=false){
    const gid=group.value;if(!gid)return;if(!force&&monitorGroup===gid)return;monitorGroup=gid;monitor.replaceChildren();
    await window.loadAdminLiveMonitor(monitor,{groupId:gid,groupName:getGroup().name||gid,viewJudge:code=>{judge.value=code;remember.judge=code;switchTab("score");},viewOriginal:r=>compareDialog({comparisonCode:r.comparisonCode,sha256:r.originalSha}),onRender:list=>{if(group.value===gid){scopeList=list;progress();for(const card of monitor.querySelectorAll("[data-grader-code]"))card.hidden=judge.value!=="ALL"&&card.dataset.graderCode!==judge.value;}},onChanged:()=>refreshAll(true)});
   }
   async function manualRefresh(){
-   const gid=group.value;if(!active||!gid||refresh.disabled)return;refresh.disabled=true;
+   const gid=group.value;if(!active||!gid||refresh.disabled)return;refresh.disabled=true;const end=window.OSCProgress?.begin("Đang làm mới dữ liệu điểm…");
    try{const queryFor=t=>window.query(window.collection(window.db,t),window.where("groupId","==",gid));
     const [c,s,v]=await Promise.all(["candidates","scores","grader_verifications"].map(t=>window.getDocs(queryFor(t))));
     if(!active||gid!==group.value||!root.isConnected)return;
@@ -138,10 +138,10 @@ export function installUnifiedScoring(){
     window._allCandidatesCache=collect(c);window._allScoresCache=collect(s);window._allVerificationsCache=Object.fromEntries(collect(v).map(x=>[x.graderCode+"_"+x.groupId,x]));
     window.renderGradingTables?.();progress();await refreshAll(true);
     if(active&&gid===group.value&&aggregate)window.showToast?.("Đã làm mới dữ liệu điểm của phiên.");
-   }catch(e){msg(e.message||"Không làm mới được dữ liệu điểm.",true)}finally{refresh.disabled=false}
+   }catch(e){msg(e.message||"Không làm mới được dữ liệu điểm.",true)}finally{refresh.disabled=false;end?.()}
   }
   async function refreshAll(force=false){if(!active||!root.isConnected)return;if(currentTab==="monitor")await mountMonitor(force);await fetchReport(force);}
-  function switchTab(id){currentTab=id;remember.tab=id;visible();syncLegacy();if(id==="monitor")mountMonitor(false);fetchReport(false);}
+  function switchTab(id){if(id===currentTab)return;window.OSCProgress?.pulse("Đang chuyển bảng điểm…");currentTab=id;remember.tab=id;visible();syncLegacy();if(id==="monitor")mountMonitor(false);fetchReport(false);}
   function event(e){
    if(!active||!root.isConnected||e.detail?.groupId!==group.value)return;progress();if(e.detail.kind==="directory"){setJudgeOptions(judge.value);syncLegacy();}if(e.detail.kind==="verification"&&currentTab==="monitor"){monitorGroup="";mountMonitor(true);}
    if(currentTab==="report"||currentTab==="score"&&judge.value==="ALL"||(e.detail.kind==="verification"||e.detail.kind==="candidate")){if(!timer)timer=setTimeout(()=>{timer=null;fetchReport(true)},2000);}

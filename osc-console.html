@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="vi">
-<head><script>
+<head>
+<link rel="stylesheet" href="/osc-appearance.css?v=20261126">
+<script src="/osc-appearance.js?v=20261126"></script>
+<script>
 if(parent===window){document.documentElement.hidden=true}
 for(const key of ["localStorage","sessionStorage"]){
  const map=new Map();Object.defineProperty(window,key,{value:{getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,String(v)),removeItem:k=>map.delete(k),clear:()=>map.clear(),key:i=>[...map.keys()][i],get length(){return map.size}}});
@@ -20,9 +23,9 @@ for(const key of ["localStorage","sessionStorage"]){
   wire=event.ports[0];
   wire.onmessage=({data})=>{
    if(!data||typeof data!=="object")return;
-   if(data.type==="navigate"){window.oscSelectPage?.(data.page);return;}
+   if(data.type==="theme"){window.OSCAppearance?.receive(data.value);return;}if(data.type==="navigate"){window.oscSelectPage?.(data.page);return;}
    const item=pending.get(data.id);if(!item)return;
-   pending.delete(data.id);clearTimeout(item.timer);
+   pending.delete(data.id);clearTimeout(item.timer);item.end?.();
    if(data.error)item.reject(Error(String(data.error)));else item.resolve(data.result);
   };
   resolveConnection();
@@ -31,9 +34,10 @@ for(const key of ["localStorage","sessionStorage"]){
  window.oscGradingCall=async function(action,details={}){
   await connected;
   return new Promise((resolve,reject)=>{
-   const id=crypto.randomUUID(),timer=setTimeout(()=>{pending.delete(id);reject(Error("Yêu cầu quá thời gian phản hồi. Kiểm tra dữ liệu trước khi thực hiện lại."));},70000);
-   pending.set(id,{resolve,reject,timer});
-   try{wire.postMessage({id,action,details})}catch(e){pending.delete(id);clearTimeout(timer);reject(e)}
+   const isRead=action==="console-documents"&&details.ops?.every(o=>o.kind==="read")||["casting-list","casting-group-options","casting-report-data","casting-results","casting-receipt-list","casting-candidate-list","console-identity"].includes(action);const end=window.OSCProgress?.foreground()||!isRead?window.OSCProgress?.begin(isRead?"Đang tải dữ liệu…":"Đang xử lý…"):null;
+   const id=crypto.randomUUID(),timer=setTimeout(()=>{pending.delete(id);end?.();reject(Error("Yêu cầu quá thời gian phản hồi. Kiểm tra dữ liệu trước khi thực hiện lại."));},70000);
+   pending.set(id,{resolve,reject,timer,end});
+   try{wire.postMessage({id,action,details})}catch(e){pending.delete(id);clearTimeout(timer);end?.();reject(e)}
   });
  };
  parent.postMessage("osc-grading-ready",origin);
@@ -74,7 +78,7 @@ for(const key of ["localStorage","sessionStorage"]){
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <meta name="gradesync-build" content="V29.1-V27-STABLE">
+    <meta name="gradesync-build" content="2026.11.26-theme">
 
     <!-- NỀN TẢNG CHẤM ĐIỂM V29.2 - V27 STABLE HOTFIX: time/PDF/score-clear -->
     <title>NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live</title>
@@ -410,9 +414,11 @@ function collection(_db,table){return {kind:"collection",table}}
 function doc(_db,table,id){return {kind:"doc",table,id}}
 function where(field,op,value){return {field,op,value}}
 function query(ref,...filters){return {...ref,filters}}
-let readQueue=[];
+let readQueue=[];const inFlightReads=new Map();let readEpoch=0;
 function read(op){
- return new Promise((resolve,reject)=>{
+ const key=readEpoch+"|"+JSON.stringify(op);
+ if(inFlightReads.has(key))return inFlightReads.get(key);
+ const task=new Promise((resolve,reject)=>{
   readQueue.push({op,resolve,reject});
   if(readQueue.length!==1)return;
   queueMicrotask(async()=>{
@@ -421,7 +427,8 @@ function read(op){
     queue.forEach((x,i)=>x.resolve(rows[i]))}
    catch(e){queue.forEach(x=>x.reject(e))}
   });
- });
+ }).finally(()=>{if(inFlightReads.get(key)===task)inFlightReads.delete(key)});
+ inFlightReads.set(key,task);return task;
 }
 async function getDocs(ref){
  const table=T(ref.table),match={},local=[];
@@ -458,7 +465,7 @@ function writeOp(kind,ref,data,revision){
  if(revision!==undefined)op.revision=revision;
  return op;
 }
-async function commit(ops){if(!ops.length)return [];return (await call("console-documents",{ops})).rows}
+async function commit(ops){if(!ops.length)return [];readEpoch++;inFlightReads.clear();try{return (await call("console-documents",{ops})).rows}finally{readEpoch++;inFlightReads.clear()}}
 async function setDoc(ref,data){const [r]=await commit([writeOp("set",ref,data)]);return new DS(ref.table,r,ref.id)}
 async function addDoc(ref,data){const op=writeOp("add",ref,data);await commit([op]);return {id:op.id,ref:doc(null,ref.table,op.id)}}
 async function deleteDoc(ref){await commit([writeOp("delete",ref)])}
@@ -474,7 +481,7 @@ async function runTransaction(_db,fn){
  delete(ref){ops.push(writeOp("delete",ref,null,versions.get(ref.table+"/"+ref.id)))}});
  await commit(ops);return result;
 }
-function onSnapshot(ref,next,onError){
+function onSnapshot(ref,next,onError,initialSnapshot){
  // Initial load + Supabase change events only. No HTTP timer or Firestore polling.
  let live=true,previous=new Map(),first=true,scheduled=null,running=false,dirty=false;
  const schedule=()=>{
@@ -519,7 +526,7 @@ function onSnapshot(ref,next,onError){
   if(!document.hidden&&dirty){dirty=false;schedule()}
  };
  document.addEventListener("visibilitychange",foreground);
- update();
+ if(initialSnapshot&&ref.kind!=="doc"){previous=new Map(initialSnapshot.docs.map(d=>[d.id,d]));first=false;}else update();
  return()=>{
   live=false;clearTimeout(scheduled);
   release();document.removeEventListener("visibilitychange",foreground);
@@ -1160,13 +1167,15 @@ window.currentUserData = null; window.activeListeners = [];
             if(aBtn) { aBtn.classList.add('active', 'bg-white/20'); aBtn.querySelector('i').classList.add('text-white'); } document.getElementById('page-title').innerText = tit;
             const mc = document.getElementById('main-content'); mc.innerHTML = '<div class="flex justify-center mt-20"><div class="relative w-10 h-10 flex items-center justify-center"><div class="absolute inset-0 border-4 border-red-800 rounded-full border-t-transparent animate-spin"></div></div></div>';
             
+            const navEnd=window.OSCProgress?.begin('Đang tải '+tit+'…');const navVersion=(window._oscNavVersion||0)+1;window._oscNavVersion=navVersion;
             setTimeout(async () => {
+                if(navVersion!==window._oscNavVersion){navEnd?.();return;}
                 const w = document.createElement('div'); w.className = 'animate-fade-up h-full flex flex-col min-w-0'; mc.innerHTML = ''; mc.appendChild(w);
                 try { 
                     const mFn = { 'dashboard': window.loadDashboard, 'statistics': window.loadStatistics, 'groups_manager': window.loadGroupsManager, 'student_list': window.loadStudentList, 'grading_table': window.loadUnifiedScoring||window.loadGradingTable, 'admin_live_monitor': window.loadAdminLiveMonitor, 'audit_logs': window.loadAuditLogs, 'admin_overview_scores': window.loadAdminOverviewScores, 'account_manager': window.loadAccountManager, 'casting_hub': window.loadCastingHub, 'casting_email': window.loadCastingEmail }; 
                     if(mFn[vId]) await mFn[vId](w); 
-                } catch(e) { window.renderErrorState(w, e.message); }
-            }, 50);
+                } catch(e) { if(w.isConnected)window.renderErrorState(w, e.message); }finally{navEnd?.()}
+            }, 0);
         };
 
         window.loadDashboard = async function(container) {
@@ -5482,14 +5491,14 @@ window.currentUserData = null; window.activeListeners = [];
           s.value=window._selectedGradingGroupId||'';
         }
         window.scheduleRealtimeRenderFast(true);
-      },e=>console.warn('ADMIN GROUPS REALTIME:',e));
+      },e=>console.warn('ADMIN GROUPS REALTIME:',e),gSnap);
 
       const uu=window.onSnapshot(window.query(window.collection(window.db,'users'),window.where('role','==','Grader')),snap=>{
         const arr=[]; snap.forEach(ds=>arr.push({id:ds.id,...ds.data()}));
         window._allGradersCache=arr;
         const gs=document.getElementById('grading-group-select');
         if(gs){oldChangeGradingGroup?.();window.dispatchEvent(new CustomEvent("osc-score-group-change",{detail:{groupId:gs.value,kind:"directory"}}));}
-      },e=>console.warn('ADMIN GRADERS REALTIME:',e));
+      },e=>console.warn('ADMIN GRADERS REALTIME:',e),uSnap);
 
       window.activeListeners.push(ug,uu);
       window.startGroupContentClock?.();
