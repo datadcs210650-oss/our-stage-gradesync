@@ -52,7 +52,7 @@ export function installUnifiedScoring(){
   for(const [id,title] of [["score","Bảng điểm"],["monitor","Giám sát BGK"],["report","Báo cáo & Xuất"]]){tabButtons[id]=button(title,()=>switchTab(id));tabs.append(tabButtons[id]);}
   head.append(header,bar,summary,state,tabs);
   const grid=el("div","flex flex-col min-h-0 min-w-0"),monitor=el("div","min-w-0"),reportPanel=el("div","min-w-0 space-y-3");root.append(head,grid,monitor,reportPanel);host.replaceChildren(root);
-  const onFocus=()=>{if(active&&root.isConnected&&!aggregate)refreshAll(false)};
+  let lastReportAt=0;const onFocus=()=>{if(active&&root.isConnected&&(!aggregate||Date.now()-lastReportAt>30000))refreshAll(!!aggregate)};
   function dispose(){active=false;revision++;reportSeq++;clearTimeout(timer);unwatch();window.removeEventListener("osc-score-group-change",event);window.removeEventListener("focus",onFocus);if(window.oscUnifiedRefresh===onFocus)window.oscUnifiedRefresh=null;}
   cleanup=dispose;window.activeListeners.push(dispose);window.oscUnifiedRefresh=onFocus;window.addEventListener("focus",onFocus);
   function getGroup(){return window._groupMapCache?.[group.value]||{}}
@@ -114,7 +114,7 @@ export function installUnifiedScoring(){
    const gid=group.value,j=judge.value;if(!gid||!active)return;const gen=++reportSeq;const end=window.OSCProgress?.foreground()?window.OSCProgress?.begin("Đang tải bảng điểm…"):null;
    if(force||!aggregate){state.textContent="Đang đối soát dữ liệu...";}
    try{
-    if(force||!aggregate){const a=await call("casting-report-data",{groupId:gid,graderCode:"ALL",expHidden:false});if(gen!==reportSeq||!active||gid!==group.value)return;aggregate=a;}
+    if(force||!aggregate){const a=await call("casting-report-data",{groupId:gid,graderCode:"ALL",expHidden:false});if(gen!==reportSeq||!active||gid!==group.value)return;aggregate=a;lastReportAt=Date.now();}
     const complete=aggregate.confirmed;
     const stage=aggregate.reviewSummary?.stage;
     state.textContent=({published:"✓ ĐÃ CÔNG BỐ KẾT QUẢ · Đã đối soát",approved:"✓ ĐÃ ĐỐI SOÁT KẾT QUẢ · Sử dụng quyết định chính thức",partial:"ĐANG ĐỐI SOÁT · Chưa hoàn tất","pending-review":"CHỜ DUYỆT KẾT QUẢ",insufficient:"CHƯA ĐỦ ĐIỀU KIỆN ĐỐI SOÁT · Kiểm tra từng thí sinh",grading:"ĐANG CHẤM ĐIỂM"})[stage]||"CHƯA XÁC ĐỊNH";
