@@ -28,7 +28,7 @@ window.loadCastingEmail=async function(host){
  const casting=field("select"),group=field("select");
  const selectGrid=node("div","grid grid-cols-1 md:grid-cols-2 gap-3");
  selectGrid.append(label("Đợt tuyển",casting),label("Nhóm / Phiên chấm",group));cfg.append(selectGrid);
- const load=btn("Tải kết quả đã duyệt",async()=>loadRows());
+ const load=btn("Làm mới dữ liệu điểm",async()=>loadRows());
  cfg.append(load);shell.append(cfg);
  const recipients=card("02 · Người nhận");
  const checkAll=field("checkbox");checkAll.className="w-4 h-4 accent-red-900";
@@ -42,7 +42,7 @@ window.loadCastingEmail=async function(host){
  table.innerHTML='<thead class="bg-rose-50 text-red-950 sticky top-0"><tr><th class="p-3">Chọn</th><th class="p-3">SBD</th><th class="p-3">Họ tên</th><th class="p-3">Email</th><th class="p-3">Phiên chấm</th><th class="p-3">Kết quả</th><th class="p-3">Điều kiện</th></tr></thead><tbody></tbody>';
  const tbody=table.querySelector("tbody");scroll.append(table);recipients.append(scroll);shell.append(recipients);
  const compose=card("03 · Nội dung và lịch công bố qua Email");
- const subject=field("text","OSC • Thông báo kết quả casting");subject.maxLength=150;
+ const subject=field("text","[NTCD] THÔNG BÁO KẾT QUẢ");subject.readOnly=true;
  const intro=field("textarea");intro.rows=3;intro.maxLength=1200;intro.value="Cảm ơn bạn đã tham gia chương trình tuyển chọn diễn viên của Our Stage Club.";
  const thanks=field("textarea");thanks.rows=3;thanks.maxLength=1200;thanks.value="Cảm ơn bạn đã dành thời gian và tâm huyết tham gia. Chúc bạn luôn giữ niềm đam mê sân khấu!";
  const date=field("datetime-local");
@@ -119,11 +119,12 @@ window.loadCastingEmail=async function(host){
  function sessions(){
   group.replaceChildren(new Option("Tất cả phiên chấm",""));
   for(const g of allGroups.filter(g=>g.castingId===casting.value))group.append(new Option(g.name,g.id));
-  if(group.options.length>1)group.selectedIndex=1;
+  if(group.options.length>1)group.selectedIndex=1;updateSubject();
  }
  function clear(){requestVersion++;rows=[];chosen.clear();checkAll.checked=false;tbody.replaceChildren();summary.textContent="Chọn phiên rồi nhấn Tải kết quả."}
  casting.onchange=()=>{sessions();clear();logBody.replaceChildren()};
- group.onchange=clear;checkAll.onchange=()=>{chosen.clear();draw()};
+ function updateSubject(){const g=allGroups.find(x=>x.id===group.value);subject.value="[NTCD] THÔNG BÁO KẾT QUẢ_"+(g?.name||"TÊN PHIÊN CỦA TỪNG THÍ SINH");}
+ group.onchange=()=>{updateSubject();clear()};checkAll.onchange=()=>{chosen.clear();draw()};
  async function loadRows(){
   if(!casting.value)throw Error("Chưa chọn casting.");
   const token=++requestVersion;notify("Đang tải kết quả đã duyệt…");

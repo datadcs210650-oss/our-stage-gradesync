@@ -46,7 +46,7 @@ export function installUnifiedScoring(){
   const root=el("section","space-y-3 min-w-0 h-full");root.dataset.oscUnified="1";
   const head=el("div","bg-white border border-rose-100 rounded-2xl p-4 space-y-3");
   const header=el("div","flex flex-wrap items-center justify-between gap-2");header.append(el("h3","text-lg font-black text-red-950","QUẢN LÝ CHẤM ĐIỂM"),link(),button("Đối chiếu bản scan",()=>compareDialog()));
-  const group=select(),judge=select(),refresh=button("Làm mới",()=>refreshAll(true)),bar=el("div","grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2");bar.append(field("Phiên chấm",group),field("Giám khảo",judge),refresh);
+  const group=select(),judge=select(),refresh=button("Làm mới dữ liệu điểm",()=>manualRefresh()),bar=el("div","grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2");bar.append(field("Phiên chấm",group),field("Giám khảo",judge),refresh);
   const summary=el("div","grid grid-cols-2 lg:grid-cols-4 gap-2"),state=el("p","text-sm font-bold text-red-900","Đang tải phiên chấm...");
   const tabs=el("div","flex flex-wrap gap-2 border-b border-rose-100 pb-2"),tabButtons={};
   for(const [id,title] of [["score","Bảng điểm"],["monitor","Giám sát BGK"],["report","Báo cáo & Xuất"]]){tabButtons[id]=button(title,()=>switchTab(id));tabs.append(tabButtons[id]);}
@@ -128,6 +128,17 @@ export function installUnifiedScoring(){
   async function mountMonitor(force=false){
    const gid=group.value;if(!gid)return;if(!force&&monitorGroup===gid)return;monitorGroup=gid;monitor.replaceChildren();
    await window.loadAdminLiveMonitor(monitor,{groupId:gid,groupName:getGroup().name||gid,viewJudge:code=>{judge.value=code;remember.judge=code;switchTab("score");},viewOriginal:r=>compareDialog({comparisonCode:r.comparisonCode,sha256:r.originalSha}),onRender:list=>{if(group.value===gid){scopeList=list;progress();for(const card of monitor.querySelectorAll("[data-grader-code]"))card.hidden=judge.value!=="ALL"&&card.dataset.graderCode!==judge.value;}},onChanged:()=>refreshAll(true)});
+  }
+  async function manualRefresh(){
+   const gid=group.value;if(!active||!gid||refresh.disabled)return;refresh.disabled=true;
+   try{const queryFor=t=>window.query(window.collection(window.db,t),window.where("groupId","==",gid));
+    const [c,s,v]=await Promise.all(["candidates","scores","grader_verifications"].map(t=>window.getDocs(queryFor(t))));
+    if(!active||gid!==group.value||!root.isConnected)return;
+    const collect=x=>x.docs.map(d=>({id:d.id,...d.data()}));
+    window._allCandidatesCache=collect(c);window._allScoresCache=collect(s);window._allVerificationsCache=Object.fromEntries(collect(v).map(x=>[x.graderCode+"_"+x.groupId,x]));
+    window.renderGradingTables?.();progress();await refreshAll(true);
+    if(active&&gid===group.value&&aggregate)window.showToast?.("Đã làm mới dữ liệu điểm của phiên.");
+   }catch(e){msg(e.message||"Không làm mới được dữ liệu điểm.",true)}finally{refresh.disabled=false}
   }
   async function refreshAll(force=false){if(!active||!root.isConnected)return;if(currentTab==="monitor")await mountMonitor(force);await fetchReport(force);}
   function switchTab(id){currentTab=id;remember.tab=id;visible();syncLegacy();if(id==="monitor")mountMonitor(false);fetchReport(false);}

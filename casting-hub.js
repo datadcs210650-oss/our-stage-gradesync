@@ -60,7 +60,7 @@ async function loadCastingHub(parent){
  const selector=el("div","flex flex-wrap items-end gap-2");const picker=formRow("Chọn casting",castingSelect);picker.classList.add("flex-1","min-w-[200px]");selector.append(picker,button("Tải lại danh sách",async()=>{await reload();if(current)await showResults();else toast("Chưa có casting.")}));root.append(selector);
  const review=panel("Đối soát & duyệt kết quả");
  table=el("div","text-xs text-gray-500");table.textContent="Bấm Tải bảng điểm để kiểm tra.";
- review.append(button("Tải bảng điểm",showResults),table);
+ review.append(button("Làm mới dữ liệu điểm",showResults),table);
  const actions=el("div","flex flex-wrap gap-2 mt-3");
  actions.append(button("Duyệt kết quả đã chọn",async()=>{
   const ids=[...table.querySelectorAll(".cast-chosen:checked")].map(x=>x.value);if(ids.length>40)throw Error("Mỗi lần duyệt tối đa 40 hồ sơ. Hãy giảm số lượng chọn.");

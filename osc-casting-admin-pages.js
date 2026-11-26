@@ -32,7 +32,7 @@ export function installCastingAdminPages(){
   const dialog=el("dialog","","rounded-2xl border border-rose-100 bg-white shadow-2xl p-0");
   dialog.style.cssText="width:min(940px,95vw);max-height:90vh;overflow:auto;margin:auto";
   const search=input("Tìm phiên chấm / học kỳ"),filter=sel();for(const [v,t] of [["","Tất cả trạng thái"],["open","Đang mở"],["closed","Đã đóng chấm"],["scheduled","Chờ lịch"],["review","Đối soát"],["approved","Đã duyệt"],["published","Đã công bố"],["archived","Lưu trữ"]])filter.append(new Option(t,v));const filters=el("div","","grid grid-cols-1 sm:grid-cols-2 gap-3");filters.append(search,filter);header.append(btn("Làm mới dữ liệu",()=>sessionSettings(host),true));root.append(header,filters,list,dialog);const stateFor=g=>["open","closed","scheduled"].includes(g.accessState)?g.accessState:"unknown";
-  const statusNames={open:"Đang mở chấm",closed:"Đã đóng chấm",scheduled:"Chờ lịch mở",unknown:"Chưa xác định",draft:"Chưa duyệt",review:"Đang đối soát",approved:"Đã duyệt",published:"Đã công bố",archived:"Đã lưu trữ"};
+  const statusNames={open:"Đang mở chấm",closed:"Đã đóng chấm",scheduled:"Chờ lịch mở",unknown:"Chưa xác định",draft:"Chưa duyệt",review:"Đang đối soát",approved:"Đã đối soát",published:"Đã công bố",archived:"Đã lưu trữ"};
   const accessColor={open:"bg-emerald-100 text-emerald-800",closed:"bg-gray-100 text-gray-700",scheduled:"bg-amber-100 text-amber-800",unknown:"bg-gray-100 text-gray-700"};
   const applyFilter=()=>{for(const card of list.children)card.hidden=!!(filter.value&&card.dataset.status!==filter.value&&card.dataset.review!==filter.value)||!(card.dataset.search||"").includes(search.value.trim().toLocaleLowerCase("vi"))};search.oninput=filter.onchange=applyFilter;
   function openDelete(g){
@@ -65,6 +65,9 @@ export function installCastingAdminPages(){
    if(group){term.disabled=true}else grid.append(field("Lưu trong casting",destination));
    const mode=sel();mode.append(new Option("Mở thủ công","manual"),new Option("Mở tự động","auto"));mode.value=group?.openMode||"manual";
    const start=input("","datetime-local"),end=input("","datetime-local");start.value=localDate(group?.startTime);end.value=localDate(group?.endTime);
+   const sessionAt=input("","datetime-local");sessionAt.required=true;
+   if(group?.sessionAt){const when=new Date(group.sessionAt);if(Number.isFinite(when.getTime()))sessionAt.value=new Date(when.getTime()+7*3600000).toISOString().slice(0,16)}
+   grid.append(field("Ngày giờ chấm (GMT+7) *",sessionAt));
    const attendance=input("","checkbox");attendance.className="h-4 w-4 accent-red-900";attendance.checked=group?.attendanceEnabled===true;attendance.disabled=Boolean(group&&group.verifiedCount>0);attendance.title="Khi bật lần đầu ở phiên chưa chấm, tất cả thí sinh mặc định vắng mặt. Sau khi đã có dữ liệu chấm không được đổi chế độ.";
    grid.append(field("Chế độ mở",mode),field("Giờ mở",start),field("Giờ khóa",end),field("Yêu cầu điểm danh",attendance));
    mode.onchange=()=>{start.disabled=mode.value!=="auto"};mode.onchange();
@@ -119,7 +122,8 @@ export function installCastingAdminPages(){
     const sessionPolicy={method:method.value,weights:graderWeights,roles:roleNames,maxRegistered:enable.checked?Number(reg.value):0,maxProposed:enable.checked?Number(proposed.value):0,notesEnabled:notes.checked};
     // Do not silently alter a legacy policy while editing unrelated settings.
     const unchangedLegacy=group&&!original&&!enable.checked&&!notes.checked&&method.value===(casting?.aggregate_method||"mean")&&passScore===Number(casting?.pass_score??group.passScore)&&JSON.stringify(graderWeights)===JSON.stringify(policy.weights||{});
-    const body={passScore,criteria:criteriaData,extraFields:extrasData,openMode:mode.value,startAt:mode.value==="auto"&&start.value?new Date(start.value).toISOString():null,endAt:end.value?new Date(end.value).toISOString():null,attendanceEnabled:attendance.checked,...(unchangedLegacy?{}:{sessionPolicy,roleLimits})};
+    if(!sessionAt.value||!sessionAt.checkValidity())throw Error("Hãy nhập ngày giờ chấm (GMT+7).");
+    const body={sessionAt:new Date(sessionAt.value+"+07:00").toISOString(),passScore,criteria:criteriaData,extraFields:extrasData,openMode:mode.value,startAt:mode.value==="auto"&&start.value?new Date(start.value).toISOString():null,endAt:end.value?new Date(end.value).toISOString():null,attendanceEnabled:attendance.checked,...(unchangedLegacy?{}:{sessionPolicy,roleLimits})};
     if(group)await api("casting-update-session",{...body,groupId:group.id,version:group.version,name:name.value.trim()});
     else await api("casting-create-session",{...body,term:term.value,division:name.value.trim(),castingId:destination.value||undefined});
     dialog.close();window.showToast?.("Đã lưu phiên chấm.");await window.loadGroupsManager(host);
@@ -127,7 +131,7 @@ export function installCastingAdminPages(){
    pane.append(actions);dialog.append(pane);dialog.showModal();
   }
   for(const g of groups){
-   const casting=allCastings.find(c=>c.id===g.castingId),card=panel(g.name),status=stateFor(g),review=casting?.status||"draft",locked=["published","archived","approved"].includes(review)||!!g.controlReason;card.dataset.status=status;card.dataset.review=review;card.dataset.search=(g.name+" "+(casting?.term||"")).toLocaleLowerCase("vi");const badges=el("div","","flex flex-wrap gap-2");badges.append(el("span",statusNames[status],"inline-block rounded-full px-3 py-1 font-bold text-xs "+accessColor[status]),el("span","Kết quả: "+(statusNames[review]||review),"inline-block rounded-full bg-rose-50 text-red-900 px-3 py-1 font-bold text-xs"));card.append(badges);if(g.controlReason)card.append(el("p",g.controlReason,"text-xs text-gray-500 leading-relaxed"));
+   const casting=allCastings.find(c=>c.id===g.castingId),card=panel(g.name),status=stateFor(g),review=casting?.status==="published"||casting?.status==="archived"?casting.status:(g.eligibleCount>0&&g.approvedCount===g.eligibleCount?"approved":g.approvedCount>0?"review":casting?.status==="review"?"review":"draft"),locked=["published","archived","approved"].includes(review)||!!g.controlReason;card.dataset.status=status;card.dataset.review=review;card.dataset.search=(g.name+" "+(casting?.term||"")).toLocaleLowerCase("vi");const badges=el("div","","flex flex-wrap gap-2");badges.append(el("span",statusNames[status],"inline-block rounded-full px-3 py-1 font-bold text-xs "+accessColor[status]),el("span","Kết quả: "+(statusNames[review]||review),"inline-block rounded-full bg-rose-50 text-red-900 px-3 py-1 font-bold text-xs"));if(g.judgeCount>0&&g.verifiedCount===g.judgeCount)badges.append(el("span","Đã nộp toàn bộ","inline-block rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 font-bold text-xs"));card.append(badges);if(g.sessionAt)card.append(el("p","Ngày chấm: "+new Date(g.sessionAt).toLocaleString("vi-VN",{timeZone:"Asia/Ho_Chi_Minh"}),"text-xs text-gray-600"));if(g.controlReason)card.append(el("p",g.controlReason,"text-xs text-gray-500 leading-relaxed"));
    const info=el("div","","flex flex-wrap items-center gap-2 text-xs text-gray-600");
    info.append(el("span",casting?.term||"Chưa gắn casting","rounded-lg bg-rose-50 px-2 py-1 font-bold text-red-900"),el("span",(g.criteria||[]).length+" tiêu chí"),el("span",g.sessionPolicy?.roles?.length?g.sessionPolicy.roles.length+" vai diễn":"Casting thông thường"));
    const actions=el("div","","flex flex-wrap gap-2");
@@ -142,7 +146,7 @@ export function installCastingAdminPages(){
    if(g.canDelete===true){const del=btn("Xóa phiên",()=>openDelete(g),true);del.classList.add("text-red-700","border-red-300");actions.append(del)}
    
    if(!casting&&allCastings.length){const target=sel();target.append(new Option("Chọn casting",""));for(const x of allCastings.filter(x=>!["published","archived"].includes(x.status)))target.append(new Option(x.term+" · "+x.name,x.id));card.append(field("Gắn casting",target),btn("Gắn",async()=>{if(!target.value)throw Error("Chọn casting.");await api("casting-assign-group",{castingId:target.value,groupId:g.id});await window.loadGroupsManager(host)},true))}
-   const counts=el("div","","grid grid-cols-3 gap-2");for(const [name,num] of [["Thí sinh",g.candidateCount],["BGK",g.judgeCount],["Đã nộp",g.verifiedCount]])counts.append(el("div",name+" · "+(num??"—"),"rounded-lg bg-gray-50 p-2 text-xs font-bold"));card.append(info,counts,actions);list.append(card);
+   const counts=el("div","","grid grid-cols-2 sm:grid-cols-4 gap-2");for(const [name,num] of [["Thí sinh",g.candidateCount],["BGK",g.judgeCount],["Đã nộp",g.verifiedCount],["Đã duyệt",g.approvedCount+"/"+g.eligibleCount]])counts.append(el("div",name+" · "+(num??"—"),"rounded-lg bg-gray-50 p-2 text-xs font-bold"));card.append(info,counts,actions);list.append(card);
   }
   if(!groups.length)list.append(el("p","Chưa có phiên chấm.","text-xs text-gray-500"));
   host.replaceChildren(root);
