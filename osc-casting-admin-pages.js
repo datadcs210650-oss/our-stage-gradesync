@@ -65,7 +65,7 @@ export function installCastingAdminPages(){
    if(group){term.disabled=true}else grid.append(field("Lưu trong casting",destination));
    const mode=sel();mode.append(new Option("Mở thủ công","manual"),new Option("Mở tự động","auto"));mode.value=group?.openMode||"manual";
    const start=input("","datetime-local"),end=input("","datetime-local");start.value=localDate(group?.startTime);end.value=localDate(group?.endTime);
-   const attendance=input("","checkbox");attendance.className="h-4 w-4 accent-red-900";attendance.checked=group?.attendanceEnabled===true;
+   const attendance=input("","checkbox");attendance.className="h-4 w-4 accent-red-900";attendance.checked=group?.attendanceEnabled===true;attendance.disabled=Boolean(group&&group.verifiedCount>0);attendance.title="Khi bật lần đầu ở phiên chưa chấm, tất cả thí sinh mặc định vắng mặt. Sau khi đã có dữ liệu chấm không được đổi chế độ.";
    grid.append(field("Chế độ mở",mode),field("Giờ mở",start),field("Giờ khóa",end),field("Yêu cầu điểm danh",attendance));
    mode.onchange=()=>{start.disabled=mode.value!=="auto"};mode.onchange();
    general.append(grid);pane.append(general);

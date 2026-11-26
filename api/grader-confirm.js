@@ -36,16 +36,17 @@ async function preflight(db,profile,groupId){
  if(!grant)throw fail("BGK không được phân công phiên này.",403);
  const receipt=required(await db.from("gs_grading_receipts").select("verified_at").eq("grader_id",profile.id).eq("group_id",groupId).maybeSingle());
  if(receipt)throw fail("Bảng điểm đã được xác nhận và khóa.",409);
- const group=required(await db.from("competition_groups").select("id,name,criteria,casting_id").eq("id",groupId).single());
+ const group=required(await db.from("competition_groups").select("id,name,criteria,casting_id,extra_data").eq("id",groupId).single());
  if(group.casting_id){const casting=required(await db.from("gs_castings").select("status").eq("id",group.casting_id).single());if(["approved","published","archived"].includes(casting.status))throw fail("Phiên chấm đã hoàn tất.",409)}
- const [{data:candidates,error:ce},{data:scores,error:se},{data:grants,error:ge}]=await Promise.all([
-  db.from("candidates").select("id").eq("group_id",groupId).limit(1500),
+ const [{data:allCandidates,error:ce},{data:scores,error:se},{data:grants,error:ge}]=await Promise.all([
+  db.from("candidates").select("id,is_present").eq("group_id",groupId).limit(1500),
   db.from("scores").select("candidate_id,scores").eq("group_id",groupId).eq("grader_id",profile.id).limit(1500),
   db.from("gs_criterion_grants").select("criterion").eq("grader_id",profile.id).eq("group_id",groupId)
  ]);
  if(ce||se||ge)throw fail("Không đối soát được bảng điểm.",503);
- if(candidates.length>=1500||scores.length>=1500)throw fail("Quá nhiều thí sinh để xác nhận trong một lượt.",413);
- if(!candidates.length)throw fail("Phiên chấm chưa có thí sinh.",409);
+ if(allCandidates.length>=1500||scores.length>=1500)throw fail("Quá nhiều thí sinh để xác nhận trong một lượt.",413);
+ const candidates=allCandidates.filter(c=>group.extra_data?.attendanceEnabled!==true||c.is_present===true);
+ if(!candidates.length)throw fail("Phiên chấm chưa có thí sinh đủ điều kiện điểm danh.",409);
  const byCandidate=new Map(scores.map(x=>[x.candidate_id,x.scores||{}]));
  const allowed=grants.length?new Set(grants.map(x=>x.criterion)):null;
  const requiredCriteria=(group.criteria||[]).filter(c=>!allowed||allowed.has(c.name)).map(c=>c.name);

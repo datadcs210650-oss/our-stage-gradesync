@@ -50,7 +50,7 @@ window.loadStudentList=async function(host){
  const clean=()=>{if(!alive()){modal.remove();observer.disconnect()}};
  const observer=new MutationObserver(clean);observer.observe(document.getElementById("main-content")||host.parentNode||host,{childList:true,subtree:true});
  const current=()=>state.groups.find(x=>x.id===state.selected);
- function formatReview(v){return v==="approved"?"Đã duyệt":v==="rejected"?"Từ chối":"Chờ duyệt"}
+ function formatReview(v){return v==="approved"?"Đã duyệt":v==="rejected"?"Từ chối":v==="absent"?"Vắng mặt – không xét":"Chờ duyệt"}
  function rerender(){
   const searchTerm=search.value.toLocaleLowerCase("vi").trim();
   const filtered=state.items.filter(r=>!searchTerm||[r.name,r.code,r.mssv,r.email,r.phone,...(r.extras||[]).map(x=>x.value)].some(v=>String(v||"").toLocaleLowerCase("vi").includes(searchTerm)));
@@ -225,7 +225,7 @@ window.loadStudentList=async function(host){
    const chunk=page.rows||[];rows.push(...chunk);offset+=chunk.length;if(!chunk.length)break;
   }while(offset<total);
   const names=[...new Set(rows.flatMap(r=>(r.extras||[]).map(e=>e.label)))];
-  const data=[["SBD","Họ và tên","MSSV","Email","Số điện thoại","Vai đăng ký","Kết quả","Duyệt",...names],...rows.map(r=>[r.code,r.name,r.mssv,r.email,r.phone,(r.registeredRoles||[]).join("; "),r.outcome==="passed"?"PASSED":r.outcome==="failed"?"NOT PASSED":"CHỜ",formatReview(r.review),...names.map(n=>String((r.extras||[]).find(e=>e.label===n)?.value??""))])];
+  const data=[["SBD","Họ và tên","MSSV","Email","Số điện thoại","Vai đăng ký","Kết quả","Duyệt",...names],...rows.map(r=>[r.code,r.name,r.mssv,r.email,r.phone,(r.registeredRoles||[]).join("; "),r.outcome==="passed"?"PASSED":r.outcome==="failed"?"NOT PASSED":r.outcome==="absent"?"VẮNG MẶT":"CHỜ",formatReview(r.review),...names.map(n=>String((r.extras||[]).find(e=>e.label===n)?.value??""))])];
   const book=window.XLSX.utils.book_new();window.XLSX.utils.book_append_sheet(book,window.XLSX.utils.aoa_to_sheet(data),"Thi sinh");window.XLSX.writeFile(book,"OSC-Cham-diem-"+session.name.replace(/[^\p{L}\p{N}_-]/gu,"_")+".xlsx");
  }
  async function openImport(){

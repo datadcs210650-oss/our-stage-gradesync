@@ -49,7 +49,7 @@ export function installReceiptAdmin(){
    try{
     const data=await call("casting-receipt-list",{groupId:id});if(current!==generation||!panel.isConnected)return;
     const list=data.receipts||[],count=list.filter(r=>r.confirmed&&r.comparisonCode).length;
-    status.textContent=count+"/"+list.length+" BGK đã xác nhận · "+(list.length&&count>list.length/2?"Đủ tỷ lệ cấp phiên; vẫn kiểm tra từng thí sinh":"Chưa đủ trên 50%");
+    const assigned=data.attendanceState?.assigned??list.length,submitted=data.attendanceState?.submitted??count;status.textContent=submitted+"/"+assigned+" BGK đã xác nhận · "+(assigned&&submitted*2>=assigned?"Đủ tỷ lệ ≥50%; vẫn kiểm tra từng thí sinh":"Chưa đủ 50%")+(data.attendanceState?.enabled?(data.attendanceState.locked?" · Điểm danh đã khóa":" · Điểm danh đang mở"):"");
     rows.replaceChildren();
     for(const r of list){
      const card=el("article","rounded-xl border border-rose-100 p-3 space-y-2");card.dataset.graderCode=r.graderCode;

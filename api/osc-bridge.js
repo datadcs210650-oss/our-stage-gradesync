@@ -40,6 +40,9 @@ async function supa(path,{method="GET",body,headers={}}={}){
  if(!response.ok){
   const err=safeText(result?.message||result?.msg||result?.error||"",180);
   console.warn("OSC GradeSync upstream error",response.status,err.replace(/[A-Za-z0-9]{40,}/g,"[redacted]"));
+  if(err.includes("GS_ATTENDANCE_LOCKED"))fail("Điểm danh đã khóa.","osc/gradesync-conflict");
+  if(err.includes("GS_ATTENDANCE_CONFIG_LOCKED"))fail("Không thể đổi chế độ điểm danh sau khi đã chấm hoặc khóa.","osc/gradesync-conflict");
+  if(err.includes("GS_CANDIDATE_ABSENT"))fail("Thí sinh vắng mặt.","osc/gradesync-conflict");
   if(err.includes("Phiên chấm đã hoàn tất."))fail("Phiên chấm đã hoàn tất.","osc/gradesync-conflict");
   if(response.status===401||response.status===403)fail("NỀN TẢNG CHẤM ĐIỂM từ chối khóa dịch vụ. Kiểm tra cấu hình Supabase.","osc/gradesync-config");
   if(response.status===409)fail("Mã hoặc tài khoản đã tồn tại.","osc/gradesync-conflict");
@@ -320,8 +323,11 @@ async function markAttendance(actor,body){
  const group=String(body.groupId||""),candidate=String(body.candidateId||"");
  if(!ID.test(group)||!ID.test(candidate)||typeof body.present!=="boolean")
   fail("Thông tin điểm danh không hợp lệ.");
- const found=await supa(url("candidates",{id:"eq."+candidate,group_id:"eq."+group,select:"id",limit:"1"}));
+ const found=await supa(url("candidates",{id:"eq."+candidate,group_id:"eq."+group,select:"id,is_present",limit:"1"}));
  if(!found?.length)fail("Thí sinh không thuộc nhóm đã chọn.");
+ const checkState=await sb().rpc("osc_attendance_state",{p_group:group});if(checkState.error)fail("Không kiểm tra được trạng thái điểm danh.","osc/gradesync-upstream");const state=checkState.data;
+ if(!state?.enabled)fail("Phiên chưa bật điểm danh.");
+ if(state.locked)fail("Điểm danh đã khóa vì từ 50% BGK xác nhận.","osc/gradesync-conflict");
  await supa("/rest/v1/candidates?id=eq."+candidate+"&group_id=eq."+group,{
   method:"PATCH",body:{is_present:body.present,attendance_updated_at:new Date().toISOString()},
   headers:{Prefer:"return=minimal"}});
@@ -351,6 +357,9 @@ async function handle(req,res){
    const {data,error}=await sb().rpc("osc_grading_documents",{ops:b.ops,actor_uid:actor.decoded.uid});
    if(error){
     console.warn("OSC grading document operation",error.code);
+    if(error.message?.includes("GS_ATTENDANCE_LOCKED"))fail("Điểm danh đã khóa vì từ 50% BGK xác nhận.","osc/gradesync-conflict");
+    if(error.message?.includes("GS_CANDIDATE_ABSENT"))fail("Thí sinh vắng mặt không được chấm điểm.","osc/gradesync-conflict");
+    if(error.message?.includes("GS_ATTENDANCE_CONFIG_LOCKED"))fail("Phiên đã có điểm hoặc xác nhận; không đổi chế độ điểm danh.","osc/gradesync-conflict");
     if(error.message?.includes("Phiên chấm đã hoàn tất."))fail("Phiên chấm đã hoàn tất.","osc/gradesync-conflict");
     if(error.message?.includes("Phiên đã duyệt hoặc công bố kết quả."))fail("Không thể mở khóa: phiên đã duyệt hoặc công bố kết quả. Cần xử lý kết quả chính thức trước khi chấm lại.","osc/gradesync-conflict");
     if(error.message?.includes("Chỉ quản trị OSC có thể mở lại bảng điểm."))fail("Phiên quản trị không đủ quyền mở khóa. Vui lòng đăng nhập lại.","osc/gradesync-forbidden");

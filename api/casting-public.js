@@ -26,7 +26,7 @@ export default async function handler(req,res){
   const cast=await db.from("gs_castings").select("id,status,publish_at,public_fields").eq("id",castingId).maybeSingle();
   if(cast.error||!cast.data||cast.data.status!=="published"||!cast.data.publish_at||
       Date.parse(cast.data.publish_at)>Date.now())throw fail("Kết quả chưa được công bố.",404);
-  const groups=await db.from("competition_groups").select("id").eq("casting_id",castingId).limit(100);
+  const groups=await db.from("competition_groups").select("id,extra_data").eq("casting_id",castingId).limit(100);
   if(groups.error||!groups.data?.length)throw fail("Chưa có dữ liệu công bố.",404);
   const groupIds=groups.data.map(x=>x.id);
   const idResult=await db.from("gs_candidate_identity").select("candidate_id,email")
@@ -34,12 +34,12 @@ export default async function handler(req,res){
   if(idResult.error)throw fail("Không thể tra cứu kết quả.",503);
   let candidate,identity=idResult.data;
   if(identity){
-   const c=await db.from("candidates").select("id,code,name,group_id").eq("id",identity.candidate_id)
+   const c=await db.from("candidates").select("id,code,name,group_id,is_present").eq("id",identity.candidate_id)
     .in("group_id",groupIds).maybeSingle();
    if(c.error)throw fail("Không thể tra cứu kết quả.",503);
    candidate=c.data;
   }else{
-   const matches=await db.from("candidates").select("id,code,name,group_id")
+   const matches=await db.from("candidates").select("id,code,name,group_id,is_present")
     .in("group_id",groupIds).eq("code",code).limit(2);
    if(matches.error)throw fail("Không thể tra cứu kết quả.",503);
    if(matches.data?.length===1){
@@ -50,7 +50,7 @@ export default async function handler(req,res){
     identity=row.data;
    }
   }
-  if(!candidate||!identity||!exactEmail(identity.email,email))
+  if(!candidate||!identity||!exactEmail(identity.email,email)|| (groups.data.find(g=>g.id===candidate.group_id)?.extra_data?.attendanceEnabled===true&&candidate.is_present!==true))
    throw fail("Không tìm thấy kết quả theo thông tin đã nhập.",404);
   const approval=await db.from("gs_casting_decisions").select("outcome,score,review_status").eq("casting_id",castingId).eq("candidate_id",candidate.id).maybeSingle();
   if(approval.error||approval.data?.review_status!=="approved")throw fail("Kết quả chưa được phê duyệt công bố.",404);

@@ -23,7 +23,7 @@ async function showResults(){
  const response=await api("casting-results",{castingId});
  if(castingId!==current||table!==view||!view.isConnected)return;
  result=response;
- const summary=el("div","grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3");const eligible=(result.rows||[]).filter(r=>!r.incomplete).length;for(const [label,n] of [["Đủ điều kiện",eligible],["Chưa đủ BGK",(result.rows||[]).length-eligible],["Đã duyệt",(result.rows||[]).filter(r=>r.review==="approved").length]]){const tile=el("div","rounded-xl border border-rose-100 bg-white p-3");tile.append(el("p","text-xs text-gray-500",label),el("strong","text-xl font-black text-red-900",String(n)));summary.append(tile)}
+ const summary=el("div","grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3");const eligible=(result.rows||[]).filter(r=>!r.incomplete).length;const approved=(result.rows||[]).filter(r=>r.review==="approved").length;const total=(result.rows||[]).length;for(const [label,n] of [["Cần đối soát",total],["Đủ điều kiện",eligible],["Đã duyệt",approved+"/"+total],["Vắng mặt (không xét)",result.attendanceSummary?.absent||0]]){const tile=el("div","rounded-xl border border-rose-100 bg-white p-3");tile.append(el("p","text-xs text-gray-500",label),el("strong","text-xl font-black text-red-900",String(n)));summary.append(tile)}
  const wrap=el("div","overflow-x-auto border rounded-xl"),t=el("table","w-full min-w-[760px] text-xs border-collapse");
  const head=el("thead","bg-gray-100 text-gray-600"),hr=document.createElement("tr");
  for(const h of ["Chọn","MSSV / SBD","Thí sinh","Nhóm thi","Điểm HĐ","BGK","Đối soát","Kết quả","Duyệt","Vai chính thức"]){hr.append(el("th","p-3 text-left",h))}
@@ -48,8 +48,8 @@ async function showResults(){
   }else roleCell.textContent="—";
   tr.append(roleCell);body.append(tr);
  }
- t.append(body);wrap.append(t);const selectAll=button("Chọn tất cả đủ điều kiện",()=>{const boxes=[...table.querySelectorAll(".cast-chosen:not(:disabled)")];const next=!boxes.every(x=>x.checked);boxes.forEach(x=>x.checked=next)});table.replaceChildren(summary,selectAll,wrap);
- toast("Đã đối soát "+(result.rows||[]).length+" thí sinh. Chỉ điểm BGK đã khóa/nộp được tính.");
+ t.append(body);wrap.append(t);const selectAll=button("Chọn tất cả đủ điều kiện",()=>{const boxes=[...table.querySelectorAll(".cast-chosen:not(:disabled)")];const next=!boxes.every(x=>x.checked);boxes.forEach(x=>x.checked=next)});const complete=total>0&&approved===total;const state=el("p","font-bold text-sm "+(complete?"text-emerald-700":"text-amber-700"),complete?"✓ ĐÃ ĐỐI SOÁT KẾT QUẢ · "+approved+"/"+total:"ĐANG ĐỐI SOÁT · "+approved+"/"+total);table.replaceChildren(summary,state,selectAll,wrap);
+ toast(complete?"Đã đối soát toàn bộ thí sinh thuộc diện chấm.":"Chỉ xét thí sinh có mặt khi bật điểm danh; cần từ 50% BGK hợp lệ và đủ tiêu chí.");
 }
 async function loadCastingHub(parent){
  const root=el("div","space-y-4 pb-8");

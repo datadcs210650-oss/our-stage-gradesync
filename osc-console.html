@@ -2422,7 +2422,7 @@ window.currentUserData = null; window.activeListeners = [];
                 let attendanceHtml = '';
                 if(groupInfo.attendanceEnabled) {
                     if(isAdmin) {
-                        attendanceHtml = `<td class="py-3 px-2 text-center align-middle bg-blue-50/20"><input type="checkbox" onchange="window.toggleCandAttendance('${cand.id}', this.checked)" class="w-4 h-4 rounded accent-blue-600 cursor-pointer" ${cand.isPresent ? 'checked' : ''}></td>`;
+                        attendanceHtml = `<td class="py-3 px-2 text-center align-middle bg-blue-50/20"><select onchange="window.toggleCandAttendance('${cand.id}',this.value==='yes')" class="border border-rose-100 rounded-lg p-1 text-xs" ${window.oscAttendanceLock?.()?'disabled':''}><option value="yes" ${cand.isPresent?'selected':''}>Có mặt</option><option value="no" ${!cand.isPresent?'selected':''}>Vắng mặt</option></select></td>`;
                     } else {
                         attendanceHtml = `<td class="py-3 px-2 text-center align-middle ${cand.isPresent ? 'bg-emerald-100/70' : 'bg-blue-50/20'}">
                             ${cand.isPresent
@@ -3230,7 +3230,7 @@ window.currentUserData = null; window.activeListeners = [];
             const listHtml = candidateViews.map((view, idx) => {
                 const active = view.cand.id === selected.cand.id;
                 const miniBadge = view.hasScore ? (view.isPass ? '<span class="gs-pill green">PASS</span>' : '<span class="gs-pill amber">FAIL</span>') : '<span class="gs-pill gray">CHỜ</span>';
-                const presence = groupInfo.attendanceEnabled ? (view.present ? '<span class="text-[10px] font-black text-emerald-700">• Có mặt</span>' : '<span class="text-[10px] font-bold text-gray-400">• Chưa điểm danh</span>') : '';
+                const presence = groupInfo.attendanceEnabled ? (view.present ? '<span class="text-[10px] font-black text-emerald-700">• Có mặt</span>' : '<span class="text-[10px] font-bold text-gray-400">• Vắng mặt</span>') : '';
                 const totalShort = Number(view.totalScore || 0).toFixed(2).replace(/\.00$/,'');
                 return `<button type="button" onclick="window.selectGradingCandidate('${view.cand.id}')" class="gs-candidate-item ${active ? 'active' : ''}"><div class="min-w-0 text-left"><div class="flex items-start gap-2"><span class="text-[10px] font-black text-gray-400 mt-0.5">${idx + 1}.</span><div class="min-w-0"><div class="gs-candidate-item-name truncate">${window.escapeHtml(view.cand.name || 'Thí sinh')}</div><div class="gs-candidate-item-code">${window.escapeHtml(view.cand.code || '---')} ${presence}</div></div></div></div><div class="shrink-0 text-right"><div class="gs-mini-kpi"><span class="value">${totalShort}</span></div><div class="mt-2">${miniBadge}</div></div></button>`;
             }).join('');
@@ -3322,7 +3322,7 @@ window.currentUserData = null; window.activeListeners = [];
             let attendanceHtml = '';
             if(groupInfo.attendanceEnabled) {
                 if(isAdmin) {
-                    attendanceHtml = `<td class="py-3 px-2 text-center align-middle bg-blue-50/20"><input type="checkbox" onchange="window.toggleCandAttendance('${cand.id}', this.checked)" class="w-4 h-4 rounded accent-blue-600 cursor-pointer" ${present ? 'checked' : ''}></td>`;
+                    attendanceHtml = `<td class="py-3 px-2 text-center align-middle bg-blue-50/20"><select onchange="window.toggleCandAttendance('${cand.id}',this.value==='yes')" class="border border-rose-100 rounded-lg p-1 text-xs" ${window.oscAttendanceLock?.()?'disabled':''}><option value="yes" ${present?'selected':''}>Có mặt</option><option value="no" ${!present?'selected':''}>Vắng mặt</option></select></td>`;
                 } else {
                     attendanceHtml = `<td class="py-3 px-2 text-center align-middle ${present ? 'bg-emerald-100/70' : 'bg-blue-50/20'}">${present ? '<span class="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full inline-flex items-center gap-1"><i class="fas fa-circle text-[6px]"></i> CÓ MẶT</span>' : '<span class="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">Chờ điểm danh</span>'}</td>`;
                 }
