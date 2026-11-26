@@ -60,7 +60,7 @@ async function openConfig(groupId="",graderCode="ALL"){
   preview.onclick=()=>run(true);save.onclick=()=>run(false);await refreshJudges(graderCode);
  }catch(e){window.showToast?.(e.message,"error")}finally{window.showLoading?.(false)}
 }
-window.openPDFConfigModalLive=()=>openConfig();
+window.openPDFConfigModalLive=(groupId,graderCode)=>openConfig(groupId,graderCode);
 window.adminExportGraderPDF=(groupId,graderCode)=>openConfig(groupId,graderCode);
 window.executePDFExport=async function(groupId,graderCode,rF,title,signerTitle,graderOptionText,docTitle,attendanceFilter,expHidden){if(!authorized())return;window.showLoading?.(true,"Đang tạo PDF...");try{const r=await requestReport({groupId,graderCode,resultFilter:rF||"ALL",attendanceFilter:attendanceFilter||"ALL",docTitle,expHidden:!!expHidden,orientation:"landscape"});clearUrl();url=URL.createObjectURL(r.blob);download({...r,url});window.showToast?.("Đã tạo biên bản PDF.")}catch(e){window.showToast?.(e.message,"error")}finally{window.showLoading?.(false)}};
 })();

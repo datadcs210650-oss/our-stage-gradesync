@@ -9,7 +9,7 @@ import {createClient} from "@supabase/supabase-js";
 import {createRestRecoveryFetch,restRecoveryOptions} from "../lib/supabase-rest-recovery.js";
 import {CAST_ACTIONS,handleCastingAction} from "../lib/casting-manager.js";
 import {sendScoringMail} from "../lib/scoring-mail-relay.js";
-import {verifyGradingPdf} from "../lib/osc-pdf-service.js";
+import {verifyGradingPdf,lookupScan} from "../lib/osc-pdf-service.js";
 import {receiptMail,deliverReceiptJob} from "../lib/receipt-mail.js";
 const sendJson=(res,status,payload)=>{res.statusCode=status;res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");res.end(JSON.stringify(payload))};
 const readJsonBody=req=>typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
@@ -338,6 +338,7 @@ async function handle(req,res){
   return sendJson(res,403,{ok:false,error:"Nguồn yêu cầu không hợp lệ."});
  try{
   const b=readJsonBody(req),action=String(b.action||"");
+  if(action==="casting-scan-lookup"){if(Object.keys(b).some(k=>!["action","documentId","comparisonCode"].includes(k)))return sendJson(res,400,{ok:false,error:"Yêu cầu không hợp lệ."});res.setHeader("Cache-Control","no-store");return sendJson(res,200,await lookupScan(sb(),b,false));}
   if(action==="casting-pdf-verify"){if(Object.keys(b).some(k=>!["action","sha256","comparisonCode"].includes(k)))return sendJson(res,400,{ok:false,error:"Yêu cầu không hợp lệ."});return sendJson(res,200,await verifyGradingPdf(sb(),b));}
   const actor=await requireOscManager(req);
   if(!ALLOWED_ACTIONS.has(action)&&!CAST_ACTIONS.has(action))fail("Tác vụ không được cho phép.");

@@ -299,6 +299,8 @@ function watchChangeSignals(scope,onChange,onError){
  };
 }
 
+window.oscWatchReviewChanges=callback=>{const disposers=["gs_casting_decisions","gs_castings"].map(scope=>watchChangeSignals(scope,callback));return()=>disposers.forEach(d=>d());};
+
 // Runs in a separate-origin iframe. The OSC parent owns the authenticated requests.
 const pending=new Map();
 let wire;
@@ -1142,7 +1144,7 @@ window.currentUserData = null; window.activeListeners = [];
             setTimeout(async () => {
                 const w = document.createElement('div'); w.className = 'animate-fade-up h-full flex flex-col min-w-0'; mc.innerHTML = ''; mc.appendChild(w);
                 try { 
-                    const mFn = { 'dashboard': window.loadDashboard, 'statistics': window.loadStatistics, 'groups_manager': window.loadGroupsManager, 'student_list': window.loadStudentList, 'grading_table': window.loadGradingTable, 'admin_live_monitor': window.loadAdminLiveMonitor, 'audit_logs': window.loadAuditLogs, 'admin_overview_scores': window.loadAdminOverviewScores, 'account_manager': window.loadAccountManager, 'casting_hub': window.loadCastingHub, 'casting_email': window.loadCastingEmail }; 
+                    const mFn = { 'dashboard': window.loadDashboard, 'statistics': window.loadStatistics, 'groups_manager': window.loadGroupsManager, 'student_list': window.loadStudentList, 'grading_table': window.loadUnifiedScoring||window.loadGradingTable, 'admin_live_monitor': window.loadAdminLiveMonitor, 'audit_logs': window.loadAuditLogs, 'admin_overview_scores': window.loadAdminOverviewScores, 'account_manager': window.loadAccountManager, 'casting_hub': window.loadCastingHub, 'casting_email': window.loadCastingEmail }; 
                     if(mFn[vId]) await mFn[vId](w); 
                 } catch(e) { window.renderErrorState(w, e.message); }
             }, 50);
@@ -5367,7 +5369,7 @@ window.currentUserData = null; window.activeListeners = [];
     const scoreMap=new Map();
     const verifyMap=new Map();
 
-    const render=()=>window.scheduleRealtimeRenderFast(true);
+    const render=kind=>{window.scheduleRealtimeRenderFast(true);window.dispatchEvent(new CustomEvent("osc-score-group-change",{detail:{groupId:gid,kind}}));};
 
     const cq=window.query(window.collection(window.db,'candidates'),window.where('groupId','==',gid));
     const sq=window.query(window.collection(window.db,'scores'),window.where('groupId','==',gid));
@@ -5379,7 +5381,7 @@ window.currentUserData = null; window.activeListeners = [];
         else candidateMap.set(ch.doc.id,{id:ch.doc.id,...ch.doc.data()});
       }
       window._allCandidatesCache=[...candidateMap.values()];
-      render();
+      render("candidate");
     },e=>console.warn('ADMIN CANDIDATES REALTIME:',e));
 
     const us=window.onSnapshot(sq,snap=>{
@@ -5388,7 +5390,7 @@ window.currentUserData = null; window.activeListeners = [];
         else scoreMap.set(ch.doc.id,{id:ch.doc.id,...ch.doc.data()});
       }
       window._allScoresCache=[...scoreMap.values()];
-      render();
+      render("score");
     },e=>console.warn('ADMIN SCORES REALTIME:',e));
 
     const uv=window.onSnapshot(vq,snap=>{
@@ -5399,7 +5401,7 @@ window.currentUserData = null; window.activeListeners = [];
         else verifyMap.set(key,{id:ch.doc.id,...d});
       }
       window._allVerificationsCache=Object.fromEntries(verifyMap.entries());
-      render();
+      render("verification");
     },e=>console.warn('ADMIN VERIFY REALTIME:',e));
 
     window._gsRt.adminGroupUnsubs=[uc,us,uv];
@@ -5463,7 +5465,7 @@ window.currentUserData = null; window.activeListeners = [];
         const arr=[]; snap.forEach(ds=>arr.push({id:ds.id,...ds.data()}));
         window._allGradersCache=arr;
         const gs=document.getElementById('grading-group-select');
-        if(gs) oldChangeGradingGroup?.();
+        if(gs){oldChangeGradingGroup?.();window.dispatchEvent(new CustomEvent("osc-score-group-change",{detail:{groupId:gs.value,kind:"directory"}}));}
       },e=>console.warn('ADMIN GRADERS REALTIME:',e));
 
       window.activeListeners.push(ug,uu);
@@ -7359,6 +7361,7 @@ window.currentUserData = null; window.activeListeners = [];
 import "./casting-hub.js";
 import "./osc-pdf-export.js";
 import {installReceiptAdmin} from "./receipt-admin-ui.js";
+import {installUnifiedScoring} from "./unified-scoring-ui.js";
 import "./casting-email-center.js";
 import "./candidate-editor.js";
 import "./admin-role-score-view.js";
@@ -7428,6 +7431,7 @@ installJudgeEmailAdmin({call});
 installCastingActorRoster();
 installCastingAdminPages();
 installReceiptAdmin();
+installUnifiedScoring();
 window.refreshSessionModeUI=()=>{};
 window.enforceSessionModeScoreListener=()=>{};
 const renderReview=window.loadCastingHub,renderEmail=window.loadCastingEmail;
@@ -7460,10 +7464,8 @@ try{
   ["groups_manager","Phiên chấm","fa-layer-group"],
   ["student_list","Thí sinh","fa-users-rectangle"],
   ["account_manager","Giám khảo","fa-user-shield"],
-  ["grading_table","Bảng điểm","fa-clipboard-check"],
+  ["grading_table","Quản lý chấm điểm","fa-clipboard-check"],
   ["casting_hub","Quản lý kết quả","fa-calendar-check"],
-  ["admin_live_monitor","Giám sát chấm điểm","fa-lock"],
-  ["admin_overview_scores","Xuất bảng điểm","fa-download"],
   ["statistics","Thống kê","fa-chart-line"],
   ["audit_logs","Lịch sử chấm","fa-history"]
  ];
@@ -7490,7 +7492,7 @@ try{
  if(actor.externalMenu){
   const allowed=window.MENU_CONFIG.filter(m=>m.roles.includes(window.currentUserData.role)&&
    (window.currentUserData.role==="SuperAdmin"||window.currentUserData.allowedMenus.includes(m.id)));
-  const linkFor=(nav,page)=>nav.children[allowed.findIndex(m=>m.id===(page==="casting_email"?"casting_hub":page))];
+  const linkFor=(nav,page)=>nav.children[allowed.findIndex(m=>m.id===(page==="casting_email"?"casting_hub":["admin_live_monitor","admin_overview_scores"].includes(page)?"grading_table":page))];
   window.oscInitialLink=nav=>linkFor(nav,actor.page);
   window.oscSelectPage=page=>{const link=linkFor(document.getElementById("nav-menu"),page);if(link&&!link.classList.contains("active"))link.click()};
 window.oscRefreshCurrentPage=()=>{const active=document.querySelector("#nav-menu .active");if(active)active.click();else window.location.reload()};

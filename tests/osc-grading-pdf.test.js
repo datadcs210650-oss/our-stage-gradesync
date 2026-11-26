@@ -3,7 +3,7 @@ import {makeReportPdf,pdfFilename} from "../lib/osc-report-pdf.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 const font=readFileSync(new URL("../lib/pdf-fonts/Tinos-Regular.ttf",import.meta.url));
-const base={title:"BIÊN BẢN CHẤM THI KẾT QUẢ",session:"FA26_TRUYỀN THÔNG VÀ SẢN XUẤT",judge:"GK_ĐỨC ĐẠT",kind:"individual",code:"57158541",confirmed:true,passScore:5,dateLine:"Cần Thơ, ngày 25 tháng 11 năm 2026",signTime:"01:43:23 - 25/11/2026",note:"Điểm theo bảng điểm đã khóa qua OTP.",orientation:"landscape",documentKey:"a".repeat(64)};
+const base={title:"BIÊN BẢN CHẤM THI KẾT QUẢ",session:"FA26_TRUYỀN THÔNG VÀ SẢN XUẤT",judge:"GK_ĐỨC ĐẠT",kind:"individual",code:"57158541",confirmed:true,passScore:5,dateLine:"Cần Thơ, ngày 25 tháng 11 năm 2026",signTime:"01:43:23 - 25/11/2026",note:"Điểm theo bảng điểm đã khóa qua OTP.",orientation:"landscape",documentKey:"a".repeat(64),documentId:"d836b531-8c6b-4fed-97d0-1487147dc79a"};
 for(const [name,count,cols,portrait,all,long] of [["one",1,2,false,false,false],["many",85,4,false,false,false],["long",35,12,false,false,true],["portrait",40,12,true,false,true],["aggregate",42,6,false,true,false],["boundary",20,4,false,false,false]])test(name,()=>{
  const columns=["STT","SBD","Họ tên thí sinh",...Array.from({length:cols},(_,i)=>"Tiêu chí "+(i+1)+" - "+(long?"Năng lực diễn xuất và khả năng phối hợp":"25%")),"Tổng","Kết quả"];
  const rows=Array.from({length:count},(_,i)=>[String(i+1),"SBD"+String(i+1).padStart(3,"0"),long?"Nguyễn Thị Hoàng Yến Trần Lê Phạm Nguyễn Bảo Châu Huyền My ".repeat(2):"Nguyễn Văn An "+(i+1),...Array.from({length:cols},()=>"8.5"),"8.5","ĐẠT"]);
