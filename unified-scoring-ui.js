@@ -57,12 +57,25 @@ export function installUnifiedScoring(){
   cleanup=dispose;window.activeListeners.push(dispose);window.oscUnifiedRefresh=onFocus;window.addEventListener("focus",onFocus);
   function getGroup(){return window._groupMapCache?.[group.value]||{}}
   window.oscAttendanceLock=()=>!aggregate||aggregate.attendanceState?.enabled!==true||aggregate.attendanceState?.locked===true;
+  function confirmAbsence(){
+   return new Promise(resolve=>{
+    const dialog=el("dialog","rounded-xl p-5 max-w-sm"),description=el("p","mb-4","Thí sinh đã có điểm. Chuyển sang vắng mặt sẽ loại thí sinh khỏi đối soát. Điểm đã nhập vẫn được lưu.");
+    dialog.setAttribute("aria-label","Xác nhận chuyển vắng mặt");
+    dialog.append(description,button("Giữ có mặt",()=>dialog.close()),button("Chuyển vắng mặt",()=>dialog.close("absent"),true));
+    dialog.addEventListener("close",()=>{dialog.remove();resolve(dialog.returnValue==="absent")},{once:true});
+    root.append(dialog);dialog.showModal();
+   });
+  }
   async function markAttendance(id,present){
    const gid=group.value,c=(window._allCandidatesCache||[]).find(x=>x.id===id&&x.groupId===gid);if(!c||window.oscAttendanceLock())throw Error("Điểm danh đang khóa hoặc chưa sẵn sàng.");
-   if(c.isPresent===present)return;
-   if(!present&&(window._allScoresCache||[]).some(x=>x.candidateId===id&&Object.keys(x.scores||{}).length)&&!window.confirm("Thí sinh đã có điểm. Chuyển sang vắng mặt sẽ loại khỏi đối soát; điểm cũ vẫn được lưu trong hệ thống. Tiếp tục?"))return;
-   await window.setDoc(window.doc(window.db,"candidates",id),{isPresent:present,attendanceOrder:present?Date.now():0,attendanceUpdatedAt:window.serverTimestamp()});
-   msg(present?"Đã điểm danh có mặt.":"Đã chuyển vắng mặt.");
+
+   if(!present&&(window._allScoresCache||[]).some(x=>x.candidateId===id&&Object.keys(x.scores||{}).length)&&!(await confirmAbsence()))return false;
+   if(!active||group.value!==gid)return false;
+   await call("mark-attendance",{groupId:gid,candidateId:id,present});
+   if(!active||group.value!==gid)return true;
+   c.isPresent=present;
+   await refreshAll(true);
+   msg(present?"Đã điểm danh có mặt.":"Đã chuyển vắng mặt.");return true;
   }
   window.toggleCandAttendance=async(id,present)=>{try{await markAttendance(id,present)}catch(e){msg(e.message,true);refreshAll(true)}finally{window.renderGradingTables?.()}};
   function setJudgeOptions(wanted=judge.value||remember.judge){
@@ -104,7 +117,7 @@ export function installUnifiedScoring(){
    const table=el("table","w-full text-xs min-w-max border-collapse"),thead=el("thead","sticky top-0 z-10 bg-rose-50"),tr=el("tr"),tbody=el("tbody","divide-y divide-rose-50");
    for(const col of data.columns)tr.append(el("th","p-3 text-left font-bold whitespace-pre-line border-b border-rose-100",col));if(currentTab==="report")tr.append(el("th","p-3 text-left","Chi tiết BGK trực tiếp (tham khảo)"));thead.append(tr);table.append(thead,tbody);wrap.append(table);
    function body(){tbody.replaceChildren();const q=search.value.trim().toLowerCase(),cached=window._allCandidatesCache||[],scores=window._allScoresCache||[],map=new Map(cached.map(c=>[String(c.code),c.id])),byCand=new Map();for(const s of scores){if(s.groupId!==group.value||(judge.value!=="ALL"&&s.graderCode!==judge.value))continue;const arr=byCand.get(s.candidateId)||[];arr.push(s);byCand.set(s.candidateId,arr);}
-    for(const row of data.rows){if(q&&!row.slice(1,3).join(" ").toLowerCase().includes(q))continue;const tr=el("tr","hover:bg-rose-50");row.forEach((v,i)=>{const td=el("td","p-3 align-top whitespace-pre-line "+(i===row.length-1?(v==="ĐẠT"?"text-emerald-700 font-bold":v==="KHÔNG ĐẠT"?"text-red-700 font-bold":"text-gray-500"):""),v);if(data.columns[i]==="Điểm danh"&&currentTab==="score"&&judge.value==="ALL"){const input=select();input.append(new Option("Có mặt","yes"),new Option("Vắng mặt","no"));input.value=v==="Có mặt"?"yes":"no";input.disabled=window.oscAttendanceLock()||!map.has(String(row[1]));input.onchange=async()=>{input.disabled=true;try{await markAttendance(map.get(String(row[1])),input.value==="yes")}catch(e){msg(e.message,true)}finally{input.value=v==="Có mặt"?"yes":"no";input.disabled=window.oscAttendanceLock()}};td.replaceChildren(input);}tr.append(td);});
+    for(const row of data.rows){if(q&&!row.slice(1,3).join(" ").toLowerCase().includes(q))continue;const tr=el("tr","hover:bg-rose-50");row.forEach((v,i)=>{const td=el("td","p-3 align-top whitespace-pre-line "+(i===row.length-1?(v==="ĐẠT"?"text-emerald-700 font-bold":v==="KHÔNG ĐẠT"?"text-red-700 font-bold":"text-gray-500"):""),v);if(data.columns[i]==="Điểm danh"&&currentTab==="score"&&judge.value==="ALL"){const input=select();input.append(new Option("Có mặt","yes"),new Option("Vắng mặt","no"));input.value=v==="Có mặt"?"yes":"no";input.disabled=window.oscAttendanceLock()||!map.has(String(row[1]));input.onchange=async()=>{const requested=input.value;input.disabled=true;let saved=false;try{saved=await markAttendance(map.get(String(row[1])),requested==="yes")}catch(e){msg(e.message,true)}finally{input.value=saved?requested:(v==="Có mặt"?"yes":"no");input.disabled=window.oscAttendanceLock()}};td.replaceChildren(input);}tr.append(td);});
      if(currentTab==="report"){const details=el("td","p-3 min-w-[220px]");for(const s of (row.at(-1)==="VẮNG MẶT"?[]:(byCand.get(map.get(String(row[1])))||[]))){const v=el("div","border rounded-md p-2 mb-1");v.append(el("p","font-bold text-red-900",s.graderName||s.graderCode),el("p","text-gray-600",Object.entries(s.scores||{}).map(([k,n])=>k+": "+(n??"—")).join(" · ")),el("p","", "Tổng: "+(s.totalScore??"—")));details.append(v)}tr.append(details);}
      tbody.append(tr);
     }

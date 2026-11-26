@@ -45,3 +45,19 @@ html[data-osc-theme="dark"] :is(.text-red-900,.text-red-950,.text-red-800).font-
 
 @media screen{html[data-osc-theme="dark"] #osc-boot-status{background:var(--osc-ui-card)!important;color:var(--osc-ui-text)!important;border-color:var(--osc-ui-line)!important}}
 button[aria-busy=true]{cursor:progress;opacity:.75}
+
+.osc-judge-title,.osc-judge-logout{display:none}
+#app-view.osc-judge-view>.sidebar-gradient,
+.osc-judge-view .gs-topbar :is([title="Thu gọn menu"],#page-title,#header-role-badge),
+body:has(#app-view.osc-judge-view:not(.hidden)) #gs-mobile-backdrop{display:none!important}
+.osc-judge-view .osc-judge-title{display:inline-flex;align-items:center;gap:.65rem;font-weight:800;color:var(--osc-ui-text);line-height:1.2}
+.osc-judge-title img{width:2rem;height:2rem;object-fit:contain;background:white;border-radius:.45rem}
+.osc-judge-view .osc-judge-logout{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:.35rem .75rem;border:1px solid var(--osc-ui-line);border-radius:.55rem;color:var(--osc-ui-text);background:var(--osc-ui-card);font-weight:650;order:2}
+.osc-judge-view .gs-topbar{height:auto;min-height:3.5rem;padding:.45rem 1rem;gap:.5rem;flex-wrap:wrap}
+.osc-judge-view .gs-topbar>div:last-child{display:flex;flex-wrap:wrap;gap:.5rem;background:transparent!important;border:0;box-shadow:none;padding:0}
+.osc-judge-view .gs-topbar>div:last-child>span.relative{display:none}
+@media(max-width:620px){.osc-judge-view .gs-topbar{padding:.4rem .65rem}.osc-judge-view .osc-judge-title{font-size:.85rem}.osc-judge-view #main-content{padding-inline:.4rem}.osc-judge-view .gs-topbar>div:last-child{margin-inline-start:auto}}
+
+.osc-judge-verify{display:none}
+.osc-judge-view .osc-judge-verify{display:inline-flex;align-items:center;min-height:36px;font-size:.8rem;color:var(--osc-ui-accent-text);text-decoration:underline}
+body:has(#app-view.osc-judge-view:not(.hidden)) a[aria-label="Xác thực biên bản chấm điểm"]{display:none!important}

@@ -40,6 +40,7 @@ async function supa(path,{method="GET",body,headers={}}={}){
  if(!response.ok){
   const err=safeText(result?.message||result?.msg||result?.error||"",180);
   console.warn("OSC GradeSync upstream error",response.status,err.replace(/[A-Za-z0-9]{40,}/g,"[redacted]"));
+  if(err.includes("GS_ATTENDANCE_REVIEWED"))fail("Thí sinh đã được duyệt. Hãy hủy duyệt trước khi sửa điểm danh.","osc/gradesync-conflict");
   if(err.includes("GS_ATTENDANCE_LOCKED"))fail("Điểm danh đã khóa.","osc/gradesync-conflict");
   if(err.includes("GS_ATTENDANCE_CONFIG_LOCKED"))fail("Không thể đổi chế độ điểm danh sau khi đã chấm hoặc khóa.","osc/gradesync-conflict");
   if(err.includes("GS_CANDIDATE_ABSENT"))fail("Thí sinh vắng mặt.","osc/gradesync-conflict");
@@ -334,7 +335,7 @@ async function markAttendance(actor,body){
  if(!state?.enabled)fail("Phiên chưa bật điểm danh.");
  if(state.locked)fail("Điểm danh đã khóa vì từ 50% BGK xác nhận.","osc/gradesync-conflict");
  await supa("/rest/v1/candidates?id=eq."+candidate+"&group_id=eq."+group,{
-  method:"PATCH",body:{is_present:body.present,attendance_updated_at:new Date().toISOString()},
+  method:"PATCH",body:{is_present:body.present,attendance_order:body.present?Date.now():0,attendance_updated_at:new Date().toISOString()},
   headers:{Prefer:"return=minimal"}});
  await audit(actor,body.present?"candidate-present":"candidate-absent",candidate);
  return{ok:true};

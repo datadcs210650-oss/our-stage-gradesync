@@ -207,9 +207,12 @@ body{background:var(--gs-bg);color:var(--gs-text);transition:background .25s,col
         <div class="flex-1 flex flex-col h-full w-full min-w-0 bg-[#f8fafc]">
             <header class="h-16 glass-header flex items-center justify-between px-5 md:px-6 z-10 shrink-0 shadow-sm gs-topbar">
                 <div class="flex items-center gap-3"><button class="gs-theme-btn" onclick="window.toggleSidebar()" title="Thu gọn menu"><i class="fas fa-bars"></i></button>
+                <span class="osc-judge-title"><img src="/logo-ui-centered.png?v=osc2" alt="">NỀN TẢNG CHẤM ĐIỂM</span>
                 <h2 id="page-title" class="text-lg font-black text-gray-800 tracking-tight">Tổng quan</h2></div>
                 <div class="flex items-center gap-3 bg-red-50 text-red-800 px-3 py-1.5 rounded-md border border-red-100 shadow-sm">
                     <span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span></span>
+                    <a class="osc-judge-verify" href="https://portal.ourstage.io.vn/xac-thuc-bien-ban" target="_blank" rel="noopener noreferrer">Xác thực biên bản</a>
+                    <button type="button" class="osc-judge-logout" onclick="window.handleLogout()">Đăng xuất</button>
                     <span id="header-role-badge" class="text-[10px] font-black uppercase tracking-widest">Admin</span><span id="gs-network-pill" class="gs-net-pill online"><i class="fas fa-wifi"></i><span>Online</span></span><button class="gs-theme-btn" onclick="window.toggleThemePanel()" title="Giao diện"><i class="fas fa-sliders"></i></button>
                 </div>
             </header>
@@ -1083,6 +1086,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         window.initApp = function() {
             if(!window.currentUserData) return window.showLoading(false); window.showLoading(false); 
             document.getElementById('login-view').style.display = 'none'; document.getElementById('app-view').style.display = 'flex';
+            document.getElementById('app-view').classList.toggle('osc-judge-view',window.currentUserData.role==='Grader');
             document.getElementById('user-name-display').innerText = window.decodeStoredText(window.currentUserData.name); document.getElementById('user-role-display').innerText = window.decodeStoredText(window.currentUserData.role); document.getElementById('header-role-badge').innerText = window.decodeStoredText(window.currentUserData.role); document.getElementById('user-avatar').innerText = (window.currentUserData.name || 'U').substring(0,2).toUpperCase();
             window.setOwnConnectionUI(navigator.onLine!==false);
             if(window.currentUserData.role==='Grader'){
