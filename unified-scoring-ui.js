@@ -32,7 +32,7 @@ export function installUnifiedScoring(){
     area.append(pane("Bản gốc từ máy chủ",u));
     const scan=file.files?.[0];if(scan){if(scan.size>25000000||!["application/pdf","image/jpeg","image/png"].includes(scan.type))throw Error("Chọn PDF, JPG hoặc PNG tối đa 25 MB.");const scanURL=URL.createObjectURL(scan);urls.push(scanURL);area.append(pane("Tệp scan – chỉ trên thiết bị",scanURL,scan.type.startsWith("image/")));}
     outputs.append(area,button("Tải bản gốc để đối chiếu",()=>download(asBlob(b.originalBase64),"OSC-bien-ban-goc.pdf")));
-    status.textContent="CẦN ĐỐI CHIẾU THỦ CÔNG. Kiểm tra tất cả ô điểm, họ tên, tiêu chí, tổng điểm, kết quả, chữ ký và số/thứ tự trang. Không tự động công nhận bản scan.";
+    status.textContent=b.status==="superseded"?"BIÊN BẢN ĐÃ HẾT HIỆU LỰC — bản lưu chỉ để đối chiếu lịch sử.":"CẦN ĐỐI CHIẾU THỦ CÔNG. Kiểm tra tất cả ô điểm, họ tên, tiêu chí, tổng điểm, kết quả, chữ ký và số/thứ tự trang. Không tự động công nhận bản scan.";
    }catch(e){if(version===generation)status.textContent=e.message;}finally{if(version===generation)loadButton.disabled=false}
   }
   const loadButton=button("Tra cứu bản gốc",()=>load(),true);

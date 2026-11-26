@@ -4,6 +4,7 @@ import {createClient} from "@supabase/supabase-js";
 import {restRecoveryOptions} from "../lib/supabase-rest-recovery.js";
 import {sendScoringMail} from "../lib/scoring-mail-relay.js";
 import {receiptMail,retryReceiptMail} from "../lib/receipt-mail.js";
+import {retryInviteJobs} from "../lib/session-invite-mail.js";
 const URL=process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co";
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const reply=(res,status,data)=>{res.setHeader("Content-Type","application/json; charset=utf-8");res.setHeader("Cache-Control","no-store");res.statusCode=status;res.end(JSON.stringify(data))};
@@ -66,7 +67,7 @@ async function preflight(db,profile,groupId){
  }};
 }
 export default async function handler(req,res){
- if(req.method==="GET"){const key=process.env.CRON_SECRET||"";const supplied=String(req.headers.authorization||"");if(key.length<32||supplied!=="Bearer "+key)return reply(res,401,{ok:false});try{const jobs=await retryReceiptMail(sb());return reply(res,200,{ok:true,processed:jobs.length});}catch(e){return reply(res,503,{ok:false});}}
+ if(req.method==="GET"){const key=process.env.CRON_SECRET||"";const supplied=String(req.headers.authorization||"");if(key.length<32||supplied!=="Bearer "+key)return reply(res,401,{ok:false});try{const db=sb(),jobs=await retryReceiptMail(db),invites=await retryInviteJobs(db);return reply(res,200,{ok:true,processed:jobs.length+invites.length});}catch(e){return reply(res,503,{ok:false});}}
  if(req.method!=="POST")return reply(res,405,{ok:false,error:"Chỉ hỗ trợ POST."});
  if(Number(req.headers["content-length"]||0)>12000)return reply(res,413,{ok:false,error:"Yêu cầu quá lớn."});
  const origin=String(req.headers.origin||"");
@@ -79,6 +80,8 @@ export default async function handler(req,res){
   const gid=String(body.groupId||"");
   if(!UUID.test(gid))throw fail("Phiên chấm không hợp lệ.");
   const db=sb(),{profile,email}=await actor(db,token);
+  const assignment=required(await db.from("grader_assignments").select("id").eq("group_id",gid).eq("grader_id",profile.id).maybeSingle());if(!assignment)throw fail("BGK không được phân công phiên này.",403);
+  const scope=required(await db.from("competition_groups").select("casting_id,extra_data").eq("id",gid).single());if(scope.casting_id&&scope.extra_data?.blockGraderAfterPublish!==false){const casting=required(await db.from("gs_castings").select("status").eq("id",scope.casting_id).single());if(["published","archived"].includes(casting.status))throw fail("Phiên đã công bố, không còn quyền truy cập.",403);}
   if(body.action==="preflight"){
    const info=await preflight(db,profile,gid);
    return reply(res,200,{ok:true,groupName:info.group.name,completeness:info.completeness});

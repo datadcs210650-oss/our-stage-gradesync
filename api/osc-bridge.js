@@ -167,7 +167,8 @@ async function createGrader(actor,body){
  const code=safeText(body.code,20).toUpperCase(),name=safeText(body.name,100);
  if(name.length<2)fail("Họ tên giám khảo cần ít nhất 2 ký tự.");
  if(!CODE.test(code))fail("Mã giám khảo cần 3–20 ký tự và bắt đầu bằng chữ cái.");
- const groupIds=Array.isArray(body.groupIds)?[...new Set(body.groupIds)]:[];
+ const groupIds=[];
+ if(Array.isArray(body.groupIds)&&body.groupIds.length)fail("Chỉ phân công BGK tại thiết lập phiên chấm.");
  if(groupIds.length>30||groupIds.some(id=>!ID.test(String(id))))fail("Danh sách nhóm không hợp lệ.");
  if(groupIds.length){
   const groups=await supa(url("competition_groups",{id:"in.("+groupIds.join(",")+")"}));
@@ -192,12 +193,15 @@ async function createGrader(actor,body){
   await grantGraderGoogleEmail(id,googleEmail);
   await audit(actor,"grader-created",id);
  }catch(e){await sb().auth.admin.deleteUser(id).catch(()=>{});throw e}
- let mailAccepted=false;try{await inviteGrader(id);mailAccepted=true}catch(e){console.warn("BGK invite pending",e.code||"transport")}
+ const mailAccepted=false;
  return{ok:true,id,code,name,mailAccepted,portal:GRADER_PORTAL};
 }
 async function updateGrader(actor,body){
  const id=String(body.graderId||""),name=safeText(body.name,100);
- const groups=Array.isArray(body.groupIds)?[...new Set(body.groupIds)]:[];
+ const current=await sb().from("profiles").select("assigned_groups").eq("id",id).eq("role","Grader").maybeSingle();
+ if(current.error||!current.data)fail("Không tìm thấy BGK.");
+ const groups=current.data.assigned_groups||[];
+ if(Array.isArray(body.groupIds)&&JSON.stringify([...new Set(body.groupIds)].sort())!==JSON.stringify([...groups].sort()))fail("Chỉ phân công BGK tại thiết lập phiên chấm.");
  if(!ID.test(id)||name.length<2||groups.length>30||groups.some(x=>!ID.test(x)))
   fail("Thông tin giám khảo hoặc nhóm không hợp lệ.");
  const email=body.googleEmail===undefined?null:graderGoogleEmail(body.googleEmail);
@@ -390,7 +394,7 @@ async function handle(req,res){
   else if(action==="create-grader")result=await createGrader(actor,b);
   else if(action==="update-grader")result=await updateGrader(actor,b);
   else if(action==="lock-grader")result=await lockGrader(actor,b);
-  else if(action==="resend-grader-invite"){if(!ID.test(String(b.graderId||"")))fail("Giám khảo không hợp lệ.");result=await inviteGrader(b.graderId)}
+  else if(action==="resend-grader-invite"){fail("Mời và gửi lại email BGK tại thiết lập phiên chấm.");}
   else if(action==="resend-grader-completion")result=await resendCompletion(b);
   else if(action==="reopen-grader-receipt")result=await reopenReceipt(actor,b);
   else if(action==="retry-receipt-notice")result=await retryReceiptNotice(b);
