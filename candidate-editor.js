@@ -215,7 +215,7 @@ window.loadStudentList=async function(host){
  }
  async function exportRoster(){
   const session=current();if(!session)throw Error("Hãy chọn phiên chấm.");
-  if(!window.XLSX)throw Error("Thư viện Excel chưa sẵn sàng.");
+  await window.oscEnsureAsset("XLSX");
   if(state.total>3000)throw Error("Tối đa 3000 hồ sơ mỗi lần xuất.");
   const rows=[];let offset=0,total=state.total;
   do{
@@ -244,7 +244,7 @@ window.loadStudentList=async function(host){
   const report=make("div","text-xs whitespace-pre-wrap max-h-56 overflow-auto border rounded-xl p-3");
   const consent=make("p","text-xs text-slate-600","Hồ sơ nhập mới mặc định chưa đồng ý nhận email; xác nhận riêng trong hồ sơ.");
   const template=button("Tải mẫu Excel",async()=>{
-   if(!window.XLSX)throw Error("Thư viện Excel chưa sẵn sàng. Vui lòng tải lại trang.");
+   await window.oscEnsureAsset("XLSX");
    const w=window.XLSX.utils.book_new();
    const sh=window.XLSX.utils.aoa_to_sheet([["SBD","Họ và tên","MSSV","Email","Số điện thoại",...(policy?.roles?.length?["Vai đăng ký"]:[]),...defs.map(d=>d.label)]]);
    window.XLSX.utils.book_append_sheet(w,sh,"Thi sinh");window.XLSX.writeFile(w,"OSC-Cham-diem-mau-thi-sinh.xlsx");
@@ -271,7 +271,7 @@ window.loadStudentList=async function(host){
    try{
     const f=file.files?.[0];if(!f)return;
     if(f.size>5*1024*1024)throw Error("Tệp quá 5 MB.");
-    if(!window.XLSX)throw Error("Thư viện Excel chưa sẵn sàng.");
+    await window.oscEnsureAsset("XLSX");
     const workbook=window.XLSX.read(await f.arrayBuffer(),{type:"array"});
     if(token!==version)return;
     const data=window.XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]],{header:1,raw:false,defval:""});

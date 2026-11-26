@@ -5,7 +5,70 @@ if(parent===window){document.documentElement.hidden=true}
 for(const key of ["localStorage","sessionStorage"]){
  const map=new Map();Object.defineProperty(window,key,{value:{getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,String(v)),removeItem:k=>map.delete(k),clear:()=>map.clear(),key:i=>[...map.keys()][i],get length(){return map.size}}});
 }
-</script><style>#login-view{display:none!important}</style>
+</script><script id="osc-console-bridge-bootstrap">
+(function(){
+ "use strict";
+ if(parent===window)return;
+ const origin="https://admin.ourstage.io.vn",pending=new Map();
+ let wire=null,ready=false,resolveConnection,rejectConnection;
+ const connected=new Promise((resolve,reject)=>{resolveConnection=resolve;rejectConnection=reject});
+ connected.catch(()=>{});
+ const deadline=setTimeout(()=>{window.removeEventListener("message",accept);rejectConnection(Error("Không nhận được kết nối WebOSC."));},25000);
+ function accept(event){
+  if(event.origin!==origin||event.source!==parent||event.data!=="osc-grading-connect"||!event.ports[0]||wire)return;
+  window.removeEventListener("message",accept);clearTimeout(deadline);
+  wire=event.ports[0];
+  wire.onmessage=({data})=>{
+   if(!data||typeof data!=="object")return;
+   if(data.type==="navigate"){window.oscSelectPage?.(data.page);return;}
+   const item=pending.get(data.id);if(!item)return;
+   pending.delete(data.id);clearTimeout(item.timer);
+   if(data.error)item.reject(Error(String(data.error)));else item.resolve(data.result);
+  };
+  resolveConnection();
+ }
+ window.addEventListener("message",accept);
+ window.oscGradingCall=async function(action,details={}){
+  await connected;
+  return new Promise((resolve,reject)=>{
+   const id=crypto.randomUUID(),timer=setTimeout(()=>{pending.delete(id);reject(Error("Yêu cầu quá thời gian phản hồi. Kiểm tra dữ liệu trước khi thực hiện lại."));},70000);
+   pending.set(id,{resolve,reject,timer});
+   try{wire.postMessage({id,action,details})}catch(e){pending.delete(id);clearTimeout(timer);reject(e)}
+  });
+ };
+ parent.postMessage("osc-grading-ready",origin);
+ const watchdog=setTimeout(()=>{if(!ready)window.oscShowBootError("Bảng quản trị đang tải chậm. Bạn có thể mở lại bảng, không cần đăng xuất.");},30000);
+ window.oscShowBootError=function(message){
+  if(!document.body)return;
+  let panel=document.getElementById("osc-boot-status");
+  if(!panel){
+   panel=document.createElement("div");panel.id="osc-boot-status";panel.setAttribute("role","status");panel.style.cssText="position:fixed;top:12px;left:12px;right:12px;z-index:99999;background:#fff;border:1px solid #e5cbd5;border-radius:12px;padding:14px 16px;color:#58192e;font:14px/1.5 system-ui;box-shadow:0 4px 18px #0001";
+   const label=document.createElement("span"),button=document.createElement("button");label.dataset.message="1";button.textContent="Mở lại bảng quản trị";button.type="button";button.style.cssText="margin-left:12px;background:#801b36;color:white;border:0;border-radius:8px;padding:8px 12px;cursor:pointer";button.onclick=()=>location.reload();panel.append(label,button);document.body.append(panel);
+  }
+  panel.querySelector("[data-message]").textContent=String(message||"Không tải được bảng quản trị.");
+ };
+ window.oscFinishBoot=function(){ready=true;clearTimeout(watchdog);document.getElementById("osc-boot-status")?.remove()};
+ const assets={
+  XLSX:"https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js",
+  Chart:"https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js",
+  html2pdf:"https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
+ };
+ const loading=new Map();
+ window.oscEnsureAsset=function(name){
+  if(!Object.hasOwn(assets,name))return Promise.reject(Error("Thư viện không hợp lệ."));
+  if(window[name])return Promise.resolve(window[name]);
+  if(loading.has(name))return loading.get(name);
+  const job=new Promise((resolve,reject)=>{
+   const script=document.createElement("script");script.async=true;script.src=assets[name];
+   let complete=false;
+   const finish=ok=>{if(complete)return;complete=true;clearTimeout(timer);if(ok&&window[name])resolve(window[name]);else{script.remove();reject(Error("Không tải được thư viện "+name+". Hãy thử lại thao tác."))}};
+   const timer=setTimeout(()=>finish(false),15000);
+   script.onload=()=>finish(true);script.onerror=()=>finish(false);document.head.append(script);
+  });
+  loading.set(name,job);job.catch(()=>{if(loading.get(name)===job)loading.delete(name)});return job;
+ };
+})();
+</script><style>#login-view{display:none!important}body{font-family:system-ui,sans-serif}</style>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -15,14 +78,14 @@ for(const key of ["localStorage","sessionStorage"]){
 
     <!-- NỀN TẢNG CHẤM ĐIỂM V29.2 - V27 STABLE HOTFIX: time/PDF/score-clear -->
     <title>NỀN TẢNG CHẤM ĐIỂM - Hệ thống Chấm điểm Live</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script defer src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script async src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" media="print" onload="this.media='all'">
+    
+    
+    
     <link rel="icon" type="image/png" href="/logo-ui-centered.png?v=osc2">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        /* Use the system font immediately; no render-blocking font import. */
         body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; background-image: radial-gradient(#e5e7eb 1px, transparent 1px); background-size: 20px 20px; font-size: 13px; }
         .sidebar-gradient { background: linear-gradient(180deg, rgba(153, 27, 27, 0.95) 0%, rgba(127, 29, 29, 0.95) 100%); backdrop-filter: blur(10px); }
         .menu-item { transition: all 0.3s ease; } .menu-item.active { background: rgba(255, 255, 255, 0.2); border-radius: 0.5rem; font-weight: 600; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); } .menu-item:hover:not(.active) { background: rgba(255, 255, 255, 0.1); border-radius: 0.5rem; transform: translateX(4px); }
@@ -248,86 +311,42 @@ html,body{background:#fff!important;background-image:none!important}
       <div class="pt-3 text-[10px] text-slate-400">Thiết lập được lưu trên trình duyệt này.</div>
     </div>
 <script type="module">
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-
-// Only a PUBLIC publishable key is present in this iframe. Database reads/writes
-// remain behind the authenticated OSC server bridge; this client listens to
-// read-only, data-free version signals emitted by Supabase Postgres triggers.
-const changeSignalClient=createClient(
- "https://nkpfzjhqtdjcfypkishv.supabase.co",
- "sb_publishable_tdThu4m1zvDazd6j3raL_g_TK1OwOrD",
- {auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}
-);
+// Realtime is optional and lazy. Actual data remains behind the authenticated OSC bridge.
+let changeSignalClient=null,changeSignalChannel=null,changeSignalStarting=null;
 const changeSignalWatchers=new Map();
-let changeSignalChannel=null;
+function notifyChangeError(error){for(const set of changeSignalWatchers.values())for(const watcher of set){try{watcher.onError?.(error)}catch(_){}}}
 function connectChangeSignals(){
- if(changeSignalChannel)return;
- const channel=changeSignalClient.channel("osc_score_change_only_"+crypto.randomUUID())
-  .on("postgres_changes",{
-   event:"UPDATE",schema:"public",table:"gs_change_signal"
-  },event=>{
-   const scope=String(event.new?.scope||"");
-   for(const watcher of changeSignalWatchers.get(scope)||[])watcher.onChange();
-  });
- changeSignalChannel=channel;
- channel.subscribe(status=>{
-  if(changeSignalChannel!==channel)return;
-  if(status==="SUBSCRIBED"){
-   // One reconnection catch-up: an edit made while the socket was asleep
-   // must not be missed. Never poll when connected and idle.
-   for(const set of changeSignalWatchers.values())
-    for(const watcher of set)watcher.onChange();
-  }else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){
-   for(const set of changeSignalWatchers.values())
-    for(const watcher of set)watcher.onError?.(new Error("Kết nối cập nhật trực tiếp tạm gián đoạn."));
-  }
- });
+ if(changeSignalChannel||changeSignalStarting||!changeSignalWatchers.size)return;
+ changeSignalStarting=(async()=>{
+  try{
+   if(!changeSignalClient){
+    const {createClient}=await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/+esm");
+    changeSignalClient=createClient("https://nkpfzjhqtdjcfypkishv.supabase.co","sb_publishable_tdThu4m1zvDazd6j3raL_g_TK1OwOrD",{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+   }
+   if(!changeSignalWatchers.size||changeSignalChannel)return;
+   const channel=changeSignalClient.channel("osc_score_change_only_"+crypto.randomUUID())
+    .on("postgres_changes",{event:"UPDATE",schema:"public",table:"gs_change_signal"},event=>{
+     const scope=String(event.new?.scope||"");for(const watcher of changeSignalWatchers.get(scope)||[])watcher.onChange();
+    });
+   changeSignalChannel=channel;
+   channel.subscribe(status=>{
+    if(changeSignalChannel!==channel)return;
+    if(status==="SUBSCRIBED"){for(const set of changeSignalWatchers.values())for(const watcher of set)watcher.onChange();}
+    else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")notifyChangeError(Error("Kết nối cập nhật trực tiếp tạm gián đoạn; có thể dùng Làm mới dữ liệu."));
+   });
+  }catch(e){notifyChangeError(Error("Không tải được cập nhật trực tiếp; có thể dùng Làm mới dữ liệu."));}
+  finally{changeSignalStarting=null;}
+ })();
 }
 function watchChangeSignals(scope,onChange,onError){
- let watchers=changeSignalWatchers.get(scope);
- if(!watchers){watchers=new Set();changeSignalWatchers.set(scope,watchers)}
- const watcher={onChange,onError};
- watchers.add(watcher);
- connectChangeSignals();
- return()=>{
-  watchers.delete(watcher);
-  if(!watchers.size)changeSignalWatchers.delete(scope);
-  if(!changeSignalWatchers.size&&changeSignalChannel){
-   const old=changeSignalChannel;changeSignalChannel=null;
-   changeSignalClient.removeChannel(old).catch(()=>{});
-  }
+ let watchers=changeSignalWatchers.get(scope);if(!watchers){watchers=new Set();changeSignalWatchers.set(scope,watchers)}
+ const watcher={onChange,onError};watchers.add(watcher);connectChangeSignals();
+ return()=>{watchers.delete(watcher);if(!watchers.size)changeSignalWatchers.delete(scope);
+  if(!changeSignalWatchers.size&&changeSignalChannel){const old=changeSignalChannel;changeSignalChannel=null;changeSignalClient.removeChannel(old).catch(()=>{});}
  };
 }
-
 window.oscWatchReviewChanges=callback=>{const disposers=["gs_casting_decisions","gs_castings"].map(scope=>watchChangeSignals(scope,callback));return()=>disposers.forEach(d=>d());};
-
-// Runs in a separate-origin iframe. The OSC parent owns the authenticated requests.
-const pending=new Map();
-let wire;
-const connected=new Promise(resolve=>{
- window.addEventListener("message",function accept(event){
-  if(event.origin!=="https://admin.ourstage.io.vn"||event.source!==parent||event.data!=="osc-grading-connect"||!event.ports[0])return;
-  window.removeEventListener("message",accept);
-  wire=event.ports[0];
-  wire.onmessage=({data})=>{
-   if(data.type==="navigate"){window.oscSelectPage?.(data.page);return}
-   const item=pending.get(data.id);
-   if(!item)return;
-   pending.delete(data.id);
-   data.error?item.reject(Error(data.error)):item.resolve(data.result);
-  };
-  resolve();
- });
- parent.postMessage("osc-grading-ready","https://admin.ourstage.io.vn");
-});
-async function call(action,details={}){
- await connected;
- return new Promise((resolve,reject)=>{
-  const id=crypto.randomUUID();pending.set(id,{resolve,reject});
-  wire.postMessage({id,action,details});
- });
-}
-window.oscGradingCall=call;
+const call=window.oscGradingCall;
 window.db={provider:"osc"};
 class CompatTimestamp{
   constructor(value){const d=value instanceof Date?value:new Date(value);this._d=Number.isFinite(d.getTime())?d:new Date();this.seconds=Math.floor(this._d.getTime()/1000);this.nanoseconds=(this._d.getTime()%1000)*1000000}
@@ -1167,7 +1186,7 @@ window.currentUserData = null; window.activeListeners = [];
                         <div class="bg-white p-5 rounded-3xl shadow-sm border hover-lift"><h3 class="text-sm font-black mb-4 flex items-center"><i class="fas fa-chart-bar text-red-800 mr-2"></i>Hoạt động hệ thống</h3><div class="w-full h-56 flex justify-center items-center"><canvas id="aChart"></canvas></div></div>
                     </div>
                 `;
-                setTimeout(() => { new Chart(document.getElementById('pChart').getContext('2d'), { type: 'doughnut', data: { labels: ['Đạt', 'Chưa đạt'], datasets: [{ data: [pC, nP], backgroundColor: ['#10b981', '#f43f5e'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } } }); new Chart(document.getElementById('aChart').getContext('2d'), { type: 'bar', data: { labels: ['Nhóm', 'Thí Sinh', 'Lượt Chấm'], datasets: [{ label: 'Số lượng', data: [tG, tC, aS.length], backgroundColor: ['#991b1b', '#3b82f6', '#10b981'], borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } }); }, 100);
+                setTimeout(async () => { try{await window.oscEnsureAsset('Chart'); if(!document.getElementById('pChart')||!document.getElementById('aChart'))return;  new Chart(document.getElementById('pChart').getContext('2d'), { type: 'doughnut', data: { labels: ['Đạt', 'Chưa đạt'], datasets: [{ data: [pC, nP], backgroundColor: ['#10b981', '#f43f5e'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } } }); new Chart(document.getElementById('aChart').getContext('2d'), { type: 'bar', data: { labels: ['Nhóm', 'Thí Sinh', 'Lượt Chấm'], datasets: [{ label: 'Số lượng', data: [tG, tC, aS.length], backgroundColor: ['#991b1b', '#3b82f6', '#10b981'], borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } }); }catch(e){window.showToast?.(e.message,'error')} }, 100);
             } catch(e) { window.renderErrorState(container, e.message); }
         };
 
@@ -1227,7 +1246,7 @@ window.currentUserData = null; window.activeListeners = [];
                     <div class="bg-white p-5 rounded-3xl shadow-sm flex flex-col h-64"><h3 class="text-sm font-black mb-2"><i class="fas fa-chart-bar text-red-800 mr-2"></i>Phổ điểm</h3><div class="flex-1 w-full relative"><canvas id="cChart"></canvas></div></div>
                 </div>
             `;
-            setTimeout(() => { if(window._cI) window._cI.destroy(); window._cI = new Chart(document.getElementById('cChart').getContext('2d'), { type: 'bar', data: { labels: cL.map(l => l.length > 10 ? l.substring(0, 10) + '...' : l), datasets: [{ data: cD, backgroundColor: '#991b1b', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { max: 100 } }, plugins: { legend: { display: false } } } }); }, 100);
+            setTimeout(async () => { try{await window.oscEnsureAsset('Chart'); if(!document.getElementById('cChart'))return;  if(window._cI) window._cI.destroy(); window._cI = new Chart(document.getElementById('cChart').getContext('2d'), { type: 'bar', data: { labels: cL.map(l => l.length > 10 ? l.substring(0, 10) + '...' : l), datasets: [{ data: cD, backgroundColor: '#991b1b', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { max: 100 } }, plugins: { legend: { display: false } } } }); }catch(e){window.showToast?.(e.message,'error')} }, 100);
         };
         // --- CẮT XUỐNG PHẦN 3 ---
 // --- BẮT ĐẦU PHẦN 3 ---
@@ -1723,12 +1742,14 @@ window.currentUserData = null; window.activeListeners = [];
         };
         window.dC = function(id) { window.showCustomConfirm("Xóa thí sinh này?", async () => { window.showLoading(true, "Xóa..."); try { await window.deleteDoc(window.doc(window.db, "candidates", id)); window.fRC(); window.showToast("Đã xóa!"); } catch(e){} window.showLoading(false); }); };
 
-        window.dLT = function() {
+        window.dLT = async function() {
+            try{await window.oscEnsureAsset("XLSX")}catch(e){window.showToast(e.message,"error");return;}
             const g = document.getElementById('c-g').value; let o = { "Mã số": "SBD01", "Họ tên": "Nguyễn A" }; 
             if(g && window._gMap[g] && window._gMap[g].extraFields) { window._gMap[g].extraFields.forEach(f => o[f.name] = "Điền..."); } else { o["Khác"] = "Điền..."; } 
             const ws = window.XLSX.utils.json_to_sheet([o]); const wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, ws, "Mẫu"); window.XLSX.writeFile(wb, "Mau_ThiSinh.xlsx"); 
         };
         window.eEC = async function() {
+            try{await window.oscEnsureAsset("XLSX")}catch(e){window.showToast(e.message,"error");return;}
             const cs = await window.getDocs(window.collection(window.db, "candidates")); let dt = []; 
             cs.forEach(d => { const x = d.data(); let r = { "Mã số": x.code || "", "Họ tên": x.name, "Nhóm": window._gMap[x.groupId]?.name || "" }; let eD = x.extraData || {}; if(x.extraInfo && Object.keys(eD).length === 0) eD["Khác"] = x.extraInfo; Object.assign(r, eD); dt.push(r); }); 
             const ws = window.XLSX.utils.json_to_sheet(dt); const wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, ws, "DS"); window.XLSX.writeFile(wb, "DS_ThiSinh.xlsx"); 
@@ -1737,6 +1758,7 @@ window.currentUserData = null; window.activeListeners = [];
         window.iEx = async function(e) {
             const f = e.target.files && e.target.files[0];
             if (!f) return;
+            try{await window.oscEnsureAsset("XLSX")}catch(_e){}
             if (!window.XLSX) {
                 window.showToast("Không tải được thư viện đọc Excel. Hãy tải lại trang.", "error");
                 e.target.value = "";
@@ -2772,6 +2794,7 @@ window.currentUserData = null; window.activeListeners = [];
         };
 
         window.exportLogsPDF = async function() {
+            try{await window.oscEnsureAsset("html2pdf")}catch(e){window.showToast(e.message,"error");return;}
             const filteredLogs = window._filteredLogsCache || []; if(filteredLogs.length === 0) { window.showToast("Không có dữ liệu lịch sử để xuất.", "error"); return; }
             const selectedGrader = document.getElementById('log-filter-grader').value; const selectedGroup = document.getElementById('log-filter-group').value; let titleStr = `LỊCH SỬ CHẤM ĐIỂM`; if (selectedGroup) titleStr += ` - NHÓM: ${selectedGroup}`; if (selectedGrader) titleStr += ` - GK: ${selectedGrader.split(' - ')[0]}`;
             let signerName = selectedGrader ? selectedGrader.split(' - ')[0] : "Ban Quản Trị Hệ Thống"; let st = new Date(); let signDateStr = `ngày ${String(st.getDate()).padStart(2,'0')} tháng ${String(st.getMonth()+1).padStart(2,'0')} năm ${st.getFullYear()}`; let signTimeString = `${String(st.getHours()).padStart(2,'0')}:${String(st.getMinutes()).padStart(2,'0')}:${String(st.getSeconds()).padStart(2,'0')} ${String(st.getDate()).padStart(2,'0')}/${String(st.getMonth()+1).padStart(2,'0')}/${st.getFullYear()}`;
@@ -2876,7 +2899,7 @@ window.currentUserData = null; window.activeListeners = [];
                     const hasScore=cS.length>0; const isPass=hasScore && total>=Number(groupInfo.passScore); if(rF==='PASS'&&(!hasScore||!isPass))return;if(rF==='FAIL'&&(!hasScore||isPass))return;
                     n++; data.push([n,cd.code||'-',cd.name||'-',...eFs.map(f=>(cd.customFields?.[f.name]??cd.extraData?.[f.name])||'-'),...(groupInfo.criteria||[]).map(c=>fS[c.name]??'-'),hasScore?Number(total):'-',hasScore?(isPass?'ĐẠT':'TRƯỢT'):'CHỜ']);
                 });
-                const ws=window.XLSX.utils.aoa_to_sheet(data); const lastCol=headers.length-1;
+                await window.oscEnsureAsset("XLSX");const ws=window.XLSX.utils.aoa_to_sheet(data); const lastCol=headers.length-1;
                 ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:lastCol}}];
                 ws['!cols']=[{wch:6},{wch:16},{wch:30},...eFs.map(()=>({wch:16})),...(groupInfo.criteria||[]).map(()=>({wch:18})),{wch:12},{wch:12}];
                 const border={top:{style:'thin',color:{rgb:'000000'}},bottom:{style:'thin',color:{rgb:'000000'}},left:{style:'thin',color:{rgb:'000000'}},right:{style:'thin',color:{rgb:'000000'}}};
@@ -7120,6 +7143,7 @@ window.currentUserData = null; window.activeListeners = [];
       const c=d.data();
       rows.push([c.code||'',c.name||'',...(g.criteria||[]).map(()=>''),'','']);
     });
+    try{await window.oscEnsureAsset("XLSX")}catch(e){window.showToast?.(e.message,"error");return;}
     const ws=window.XLSX.utils.aoa_to_sheet(rows);
     ws['!cols']=[{wch:14},{wch:30},...(g.criteria||[]).map(()=>({wch:18})),{wch:12},{wch:12}];
     const wb=window.XLSX.utils.book_new();
@@ -7188,7 +7212,7 @@ window.currentUserData = null; window.activeListeners = [];
       const file=document.getElementById('gs-import-excel-file')?.files?.[0];
       if(!file) return window.showToast?.('Hãy chọn file Excel.','error');
       try{
-        const buf=await file.arrayBuffer();
+        await window.oscEnsureAsset("XLSX");const buf=await file.arrayBuffer();
         const wb=window.XLSX.read(buf,{type:'array'});
         const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=window.XLSX.utils.sheet_to_json(ws,{defval:''});
@@ -7499,8 +7523,8 @@ window.oscRefreshCurrentPage=()=>{const active=document.querySelector("#nav-menu
   document.querySelector("#app-view .sidebar-gradient")?.style.setProperty("display","none","important");
   document.querySelector('button[onclick="window.toggleSidebar()"]')?.style.setProperty("display","none","important");
  }
- window.initApp();window.startAdminSubmissionNotifications?.();
+ window.initApp();window.oscFinishBoot?.();window.startAdminSubmissionNotifications?.();
  if(actor.externalMenu)await call("console-ready");
-}catch(e){document.body.textContent=e.message}
+}catch(e){window.oscShowBootError?.(e.message||"Không khởi tạo được bảng quản trị.");}
 </script><script src="./live-grid-layout.js" defer></script>
 </body></html>
