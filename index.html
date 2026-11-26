@@ -402,9 +402,27 @@ const auth={currentUser:null};window.auth=auth;
 async function fireUser(u){if(!u)return null;const email=String(u.email||"").toLowerCase(),google=u.app_metadata?.provider==="google"||(u.identities||[]).some(x=>x.provider==="google");return{uid:u.id,email:u.email||null,isAnonymous:email.endsWith("@gradesync.local")||google,googleGrader:google,_supabase:u}}
 async function signInWithEmailAndPassword(_a,email,password){const r=await supabase.auth.signInWithPassword({email,password});if(r.error){const e=new Error(r.error.message);e.code="auth/invalid-credential";throw e}const u=await fireUser(r.data.user);auth.currentUser=u;return{user:u}}
 async function signInAnonymously(){const e=new Error("Supabase BGK cần mã + mật khẩu.");e.code="supabase/grader-password-required";throw e}
-async function signOut(){const r=await supabase.auth.signOut();if(r.error)throw r.error;auth.currentUser=null}
+async function signOut(){const r=await supabase.auth.signOut({scope:"local"});if(r.error)throw r.error;auth.currentUser=null}
 async function createUserWithEmailAndPassword(_a,email,password){const temp=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}}),r=await temp.auth.signUp({email,password});if(r.error)throw r.error;return{user:await fireUser(r.data.user)}}
-function onAuthStateChanged(_a,cb){let stopped=false;const deliver=async(raw)=>{if(stopped)return;const u=await fireUser(raw||null);auth.currentUser=u;setTimeout(()=>{if(!stopped)cb(u)},0)};supabase.auth.getSession().then(r=>deliver(r.data.session?.user||null)).catch(()=>deliver(null));const r=supabase.auth.onAuthStateChange((_e,s)=>{setTimeout(()=>deliver(s?.user||null),0)});return()=>{stopped=true;r.data.subscription.unsubscribe()}}
+function onAuthStateChanged(_a,cb){
+ let stopped=false,sequence=0,chain=Promise.resolve(),lastDelivered;
+ // Supabase emits INITIAL_SESSION and SIGNED_IN (including on tab focus).
+ // Use a single serialized restoration, not two competing getSession callbacks.
+ const r=supabase.auth.onAuthStateChange((event,s)=>{
+  if(stopped)return;
+  const raw=s?.user||null,identity=raw?.id||null;
+  if(event==="TOKEN_REFRESHED"&&lastDelivered===identity)return;
+  if(lastDelivered===identity&&event!=="SIGNED_OUT")return;
+  lastDelivered=identity;const n=++sequence;
+  setTimeout(()=>{chain=chain.catch(()=>{}).then(async()=>{
+   if(stopped||n!==sequence)return;
+   const u=await fireUser(raw);if(stopped||n!==sequence)return;
+   if(auth.currentUser?.uid!==u?.uid){window.stopGraderRealtime?.(true);window.currentUserData=null;window._lastInitAuthUid=null;}
+   auth.currentUser=u;await cb(u);
+  }).catch(e=>console.warn("BGK auth restoration",e?.code||e?.message));},0);
+ });
+ return()=>{stopped=true;sequence++;r.data.subscription.unsubscribe()};
+}
 async function setPersistence(){return true}
 const browserLocalPersistence={type:"LOCAL"};
 
@@ -829,12 +847,13 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         };
 
         // Authoritative, per-BGK visibility; no interval polling or Vercel request.
-        let visibilityTimer=null,visibilityDebounce=null,visibilityChannel=null,visibilityInFlight=null;
+        let visibilityTimer=null,visibilityDebounce=null,visibilityChannel=null,visibilityInFlight=null,visibilityOwner=null;
         window.refreshPublishedSessionVisibility=async function(render=true){
             const uid=window.currentUserData?.id;
             if(!uid||window.currentUserData?.role!=="Grader")return;
-            if(visibilityInFlight)return visibilityInFlight;
-            visibilityInFlight=(async()=>{
+            if(visibilityInFlight&&visibilityOwner===uid)return visibilityInFlight;
+            visibilityOwner=uid;
+            const task=(async()=>{
                 const result=await supabase.rpc("osc_grader_visible_sessions");
                 if(result.error)throw result.error;
                 if(window.currentUserData?.id!==uid)return;
@@ -854,7 +873,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 if(Number.isFinite(next))visibilityTimer=setTimeout(()=>queueVisibility(),Math.min(2147483647,Math.max(100,next-Date.now()+100)));
                 if(render&&rt?.started){window.refreshAssignedGroupSubscriptions?.();window.refreshGraderGroupSelector?.();window._rerenderGraderRealtime?.();}
             })();
-            try{return await visibilityInFlight}finally{visibilityInFlight=null}
+            visibilityInFlight=task;try{return await task}finally{if(visibilityInFlight===task){visibilityInFlight=null;visibilityOwner=null}}
         };
         function queueVisibility(){
             clearTimeout(visibilityDebounce);
@@ -873,10 +892,12 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
         supabase.auth.onAuthStateChange(event=>{if(event==="SIGNED_OUT"){clearTimeout(visibilityTimer);clearTimeout(visibilityDebounce);window._gsVisibleGroupIds=new Set();if(visibilityChannel){supabase.removeChannel(visibilityChannel);visibilityChannel=null}}});
         window.restoreGoogleGrader = async function(user){
             if(!user?.googleGrader)return false;
+            const authUid=user.uid;
             try{
                 const result=await supabase.rpc("gs_claim_google_grader");
                 if(result.error)throw result.error;
                 const p=result.data;
+                if(window.auth?.currentUser?.uid!==authUid)return false;
                 if(p?.role!=="Grader"||p?.status!=="Active"||!p.code)throw Error("EMAIL_NOT_AUTHORIZED");
                 window.currentUserData={...p,role:"Grader",assignedGroups:p.assignedGroups||[],allowedMenus:["grading_table"]};
                 await window.refreshPublishedSessionVisibility(false);
@@ -891,11 +912,15 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
                 window._lastInitAuthUid=user.uid;
                 window._seedAssignedGroupNamesFromUser?.();
                 await window._preloadGraderAssignedGroups?.();
+                if(window.auth?.currentUser?.uid!==authUid)return false;
                 window.initApp();watchVisibility();
                 return true;
             }catch(error){
                 console.warn("Grader Google authorization denied:",error.code||"denied");
-                window.showToast("Email Google chưa được cấp quyền hoặc tài khoản BGK đã bị khóa.","error");
+                const reason=String(error?.message||error?.code||"");
+                if(/GOOGLE_EMAIL_NOT_INVITED|GOOGLE_ACCOUNT_ALREADY_LINKED|EMAIL_NOT_AUTHORIZED/.test(reason))window.showToast("Email Google chưa được cấp quyền hoặc không khớp hồ sơ BGK. Chọn đúng tài khoản Google.","error");
+                else if(/GOOGLE_VERIFICATION_REQUIRED|AUTH_REQUIRED/.test(reason))window.showToast("Phiên Google chưa xác thực. Đăng nhập lại bằng Google.","error");
+                else window.showToast("Chưa tải được phân quyền BGK. Hãy tải lại trang hoặc kiểm tra kết nối. ("+String(error?.code||"sync")+")","error");
                 return false;
             }
         };
@@ -7676,7 +7701,7 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
  window.handleGoogleGraderLogin=async function(){
    if(navigator.onLine===false)return window.showToast("Cần kết nối mạng để đăng nhập Google.","error");
    try{
-     const r=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:"https://gradesyncfinal.vercel.app/"}});
+     const r=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:"https://gradesyncfinal.vercel.app/",queryParams:{prompt:"select_account"}}});
      if(r.error)throw r.error;
    }catch(e){window.showToast("Không thể bắt đầu đăng nhập Google: "+(e.message||"Chưa cấu hình OAuth"),"error")}
  };

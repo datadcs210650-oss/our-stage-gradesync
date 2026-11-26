@@ -488,7 +488,7 @@ function onSnapshot(ref,next,onError,initialSnapshot){
   if(!live)return;
   if(document.hidden){dirty=true;return}
   if(scheduled!==null)return;
-  scheduled=setTimeout(()=>{scheduled=null;update()},300);
+  scheduled=setTimeout(()=>{scheduled=null;update()},1200);
  };
  async function update(){
   if(!live)return;
@@ -519,7 +519,11 @@ function onSnapshot(ref,next,onError,initialSnapshot){
    if(live&&dirty){dirty=false;schedule()}
   }
  }
- const release=()=>{}; // Admin data snapshots are fetched on demand only.
+ // Listen only while the selected live score grid exists. Global directory
+ // signals contain no score contents; all reads still use the OSC admin bridge.
+ const scope=T(ref.table),scoped=["scores","candidates","grader_verifications"].includes(scope)&&(ref.filters||[]).some(f=>f.field==="groupId"&&f.op==="=="&&f.value);
+ const directory=["profiles","competition_groups"].includes(scope)&&!!document.getElementById("grading-tables-container");
+ const release=(scoped||directory)?watchChangeSignals(scope,schedule,onError):()=>{};
  const foreground=()=>{
   // Do not fetch merely because time passed. Catch up only if change
   // notifications were queued while the iframe was hidden.
@@ -5387,12 +5391,13 @@ window.currentUserData = null; window.activeListeners = [];
   // ---------- 5) Admin Bảng Điểm Live: chỉ nghe nhóm đang xem + cập nhật incremental ----------
   window._stopAdminSelectedGroupRealtime=function(){
     (window._gsRt.adminGroupUnsubs||[]).forEach(u=>{try{u?.();}catch(_e){}});
-    window._gsRt.adminGroupUnsubs=[];
+    window._gsRt.adminGroupUnsubs=[];window._gsRt.adminLiveGroup=null;
   };
 
   window._startAdminSelectedGroupRealtime=function(gid){
     if(!isAdmin() || !gid || !document.getElementById('grading-tables-container')) return;
     window._stopAdminSelectedGroupRealtime();
+    window._gsRt.adminLiveGroup=gid;
     window._allCandidatesCache=[];
     window._allScoresCache=[];
     window._allVerificationsCache={};
@@ -5401,13 +5406,14 @@ window.currentUserData = null; window.activeListeners = [];
     const scoreMap=new Map();
     const verifyMap=new Map();
 
-    const render=kind=>{window.scheduleRealtimeRenderFast(true);window.dispatchEvent(new CustomEvent("osc-score-group-change",{detail:{groupId:gid,kind}}));};
+    const render=kind=>{if(window._gsRt.adminLiveGroup!==gid)return;window.scheduleRealtimeRenderFast(true);window.dispatchEvent(new CustomEvent("osc-score-group-change",{detail:{groupId:gid,kind}}));};
 
     const cq=window.query(window.collection(window.db,'candidates'),window.where('groupId','==',gid));
     const sq=window.query(window.collection(window.db,'scores'),window.where('groupId','==',gid));
     const vq=window.query(window.collection(window.db,'grader_verifications'),window.where('groupId','==',gid));
 
     const uc=window.onSnapshot(cq,snap=>{
+      if(window._gsRt.adminLiveGroup!==gid)return;
       for(const ch of snap.docChanges()){
         if(ch.type==='removed') candidateMap.delete(ch.doc.id);
         else candidateMap.set(ch.doc.id,{id:ch.doc.id,...ch.doc.data()});
@@ -5417,6 +5423,7 @@ window.currentUserData = null; window.activeListeners = [];
     },e=>console.warn('ADMIN CANDIDATES REALTIME:',e));
 
     const us=window.onSnapshot(sq,snap=>{
+      if(window._gsRt.adminLiveGroup!==gid)return;
       for(const ch of snap.docChanges()){
         if(ch.type==='removed') scoreMap.delete(ch.doc.id);
         else scoreMap.set(ch.doc.id,{id:ch.doc.id,...ch.doc.data()});
@@ -5426,6 +5433,7 @@ window.currentUserData = null; window.activeListeners = [];
     },e=>console.warn('ADMIN SCORES REALTIME:',e));
 
     const uv=window.onSnapshot(vq,snap=>{
+      if(window._gsRt.adminLiveGroup!==gid)return;
       for(const ch of snap.docChanges()){
         const d=ch.doc.data()||{};
         const key=`${d.graderCode}_${d.groupId}`;
@@ -5446,7 +5454,7 @@ window.currentUserData = null; window.activeListeners = [];
     const r=oldChangeGradingGroup?.apply(this,arguments);
     if(isAdmin()){
       const gid=document.getElementById('grading-group-select')?.value||window._selectedGradingGroupId;
-      if(gid) window._startAdminSelectedGroupRealtime(gid);
+      if(gid && window._gsRt.adminLiveGroup!==gid) window._startAdminSelectedGroupRealtime(gid);
     }
     return r;
   };
@@ -6175,7 +6183,7 @@ window.currentUserData = null; window.activeListeners = [];
         });
       }
 
-      if(isAdmin() && gid && sessionModeOn(gid)){
+      if(false && isAdmin() && gid && sessionModeOn(gid)){ // legacy filter disabled: admin personal view shows committed server scores, not only submitted scores
         const original=window._allScoresCache||[];
         const verifiedCodes=new Set(
           Object.values(window._allVerificationsCache||{})

@@ -20,7 +20,7 @@ function persist(){
 }
 const inputs=(gid,cid)=>[...document.querySelectorAll("input.score-input[data-group][data-cand]")].filter(x=>x.dataset.group===gid&&x.dataset.cand===cid);
 const allowed=(gid,criterion)=>{const list=window._gsCriterionRestrictions?.[gid];return !Array.isArray(list)||!list.length||list.includes(criterion)};
-const current=(gid,cid)=> (window._allScoresCache||[]).filter(s=>s.groupId===gid&&s.candidateId===cid&&s.graderCode===window.currentUserData?.code).sort((a,b)=>Number(b.revision||0)-Number(a.revision||0))[0]||null;
+const current=(gid,cid)=> (window._allScoresCache||[]).filter(s=>s.groupId===gid&&s.candidateId===cid&&(s.graderId?s.graderId===uid():s.graderCode===window.currentUserData?.code)).sort((a,b)=>Number(b.revision||0)-Number(a.revision||0))[0]||null;
 function normalize(values){
  const scores={};let invalid=false;
  for(const [criterion,raw] of Object.entries(values)){
@@ -140,8 +140,8 @@ async function save(gid,cid){
   if(uid()!==u)return;
   const mapped={gsProposedRoles:saved.extra_data?.gsProposedRoles||[],gsJudgeNote:saved.extra_data?.gsJudgeNote||"",id:saved.id,candidateId:cid,groupId:gid,graderId:saved.grader_id,graderCode:saved.grader_code,graderName:saved.grader_name,scores:saved.scores,totalScore:saved.total_score,revision:saved.revision,locked:saved.locked,updatedAt:saved.updated_at,timestamp:{seconds:Math.floor(Date.parse(saved.updated_at)/1000)}};
   const cache=window._allScoresCache||[];
-  if(!cache.some(s=>s.candidateId===cid&&s.graderCode===mapped.graderCode&&Number(s.revision)>Number(mapped.revision))){
-   window._allScoresCache=cache.filter(s=>!(s.candidateId===cid&&s.graderCode===mapped.graderCode));window._allScoresCache.push(mapped);
+  if(!cache.some(s=>s.groupId===gid&&s.candidateId===cid&&(s.graderId?s.graderId===u:s.graderCode===mapped.graderCode)&&Number(s.revision)>Number(mapped.revision))){
+   window._allScoresCache=cache.filter(s=>!(s.groupId===gid&&s.candidateId===cid&&(s.graderId?s.graderId===u:s.graderCode===mapped.graderCode)));window._allScoresCache.push(mapped);
    (window._gradedDataCache||={})[cid]=mapped;
   }
   const latest=currentDraft(gid,cid);
@@ -155,6 +155,9 @@ async function save(gid,cid){
  }catch(e){
   if(uid()!==u)return;
   failures.set(id,/SCORE_CONFLICT/.test(String(e.message))?"Xung đột phiên bản · Chưa lưu":"Lưu thất bại");
+  // A response can be lost after commit. Reconcile only this judge and row;
+  // never blindly overwrite a newer version from another tab/device.
+  if(navigator.onLine!==false){try{const result=await window.supabase.from("scores").select("id,group_id,candidate_id,grader_id,grader_code,grader_name,scores,total_score,revision,locked,updated_at,extra_data").eq("group_id",gid).eq("candidate_id",cid).eq("grader_id",u).maybeSingle();const s=result.data,latest=currentDraft(gid,cid);if(!result.error&&s&&uid()===u&&s.grader_id===u){const committed={id:s.id,groupId:gid,candidateId:cid,graderId:u,graderCode:s.grader_code,graderName:s.grader_name,scores:s.scores,totalScore:s.total_score,revision:s.revision,locked:s.locked,gsProposedRoles:s.extra_data?.gsProposedRoles||[],gsJudgeNote:s.extra_data?.gsJudgeNote||""};if(!current(gid,cid)||Number(current(gid,cid).revision)<=Number(s.revision)){window._allScoresCache=(window._allScoresCache||[]).filter(r=>!(r.groupId===gid&&r.candidateId===cid&&(r.graderId?r.graderId===u:r.graderCode===s.grader_code)));window._allScoresCache.push(committed)}if(latest&&!normalize(latest.values).invalid&&equal(normalize(latest.values).scores,s.scores)&&sameEvaluation(latest.evaluation,committedEvaluation(committed))){delete drafts()[id];failures.delete(id);persist();window.showToast?.("Đã đối chiếu: điểm đã lưu trên máy chủ.");return;}if(latest&&Number(s.revision)!==Number(latest.revision))failures.set(id,"Điểm máy chủ đã thay đổi · Chưa lưu");}}catch(_){}}
   window.showToast?.("Chưa lưu điểm: "+(e.message||"lỗi kết nối")+". Bản nháp vẫn được giữ.","error");
  }finally{
   busy.delete(id);
