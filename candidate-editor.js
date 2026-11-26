@@ -67,7 +67,7 @@ window.loadStudentList=async function(host){
    const id=make("td","px-3 py-3 font-mono font-bold text-red-900",item.code||"—");
    const person=make("td","px-3 py-3 font-semibold text-slate-900",item.name||"—");
    tr.append(id,person);
-   for(const v of [item.mssv,item.email,item.phone])tr.append(make("td","px-3 py-3 text-slate-700 break-words",v||"—"));
+   tr.append(make("td","px-3 py-3 text-slate-700 break-words",item.mssv||"—"));const emailCell=make("td","px-3 py-3 text-slate-700 break-words",item.email||"—");if(item.sharedEmailCount>1)emailCell.append(make("p","text-[10px] font-bold text-amber-600 mt-1","⚠ Email dùng chung · "+item.sharedEmailCount+" hồ sơ"));tr.append(emailCell,make("td","px-3 py-3 text-slate-700 break-words",item.phone||"—"));
    const extra=make("td","px-3 py-3 max-w-64 whitespace-normal");
    if(state.policy?.roles?.length)extra.append(make("p","font-semibold text-red-900","Vai đăng ký: "+((item.registeredRoles||[]).join(", ")||"Chưa chọn")));
    const items=(item.extras||[]).filter(x=>x.value!=null&&String(x.value).trim());
@@ -190,9 +190,9 @@ window.loadStudentList=async function(host){
    if(consent.check.checked&&!item.emailConsent&&!window.confirm("Xác nhận thí sinh đã đồng ý nhận email kết quả?"))return;
    const update={mssv:mssv.value,email:email.value,phone:phone.value,castingEmailConsent:consent.check.checked};
    for(const [key,x] of extras)update[key]=x.value;
-   await request("casting-candidate-edit",{candidateId:item.id,castingId:item.castingId,name:name.value,
+   const saved=await request("casting-candidate-edit",{candidateId:item.id,castingId:item.castingId,name:name.value,
     fields:update,registeredRoles:getRoles(),version:item.version,identityVersion:item.identityVersion});
-   modal.close();window.showToast?.("Đã cập nhật hồ sơ thí sinh.");await loadPage();
+   modal.close();await loadPage();const notice="Đã cập nhật hồ sơ thí sinh."+(saved.sharedEmailCount>1?" Lưu ý: email dùng chung cho "+saved.sharedEmailCount+" hồ sơ.":"");banner.textContent=notice;window.showToast?.(notice);
   }));
   if(!alive())throw Error("Trang đã thay đổi.");if(!modal.isConnected)document.body.append(modal);if(!modal.open)modal.showModal();
  }
@@ -209,10 +209,10 @@ window.loadStudentList=async function(host){
    if(!code.value.trim()||name.value.trim().length<2||!email.checkValidity())throw Error("Kiểm tra SBD, họ tên và email.");
    if(consent.check.checked&&!window.confirm("Bạn xác nhận đã được thí sinh cho phép gửi email kết quả?"))return;
    const extra={};for(const [key,x] of extras)extra[key]=x.value;
-   await request("casting-candidate-add",{castingId:session.castingId,groupId:session.id,
+   const saved=await request("casting-candidate-add",{castingId:session.castingId,groupId:session.id,
     code:code.value,name:name.value,mssv:mssv.value,email:email.value,phone:phone.value,
     fields:extra,registeredRoles:getRoles(),emailConsent:consent.check.checked,confirmConsent:consent.check.checked});
-   modal.close();window.showToast?.("Đã thêm thí sinh vào nhóm.");state.offset=0;await loadPage();
+   modal.close();state.offset=0;await loadPage();const notice="Đã thêm thí sinh vào nhóm."+(saved.sharedEmailCount>1?" Lưu ý: email dùng chung cho "+saved.sharedEmailCount+" hồ sơ.":"");banner.textContent=notice;window.showToast?.(notice);
   }));
   if(!alive())throw Error("Trang đã thay đổi.");if(!modal.isConnected)document.body.append(modal);if(!modal.open)modal.showModal();
  }
@@ -259,7 +259,7 @@ window.loadStudentList=async function(host){
    if(!window.confirm("Nhập "+ready.length+" hồ sơ vào "+session.name+"?"+(fillRoles.checked?"\nHồ sơ trùng SBD và MSSV sẽ chỉ được bổ sung vai còn thiếu, không đổi thông tin cũ.":"")))return;
    submitting=true;file.disabled=true;const failures=[];let done=0;
    try{
-    const result=await request("casting-candidate-import",{castingId:session.castingId,groupId:session.id,rows:ready,confirm:true,fillMissingRoles:fillRoles.checked});done=result.updated||0;failures.push(...(result.failures||[]).map(f=>(f.code||"Dòng lỗi")+": "+f.reason));report.textContent="Thêm mới "+(result.inserted||0)+" · Bổ sung vai "+(result.filled||0)+" · Đã khớp "+(result.skipped||0)+" · Lỗi "+failures.length+"\n"+failures.join("\n");
+    const result=await request("casting-candidate-import",{castingId:session.castingId,groupId:session.id,rows:ready,confirm:true,fillMissingRoles:fillRoles.checked});done=result.updated||0;failures.push(...(result.failures||[]).map(f=>(f.code||"Dòng lỗi")+": "+f.reason));report.textContent="Thêm mới "+(result.inserted||0)+" · Bổ sung vai "+(result.filled||0)+" · Đã khớp "+(result.skipped||0)+" · Lỗi "+failures.length+"\n"+(result.sharedEmailAddresses?"Lưu ý: "+result.sharedEmailAddresses+" địa chỉ email dùng chung; hồ sơ vẫn được lưu bình thường.\n":"")+failures.join("\n");
     ready=[];state.offset=0;await loadPage();
     window.showToast?.("Đã cập nhật "+done+" hồ sơ; "+failures.length+" lỗi cần kiểm tra.");
    }finally{submitting=false;file.disabled=false}
@@ -288,10 +288,10 @@ window.loadStudentList=async function(host){
      for(let j=0;j<keys.length;j++){const k=keys[j],v=String(values[j]??"").trim();if(!k)continue;if(["code","name","mssv","email","phone"].includes(k))rec[k]=v;else if(k==="registeredRoles")rec.registeredRoles=v.split(/[,;\n\r|]+/).map(x=>x.trim()).filter(Boolean).map(x=>roleMap.get(canonicalRole(x))||x);else rec.fields[k]=v}
      rec.code=rec.code.toUpperCase();rec.mssv=rec.mssv.toUpperCase();
      if(rec.registeredRoles.length>(policy?.maxRegistered||0)||new Set(rec.registeredRoles).size!==rec.registeredRoles.length||rec.registeredRoles.some(r=>!policy?.roles?.includes(r))){errors.push("Dòng "+(i+2)+": vai không thuộc phiên hoặc vượt giới hạn: "+rec.registeredRoles.join(", "));return}
-     if(!/^[A-Z0-9_-]{2,40}$/.test(rec.code)||rec.name.length<2||(rec.mssv&&!/^[A-Z0-9_-]{3,50}$/.test(rec.mssv))||(rec.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rec.email))||seenCode.has(rec.code)||(rec.mssv&&seenMssv.has(rec.mssv))){errors.push("Dòng "+(i+2)+": thiếu, sai hoặc trùng thông tin.");return}
+     if(!/^[A-Z0-9_-]{2,40}$/.test(rec.code)||rec.name.length<2||(rec.mssv&&!/^[A-Z0-9_-]{3,50}$/.test(rec.mssv))||(rec.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rec.email))){errors.push("Dòng "+(i+2)+": SBD, họ tên, MSSV hoặc định dạng email không hợp lệ.");return}if(seenCode.has(rec.code)||(rec.mssv&&seenMssv.has(rec.mssv))){errors.push("Dòng "+(i+2)+": trùng SBD hoặc MSSV trong file.");return}
      seenCode.add(rec.code);if(rec.mssv)seenMssv.add(rec.mssv);if(rec.email){const e=rec.email.toLowerCase();emails.set(e,(emails.get(e)||0)+1)}ready.push(rec);
     });
-    const shared=[...emails.values()].filter(n=>n>1).length;report.textContent=ready.length+" hồ sơ hợp lệ để kiểm tra trên máy chủ.\n"+(shared?"Lưu ý: "+shared+" địa chỉ email dùng chung cho nhiều thí sinh; kiểm tra trước khi gửi kết quả.\n":"")+errors.join("\n")+"\n"+ready.map(x=>x.code+" · "+x.name+(x.registeredRoles.length?" · "+x.registeredRoles.join(" / "):"")).join("\n");
+    const shared=[...emails.values()].filter(n=>n>1).length;report.textContent=ready.length+" hồ sơ hợp lệ để kiểm tra trên máy chủ.\n"+(shared?"Lưu ý: "+shared+" địa chỉ email dùng chung cho nhiều thí sinh. Vẫn được phép nhập; kiểm tra người nhận trước khi gửi kết quả.\n":"")+errors.join("\n")+"\n"+ready.map(x=>x.code+" · "+x.name+(x.registeredRoles.length?" · "+x.registeredRoles.join(" / "):"")).join("\n");
     submit.disabled=!ready.length;
    }catch(e){if(token===version)report.textContent=e.message}
   };

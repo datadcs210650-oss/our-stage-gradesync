@@ -36,7 +36,7 @@ window.loadCastingEmail=async function(host){
  selectAll.append(checkAll,node("span","","Gửi toàn bộ thí sinh đủ điều kiện của phiên"));
  const summary=node("span","text-xs text-slate-500","Chưa tải danh sách");
  const controls=node("div","flex flex-wrap items-center gap-3");
- controls.append(selectAll,summary);recipients.append(controls);
+ const sharedNotice=node("p","text-xs font-semibold text-amber-600");controls.append(selectAll,summary);recipients.append(controls,sharedNotice);
  const scroll=node("div","overflow-auto max-h-[430px] border border-slate-200 rounded-xl");
  const table=node("table","w-full min-w-[800px] text-left text-xs");
  table.innerHTML='<thead class="bg-rose-50 text-red-950 sticky top-0"><tr><th class="p-3">Chọn</th><th class="p-3">SBD</th><th class="p-3">Họ tên</th><th class="p-3">Email</th><th class="p-3">Phiên chấm</th><th class="p-3">Kết quả</th><th class="p-3">Điều kiện</th></tr></thead><tbody></tbody>';
@@ -78,7 +78,8 @@ window.loadCastingEmail=async function(host){
  const selected=()=>eligible().filter(row=>chosen.has(row.id));
  function updateMode(){date.disabled=mode.value!=="dispatch";dateLabel.hidden=date.disabled;dateLabel.style.display=date.disabled?"none":"";if(date.disabled)date.value="";send.textContent=mode.value==="resend"?"Gửi lại email kết quả":mode.value==="dispatch"?"Công bố & gửi email":"Chưa thể gửi email";chosen.clear();checkAll.checked=false;draw()}
  mode.onchange=updateMode;
- const count=()=>{const n=checkAll.checked?eligible().length:selected().length;summary.textContent="Đã chọn "+n+" / "+eligible().length+" thí sinh đủ điều kiện.";checkAll.disabled=!ready||!eligible().length||sending;send.disabled=!ready||!n||sending;};
+ const sharedAddressCount=list=>{const counts=new Map();for(const r of list){const e=String(r.email||"").trim().toLowerCase();if(e)counts.set(e,(counts.get(e)||0)+1);}return [...counts.values()].filter(n=>n>1).length;};
+ const count=()=>{const chosenRows=checkAll.checked?eligible():selected(),n=chosenRows.length;summary.textContent="Đã chọn "+n+" / "+eligible().length+" thí sinh đủ điều kiện.";const shared=sharedAddressCount(rows);sharedNotice.textContent=shared?"⚠ "+shared+" địa chỉ email dùng chung. Hệ thống vẫn gửi riêng kết quả của từng thí sinh được chọn. Kiểm tra người nhận trước khi xác nhận.":"";checkAll.disabled=!ready||!eligible().length||sending;send.disabled=!ready||!n||sending;};
  function resultBox(row){
   const passed=row.outcome==="passed";
   const box=node("div","my-3 rounded-xl border p-4 text-center "+(passed?"bg-emerald-50 text-emerald-700 border-emerald-200":"bg-rose-50 text-rose-700 border-rose-200"));
