@@ -43,7 +43,7 @@ for(const key of ["localStorage","sessionStorage"]){
   let panel=document.getElementById("osc-boot-status");
   if(!panel){
    panel=document.createElement("div");panel.id="osc-boot-status";panel.setAttribute("role","status");panel.style.cssText="position:fixed;top:12px;left:12px;right:12px;z-index:99999;background:#fff;border:1px solid #e5cbd5;border-radius:12px;padding:14px 16px;color:#58192e;font:14px/1.5 system-ui;box-shadow:0 4px 18px #0001";
-   const label=document.createElement("span"),button=document.createElement("button");label.dataset.message="1";button.textContent="Mở lại bảng quản trị";button.type="button";button.style.cssText="margin-left:12px;background:#801b36;color:white;border:0;border-radius:8px;padding:8px 12px;cursor:pointer";button.onclick=()=>location.reload();panel.append(label,button);document.body.append(panel);
+   const label=document.createElement("span"),button=document.createElement("button");label.dataset.message="1";button.textContent="Mở lại bảng quản trị";button.type="button";button.style.cssText="margin-left:12px;background:#801b36;color:white;border:0;border-radius:8px;padding:8px 12px;cursor:pointer";button.textContent="Đóng để mở lại bảng";button.onclick=()=>{button.disabled=true;if(wire){window.oscGradingCall("exit").catch(()=>{button.disabled=false})}else{button.disabled=false;window.oscShowBootError("Kết nối chưa sẵn sàng. Dùng nút Mở lại bảng quản trị trên WebOSC.")}};panel.append(label,button);document.body.append(panel);
   }
   panel.querySelector("[data-message]").textContent=String(message||"Không tải được bảng quản trị.");
  };
@@ -7519,7 +7519,7 @@ try{
   const linkFor=(nav,page)=>nav.children[allowed.findIndex(m=>m.id===(page==="casting_email"?"casting_hub":["admin_live_monitor","admin_overview_scores"].includes(page)?"grading_table":page))];
   window.oscInitialLink=nav=>linkFor(nav,actor.page);
   window.oscSelectPage=page=>{const link=linkFor(document.getElementById("nav-menu"),page);if(link&&!link.classList.contains("active"))link.click()};
-window.oscRefreshCurrentPage=()=>{const active=document.querySelector("#nav-menu .active");if(active)active.click();else window.location.reload()};
+window.oscRefreshCurrentPage=()=>{const active=document.querySelector("#nav-menu .active");if(active)active.click();else window.oscGradingCall("exit").catch(()=>{})};
   document.querySelector("#app-view .sidebar-gradient")?.style.setProperty("display","none","important");
   document.querySelector('button[onclick="window.toggleSidebar()"]')?.style.setProperty("display","none","important");
  }
