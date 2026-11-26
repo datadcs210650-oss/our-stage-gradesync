@@ -7,7 +7,7 @@ const field=(type="text",value="")=>{const x=node(type==="textarea"?"textarea":t
 const label=(text,child)=>{const x=node("label","grid gap-1 text-xs font-semibold text-slate-600");x.append(node("span","",text),child);return x};
 const btn=(text,fn,outline=false)=>{
  const b=node("button",(outline?"border border-rose-200 bg-white text-red-900":"bg-red-900 text-white")+" hover:opacity-90 px-4 py-2.5 rounded-xl text-xs font-bold",text);
- b.type="button";b.onclick=async()=>{if(b.disabled)return;b.disabled=true;try{await fn()}catch(e){window.showToast?.(e.message||"Tác vụ không thành công.","error")}finally{b.disabled=false}};return b;
+ b.type="button";b.onclick=async()=>{if(b.disabled)return;b.disabled=true;try{await fn()}catch(e){window.showToast?.(e.message||"Tác vụ không thành công.","error")}finally{b.disabled=false;b.dispatchEvent(new Event("osc-action-finished"))}};return b;
 };
 const card=(title)=>{
  const outer=node("section","bg-white rounded-2xl border border-rose-100 shadow-sm p-5 space-y-4");
@@ -28,7 +28,7 @@ window.loadCastingEmail=async function(host){
  const casting=field("select"),group=field("select");
  const selectGrid=node("div","grid grid-cols-1 md:grid-cols-2 gap-3");
  selectGrid.append(label("Đợt tuyển",casting),label("Nhóm / Phiên chấm",group));cfg.append(selectGrid);
- const load=btn("Làm mới dữ liệu điểm",async()=>loadRows());
+ const load=btn("Làm mới danh sách phiên và kết quả",async()=>refreshOptions());
  cfg.append(load);shell.append(cfg);
  const recipients=card("02 · Người nhận");
  const checkAll=field("checkbox");checkAll.className="w-4 h-4 accent-red-900";
@@ -45,7 +45,7 @@ window.loadCastingEmail=async function(host){
  const subject=field("text","[NTCD] THÔNG BÁO KẾT QUẢ");subject.readOnly=true;
  const intro=field("textarea");intro.rows=3;intro.maxLength=1200;intro.value="Cảm ơn bạn đã tham gia chương trình tuyển chọn diễn viên của Our Stage Club.";
  const thanks=field("textarea");thanks.rows=3;thanks.maxLength=1200;thanks.value="Cảm ơn bạn đã dành thời gian và tâm huyết tham gia. Chúc bạn luôn giữ niềm đam mê sân khấu!";
- const date=field("datetime-local"),mode=field("select");mode.append(new Option("Công bố lần đầu","dispatch"),new Option("Gửi lại kết quả đã công bố","resend"));
+ const date=field("datetime-local"),mode=field("select");mode.append(new Option("Công bố lần đầu","dispatch"),new Option("Gửi lại kết quả đã công bố","resend"),new Option("Đang chờ công bố / chưa đủ điều kiện","none"));mode.disabled=true;
  const top=node("div","grid grid-cols-1 md:grid-cols-2 gap-3");
  const dateLabel=label("Hẹn giờ công bố (để trống nếu gửi ngay)",date);top.append(label("Thao tác",mode),label("Tiêu đề Email",subject),dateLabel);
  compose.append(top,label("Lời chào / mở đầu",intro),label("Lời cảm ơn",thanks),
@@ -53,7 +53,7 @@ window.loadCastingEmail=async function(host){
  const sample=card("Xem trước nội dung");
  const sampleBody=node("div","text-xs leading-relaxed space-y-1 text-slate-600","Hãy tải danh sách và chọn thí sinh.");
  sample.append(sampleBody);compose.append(sample);
- const send=btn("Gửi ngay / Xác nhận đặt lịch",async()=>dispatch());
+ const send=btn("Gửi ngay / Xác nhận đặt lịch",async()=>dispatch());send.addEventListener("osc-action-finished",()=>count());send.disabled=true;
  const preview=btn("Xem trước",async()=>showSample(),true);
  const buttons=node("div","flex flex-wrap gap-2");
  buttons.append(preview,send);compose.append(buttons);shell.append(compose);
@@ -71,16 +71,14 @@ window.loadCastingEmail=async function(host){
  });shell.append(legacy);
  const status=node("p","text-xs font-semibold text-slate-600");status.setAttribute("role","status");shell.append(status);
  host.replaceChildren(shell);
- let allGroups=[],rows=[],chosen=new Set(),requestVersion=0,revision="",retryKey="",retryId="";
+ let allGroups=[],rows=[],chosen=new Set(),requestVersion=0,revision="",sending=false,ready=false,retryKey="",retryId="";
  const notify=(msg,err=false)=>{status.textContent=msg;status.className="text-xs font-semibold "+(err?"text-rose-700":"text-emerald-700")};
- const matchesMode=row=>row.eligible&&(mode.value==="resend"?row.publicationState==="published":row.publicationState==="unpublished");
+ const matchesMode=row=>!row.archived&&row.eligible&&(mode.value==="resend"?row.publicationState==="published":mode.value==="dispatch"&&row.publicationState==="unpublished");
  const eligible=()=>rows.filter(matchesMode);
  const selected=()=>eligible().filter(row=>chosen.has(row.id));
- function updateMode(){date.disabled=mode.value==="resend";dateLabel.hidden=date.disabled;if(date.disabled)date.value="";send.textContent=date.disabled?"Gửi lại email kết quả":"Gửi ngay / Xác nhận đặt lịch";chosen.clear();checkAll.checked=false;draw()}
+ function updateMode(){date.disabled=mode.value!=="dispatch";dateLabel.hidden=date.disabled;dateLabel.style.display=date.disabled?"none":"";if(date.disabled)date.value="";send.textContent=mode.value==="resend"?"Gửi lại email kết quả":mode.value==="dispatch"?"Công bố & gửi email":"Chưa thể gửi email";chosen.clear();checkAll.checked=false;draw()}
  mode.onchange=updateMode;
- const count=()=>summary.textContent=checkAll.checked?
-  "Toàn bộ "+eligible().length+" thí sinh đã duyệt, có email và đồng ý nhận thư.":
-  "Đã chọn "+selected().length+" / "+eligible().length+" thí sinh đủ điều kiện.";
+ const count=()=>{const n=checkAll.checked?eligible().length:selected().length;summary.textContent="Đã chọn "+n+" / "+eligible().length+" thí sinh đủ điều kiện.";checkAll.disabled=!ready||!eligible().length||sending;send.disabled=!ready||!n||sending;};
  function resultBox(row){
   const passed=row.outcome==="passed";
   const box=node("div","my-3 rounded-xl border p-4 text-center "+(passed?"bg-emerald-50 text-emerald-700 border-emerald-200":"bg-rose-50 text-rose-700 border-rose-200"));
@@ -120,28 +118,30 @@ window.loadCastingEmail=async function(host){
   count();showSample();
  }
  function sessions(){
-  group.replaceChildren(new Option("Tất cả phiên chấm",""));
-  for(const g of allGroups.filter(g=>g.castingId===casting.value))group.append(new Option(g.name+(g.archived?" · Đã xóa khỏi quản lý":g.publicationState==="published"?" · Đã công bố":g.publicationState==="scheduled"?" · Chờ công bố":" · Chưa công bố"),g.id));
-  if(group.options.length===2)group.selectedIndex=1;updateSubject();
+  const old=group.value;group.replaceChildren();
+  for(const g of allGroups.filter(g=>g.castingId===casting.value&&!g.archived))group.append(new Option(g.name+(g.publicationState==="published"?" · Đã công bố":g.publicationState==="scheduled"?" · Chờ công bố":" · Chưa công bố"),g.id));
+  if([...group.options].some(o=>o.value===old))group.value=old;group.disabled=!group.options.length;updateSubject();
  }
- function clear(){requestVersion++;rows=[];chosen.clear();checkAll.checked=false;tbody.replaceChildren();summary.textContent="Chọn phiên rồi nhấn Tải kết quả."}
- casting.onchange=()=>{revision="";sessions();clear();logBody.replaceChildren()};
+ function clear(){requestVersion++;ready=false;rows=[];chosen.clear();checkAll.checked=false;mode.value="none";updateMode();summary.textContent="Đang tải hoặc chưa chọn phiên chấm.";sampleBody.textContent="Chưa có dữ liệu người nhận.";send.disabled=true;}
+ casting.onchange=()=>{revision="";sessions();clear();logBody.replaceChildren();loadRows().catch(e=>notify(e.message,true))};
  function updateSubject(){const g=allGroups.find(x=>x.id===group.value);subject.value="[NTCD] THÔNG BÁO KẾT QUẢ_"+(g?.name||"TÊN PHIÊN CỦA TỪNG THÍ SINH");}
- group.onchange=()=>{updateSubject();clear()};checkAll.onchange=()=>{chosen.clear();draw()};
+ group.onchange=()=>{updateSubject();clear();logBody.replaceChildren();loadRows().catch(e=>notify(e.message,true))};checkAll.onchange=()=>{chosen.clear();draw()};
  async function loadRows(){
-  if(!casting.value)throw Error("Chưa chọn casting.");
-  const token=++requestVersion;notify("Đang tải kết quả đã duyệt…");
+  if(!casting.value||!group.value){clear();notify("Không có phiên chấm đang tồn tại.");return;}
+  const token=++requestVersion;ready=false;send.disabled=true;notify("Đang tải kết quả đã duyệt…");
   const result=await api("casting-result-email",{task:"preview",castingId:casting.value,
    groupId:group.value||undefined});
   if(token!==requestVersion)return;
-  rows=result.rows||[];const canResend=rows.some(r=>r.eligible&&r.publicationState==="published"),canDispatch=rows.some(r=>r.eligible&&r.publicationState==="unpublished");
-  mode.options[0].disabled=!canDispatch;mode.options[1].disabled=!canResend;
-  if(canResend&&!canDispatch)mode.value="resend";else if(canDispatch&&!canResend)mode.value="dispatch";else if(canResend&&canDispatch)mode.value="resend";updateMode();
+  rows=(result.rows||[]).filter(r=>r.groupId===group.value&&!r.archived);const canResend=rows.some(r=>r.eligible&&r.publicationState==="published"),canDispatch=rows.some(r=>r.eligible&&r.publicationState==="unpublished");
+  const g=allGroups.find(x=>x.id===group.value);if(g&&result.publicationState)g.publicationState=result.publicationState;
+  if(g){const o=group.options[group.selectedIndex];if(o)o.textContent=g.name+(canResend||result.publicationState==="published"?" · Đã công bố":result.publicationState==="scheduled"?" · Chờ công bố":" · Chưa công bố");}
+  mode.value=canResend?"resend":canDispatch?"dispatch":"none";ready=true;updateMode();
   notify("Đã tải "+rows.length+" hồ sơ · "+eligible().length+" thí sinh đủ điều kiện gửi email.");
  }
  function resendingHint(){return eligible().length?"Chưa chọn người nhận đủ điều kiện.":mode.value==="resend"?"Không có kết quả đã công bố trong phiên đang chọn. Hãy chọn phiên đã công bố hoặc chuyển sang Công bố lần đầu.":"Không có kết quả đủ điều kiện công bố lần đầu trong phiên đang chọn."}
  async function dispatch(){
   if(!rows.length)throw Error("Bấm tải danh sách trước khi gửi.");
+  if(sending||!ready)throw Error("Danh sách chưa sẵn sàng.");
   const all=checkAll.checked,recipients=all?eligible():selected();
   if(!recipients.length)throw Error(resendingHint());
   if(recipients.length>500)throw Error("Mỗi lượt tối đa 500 email; hãy lọc theo phiên chấm.");
@@ -155,16 +155,18 @@ window.loadCastingEmail=async function(host){
   if(!window.confirm((resending?"GỬI LẠI ":at?"ĐẶT LỊCH ":"GỬI NGAY ")+recipients.length+
    " email PASSED/NOT PASSED?\n"+(at?"Thời gian: "+new Date(at).toLocaleString("vi-VN"):"")+
    "\nKhông có link tra cứu, email chỉ gửi thí sinh đã duyệt và đồng ý nhận."))return;
-  notify("Đang gửi yêu cầu tới Resend, vui lòng không bấm gửi lặp lại...");
+  sending=true;casting.disabled=true;group.disabled=true;load.disabled=true;notify("Đang gửi yêu cầu tới Resend, vui lòng không bấm gửi lặp lại...");
   window.showLoading?.(true,at?"Đang đặt lịch gửi email…":"Đang gửi email…");
   let result;
   const payload={task:resending?"resend":"dispatch",castingId:activeCasting,groupId:activeGroup||undefined,allEligible:false,candidateIds:recipients.map(x=>x.id),revision,subject:subject.value,intro:intro.value,thankYou:thanks.value,scheduledAt:at};
-  if(resending){const key=JSON.stringify(payload);if(retryKey!==key||!retryId){retryKey=key;retryId=crypto.randomUUID()}payload.confirmResend=true;payload.requestId=retryId;}
-  try{result=await api("casting-result-email",payload);if(resending){retryKey="";retryId=""}}
-  finally{window.showLoading?.(false)}
+  const key=JSON.stringify(payload);if(retryKey!==key||!retryId){retryKey=key;retryId=crypto.randomUUID()}payload.confirmResend=resending;payload.requestId=retryId;
+  try{result=await api("casting-result-email",payload);if(result.status!=="uncertain"){retryKey="";retryId=""}}
+  catch(e){notify(e.message,true);try{await loadHistory()}catch(_){};throw e}
+  finally{sending=false;casting.disabled=false;group.disabled=!group.options.length;load.disabled=false;window.showLoading?.(false);count()}
   if(token!==requestVersion)return;
-  notify(result.message||"Resend đã tiếp nhận yêu cầu.");
+  const failed=["rejected","uncertain","partial"].includes(result.status);const message=result.message||"Resend đã tiếp nhận yêu cầu.";
   if(!resending){try{await loadRows()}catch(e){window.showToast?.("Hãy làm mới danh sách để kiểm tra trạng thái công bố.","error")}}
+  notify(message,failed);window.showToast?.(message,failed?"error":"success");
   try{await loadHistory()}catch(e){window.showToast?.("Yêu cầu đã được xử lý; chưa tải được lịch sử. Hãy làm mới lịch sử.","error")}
  }
  async function loadHistory(){
@@ -175,8 +177,8 @@ window.loadCastingEmail=async function(host){
   if(cancelled)revision=cancelled.id;
   for(const job of result.jobs||[]){
    const row=node("div","flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 py-2");
-   row.append(node("span","text-xs text-slate-700",(job.mode==="resend"?"Gửi lại · ":"Công bố · ")+String(job.status||"")+
-    " · "+job.count+" email · "+(job.scheduledAt?
+   row.append(node("span","text-xs text-slate-700",(job.mode==="resend"?"Gửi lại · ":"Công bố · ")+String(({accepted:"Đã tiếp nhận",scheduled:"Đã hẹn giờ",processing:"Đang xử lý",uncertain:"Chưa xác định",rejected:"Gửi thất bại",partial:"Gửi một phần","reservation-error":"Không thể công bố",cancelled:"Đã hủy"})[job.status]||job.status||"")+
+    " · "+(job.acceptedCount||0)+"/"+job.count+" email · "+(job.scheduledAt?
       new Date(job.scheduledAt).toLocaleString("vi-VN"):
       new Date(job.createdMs).toLocaleString("vi-VN"))));
    if((job.status==="scheduled"&&Date.parse(job.scheduledAt)>Date.now()+120000)||job.status==="cancelled-lock-pending")row.append(btn("Hủy lịch",async()=>{
@@ -185,14 +187,11 @@ window.loadCastingEmail=async function(host){
     notify("Đã hủy "+r.cancelled+"/"+r.requested+" email hẹn giờ.");
     await loadHistory();
    },true));
-   logBody.append(row);
+   if(job.lastError)row.append(node("span","text-xs text-rose-600",job.lastError));logBody.append(row);
   }
   if(!result.jobs?.length)logBody.append(node("p","text-slate-400","Chưa có lượt gửi kết quả trong lịch sử mới."));
  }
- try{
-  const data=await api("casting-group-options",{emailOptions:true});allGroups=data.groups||[];
-  for(const c of data.castings||[])casting.append(new Option(c.term+" · "+c.name,c.id));
-  sessions();clear();
- }catch(e){notify("Không tải được phiên chấm: "+e.message,true)}
+ async function refreshOptions(){const old=casting.value;clear();const data=await api("casting-group-options",{emailOptions:true});allGroups=(data.groups||[]).filter(g=>!g.archived);const allowed=new Set(allGroups.map(g=>g.castingId));casting.replaceChildren(...(data.castings||[]).filter(c=>allowed.has(c.id)).map(c=>new Option(c.term+" · "+c.name,c.id)));if([...casting.options].some(o=>o.value===old))casting.value=old;sessions();await loadRows();}
+ try{await refreshOptions()}catch(e){notify("Không tải được phiên chấm: "+e.message,true)}
 };
 })();

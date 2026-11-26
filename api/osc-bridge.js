@@ -59,12 +59,13 @@ function hideProfile(p){return{id:p.id,code:p.code||"",name:p.name||"",role:p.ro
 function groupSummary(g){return{id:g.id,name:g.name||"",passScore:g.pass_score??0,
  isOpen:g.is_open===true,criteria:g.criteria||[],openMode:g.open_mode||"",openAt:g.open_at||"",closeAt:g.close_at||""}}
 async function overview(){
- const [groups,profiles,candidates,scores]=await Promise.all([
+ const [groups,profiles,allCandidates,allScores]=await Promise.all([
   supa(url("competition_groups",{osc_deleted_at:"is.null",order:"created_at.desc"})),
   supa(url("profiles",{role:"eq.Grader",order:"code.asc"})),
   supa(url("candidates",{select:"id,group_id,is_present"})),
   supa(url("scores",{select:"id,group_id,grader_id,locked,total_score"}))
  ]);
+ const ids=new Set((groups||[]).map(g=>g.id)),candidates=(allCandidates||[]).filter(c=>ids.has(c.group_id)),scores=(allScores||[]).filter(s=>ids.has(s.group_id));
  return{ok:true,portal:GRADER_PORTAL,
   groups:(groups||[]).map(groupSummary),graders:(profiles||[]).map(hideProfile),
   stats:{groups:groups?.length||0,graders:profiles?.length||0,
@@ -351,17 +352,17 @@ async function handle(req,res){
   if(action==="casting-scan-lookup"){if(Object.keys(b).some(k=>!["action","documentId","comparisonCode"].includes(k)))return sendJson(res,400,{ok:false,error:"Yêu cầu không hợp lệ."});res.setHeader("Cache-Control","no-store");return sendJson(res,200,await lookupScan(sb(),b,false));}
   if(action==="casting-pdf-verify"){if(Object.keys(b).some(k=>!["action","sha256","comparisonCode"].includes(k)))return sendJson(res,400,{ok:false,error:"Yêu cầu không hợp lệ."});return sendJson(res,200,await verifyGradingPdf(sb(),b));}
   const actor=await requireOscManager(req);
-  if(["casting-reserve-publication","casting-release-publication"].includes(action)){
+  if(["casting-reserve-publication","casting-release-publication","casting-abort-publication"].includes(action)){
    const secret=process.env.GRADESYNC_OTP_RELAY_SECRET||"",timestamp=String(req.headers["x-osc-publication-timestamp"]||""),signature=String(req.headers["x-osc-publication-signature"]||"");
    if(secret.length<32||!/^\d{13}$/.test(timestamp)||Math.abs(Date.now()-Number(timestamp))>60000||!(/^[a-f0-9]{64}$/.test(signature)))fail("Yêu cầu công bố chưa xác thực.","osc/gradesync-forbidden");
    const expected=crypto.createHmac("sha256",secret).update("publication\n"+timestamp+"\n"+JSON.stringify(b)).digest("hex");
    if(!crypto.timingSafeEqual(Buffer.from(signature,"hex"),Buffer.from(expected,"hex")))fail("Yêu cầu công bố chưa xác thực.","osc/gradesync-forbidden");
    const batchKey=String(b.batchKey||"");if(!ID.test(String(b.castingId||""))||!(/^[a-f0-9]{64}$/.test(batchKey)))fail("Mã công bố không hợp lệ.");
    const db=sb(),args={p_casting:b.castingId,p_batch:batchKey,p_actor:actor.decoded.uid};
-   const release=action==="casting-release-publication";
+   const release=action!=="casting-reserve-publication";
    if(!release&&(!Array.isArray(b.rows)||b.rows.length<1||b.rows.length>500||b.rows.some(r=>!ID.test(String(r.candidateId||""))||!["passed","failed"].includes(r.outcome)||!Array.isArray(r.assignedRoles)||r.assignedRoles.length>40)||!Number.isFinite(Date.parse(b.publishAt))))fail("Dữ liệu công bố không hợp lệ.");
-   const result=await db.rpc(release?"osc_release_group_publication":"osc_reserve_group_publication",release?args:{...args,p_rows:b.rows,p_at:b.publishAt});
-   if(result.error){const m=String(result.error.message||"");fail(m.includes("GS_PUBLICATION_PENDING")?"Cần duyệt tất cả thí sinh có mặt trong phiên trước công bố.":m.includes("GS_PUBLICATION_RESULT_CHANGED")?"Kết quả vừa thay đổi; hãy tải lại.":m.includes("GS_PUBLICATION_FINAL")?"Không thể mở phiên đã đến giờ công bố.":"Không thể cập nhật khóa công bố.","osc/gradesync-conflict");}
+   const result=await db.rpc(action==="casting-abort-publication"?"osc_abort_group_publication":release?"osc_release_group_publication":"osc_reserve_group_publication",release?args:{...args,p_rows:b.rows,p_at:b.publishAt});
+   if(result.error){const m=String(result.error.message||"");fail(m.includes("GS_PUBLICATION_ALREADY_RESERVED")?"Phiên đã được công bố hoặc đặt lịch bởi một yêu cầu khác. Hãy tải lại.":m.includes("GS_SESSION_NOT_FOUND")?"Phiên đã xóa hoặc không tồn tại.":m.includes("GS_PUBLICATION_PENDING")?"Cần duyệt tất cả thí sinh có mặt trong phiên trước công bố.":m.includes("GS_PUBLICATION_RESULT_CHANGED")?"Kết quả vừa thay đổi; hãy tải lại.":m.includes("GS_PUBLICATION_FINAL")?"Không thể mở phiên đã đến giờ công bố.":"Không thể cập nhật khóa công bố.","osc/gradesync-conflict");}
    return sendJson(res,200,{ok:true,groups:result.data});
   }
   if(!ALLOWED_ACTIONS.has(action)&&!CAST_ACTIONS.has(action))fail("Tác vụ không được cho phép.");

@@ -26,7 +26,7 @@ export default async function handler(req,res){
   const cast=await db.from("gs_castings").select("id,status,publish_at,public_fields").eq("id",castingId).maybeSingle();
   if(cast.error||!cast.data||cast.data.status!=="published"||!cast.data.publish_at||
       Date.parse(cast.data.publish_at)>Date.now())throw fail("Kết quả chưa được công bố.",404);
-  const groups=await db.from("competition_groups").select("id,extra_data").eq("casting_id",castingId).limit(100);
+  const groups=await db.from("competition_groups").select("id,extra_data").eq("casting_id",castingId).is("osc_deleted_at",null).limit(100);
   if(groups.error||!groups.data?.length)throw fail("Chưa có dữ liệu công bố.",404);
   const groupIds=groups.data.map(x=>x.id);
   const idResult=await db.from("gs_candidate_identity").select("candidate_id,email")
