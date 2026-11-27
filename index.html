@@ -7701,7 +7701,9 @@ Object.assign(window,{collection,getDocs,getDoc,addDoc,setDoc,doc,query,where,de
  window.handleGoogleGraderLogin=async function(){
    if(navigator.onLine===false)return window.showToast("Cần kết nối mạng để đăng nhập Google.","error");
    try{
-     const r=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:"https://gradesyncfinal.vercel.app/",queryParams:{prompt:"select_account"}}});
+     const scoreOrigin = window.location.origin === "https://score.ourstage.io.vn"
+       ? "https://score.ourstage.io.vn" : "https://gradesyncfinal.vercel.app";
+     const r=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:scoreOrigin + "/",queryParams:{prompt:"select_account"}}});
      if(r.error)throw r.error;
    }catch(e){window.showToast("Không thể bắt đầu đăng nhập Google: "+(e.message||"Chưa cấu hình OAuth"),"error")}
  };
