@@ -188,10 +188,11 @@ window.submitSessionGrading=async()=>{throw Error("Phải lưu từng thí sinh 
 window.refreshSessionModeUI=()=>{};window.enforceSessionModeScoreListener=()=>{};
 for(const timer of Object.values(window._scoreSaveTimers||{}))clearTimeout(timer);
 window._scoreSaveTimers={};window._scoreSavePending={};window._offlinePendingScores={};
+window.oscPendingScoreEdits=gid=>Object.values(drafts()).some(d=>d.gid===gid)||[...busy].some(id=>id.startsWith(gid+"|"));
 const verify=window.verifyGroupGrading;
 window.verifyGroupGrading=async function(gid){
- if(!uid()||!window.auth?.currentUser?.isAnonymous)return window.showToast?.("Vui lòng đăng nhập BGK để xác nhận OTP.","error");
- if(Object.values(drafts()).some(d=>d.gid===gid)||[...busy].some(id=>id.startsWith(gid+"|")))return window.showToast?.("Còn điểm chưa lưu. Hãy lưu hoặc hoàn tác trước khi khóa bảng điểm.","error");
+ if(!uid()||!window.auth?.currentUser?.googleGrader)return window.showToast?.("Vui lòng đăng nhập BGK để nộp bảng điểm.","error");
+ if(window.oscPendingScoreEdits(gid))return window.showToast?.("Còn điểm chưa lưu. Hãy lưu hoặc hoàn tác trước khi khóa bảng điểm.","error");
  return verify?.(gid);
 };
 window.vGG=window.verifyGroupGrading;

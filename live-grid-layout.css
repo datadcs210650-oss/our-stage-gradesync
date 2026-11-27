@@ -65,3 +65,8 @@
  .gs-content-tabs,.gs-admin-tabs{overflow-x:auto;overscroll-behavior-x:contain}
 }
 @media(pointer:coarse){.gs-theme-btn,#login-google,#nav-menu button{touch-action:manipulation}}
+
+.osc-council-grid :is(th,td):nth-child(2),.osc-council-grid :is(th,td):nth-child(3){position:sticky;z-index:1;background:var(--osc-surface,Canvas);color:var(--osc-text,CanvasText)}
+.osc-council-grid :is(th,td):nth-child(2){left:0;width:6rem;min-width:6rem;max-width:6rem;overflow:hidden}
+.osc-council-grid :is(th,td):nth-child(3){left:6rem;box-shadow:1px 0 0 #8d777d55}
+.osc-council-grid thead :is(th:nth-child(2),th:nth-child(3)){z-index:3}

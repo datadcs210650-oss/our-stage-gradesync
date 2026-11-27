@@ -1,8 +1,5 @@
-/* BGK: Google-authenticated, email OTP confirmation, never touches OSC admin rights. */
-import crypto from "node:crypto";
 import {createClient} from "@supabase/supabase-js";
 import {restRecoveryOptions} from "../lib/supabase-rest-recovery.js";
-import {sendScoringMail} from "../lib/scoring-mail-relay.js";
 import {receiptMail,retryReceiptMail} from "../lib/receipt-mail.js";
 import {retryInviteJobs} from "../lib/session-invite-mail.js";
 const URL=process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co";
@@ -11,11 +8,6 @@ const reply=(res,status,data)=>{res.setHeader("Content-Type","application/json; 
 const sb=()=>createClient(URL,process.env.SUPABASE_SECRET_KEY||"",restRecoveryOptions(URL));
 const fail=(msg,status=400)=>Object.assign(new Error(msg),{httpStatus:status});
 const required=(r)=>{if(r.error)throw fail("Không thể xác thực dữ liệu ("+(r.error.code||"server")+").",503);return r.data};
-function digest(profile,group,code){
- const secret=process.env.GRADESYNC_OTP_SECRET||"";
- if(secret.length<32)throw fail("Máy chủ chưa cấu hình khóa xác thực OTP.",503);
- return crypto.createHmac("sha256",secret).update(profile+":"+group+":"+code).digest("hex");
-}
 async function actor(db,token){
  const r=await db.auth.getUser(token);
  if(r.error||!r.data?.user)throw fail("Phiên BGK đã hết hạn.",401);
@@ -25,53 +17,19 @@ async function actor(db,token){
  const google=user.identities?.some(i=>i.provider==="google")&&user.app_metadata?.provider==="google"&&user.email_confirmed_at&&claims.amr?.some(x=>x.method==="oauth");
  if(!google)throw fail("Chỉ cho phép xác thực bằng tài khoản Google đã được cấp quyền.",403);
  const access=required(await db.from("gs_google_grader_access").select("*").eq("auth_user_id",user.id).eq("email",String(user.email||"").toLowerCase()).eq("enabled",true).maybeSingle());
- if(!access)throw fail("BGK chưa được BCN cấp email nhận OTP.",403);
+ if(!access)throw fail("BGK chưa được cấp quyền truy cập.",403);
  const profile=required(await db.from("profiles").select("id,code,name,status,role")
   .eq("id",access.profile_id).single());
  if(profile.role!=="Grader"||profile.status!=="Active")
   throw fail("Tài khoản BGK đã bị khóa.",403);
- return{profile,email:access.email,provider:"google"};
-}
-async function preflight(db,profile,groupId){
- const grant=required(await db.from("grader_assignments").select("id").eq("grader_id",profile.id).eq("group_id",groupId).maybeSingle());
- if(!grant)throw fail("BGK không được phân công phiên này.",403);
- const receipt=required(await db.from("gs_grading_receipts").select("verified_at").eq("grader_id",profile.id).eq("group_id",groupId).maybeSingle());
- if(receipt)throw fail("Bảng điểm đã được xác nhận và khóa.",409);
- const group=required(await db.from("competition_groups").select("id,name,criteria,casting_id,extra_data").eq("id",groupId).single());
- if(group.casting_id){const casting=required(await db.from("gs_castings").select("status").eq("id",group.casting_id).single());if(["approved","published","archived"].includes(casting.status))throw fail("Phiên chấm đã hoàn tất.",409)}
- const [{data:allCandidates,error:ce},{data:scores,error:se},{data:grants,error:ge}]=await Promise.all([
-  db.from("candidates").select("id,is_present").eq("group_id",groupId).limit(1500),
-  db.from("scores").select("candidate_id,scores").eq("group_id",groupId).eq("grader_id",profile.id).limit(1500),
-  db.from("gs_criterion_grants").select("criterion").eq("grader_id",profile.id).eq("group_id",groupId)
- ]);
- if(ce||se||ge)throw fail("Không đối soát được bảng điểm.",503);
- if(allCandidates.length>=1500||scores.length>=1500)throw fail("Quá nhiều thí sinh để xác nhận trong một lượt.",413);
- const candidates=allCandidates.filter(c=>group.extra_data?.attendanceEnabled!==true||c.is_present===true);
- if(!candidates.length)throw fail("Phiên chấm chưa có thí sinh đủ điều kiện điểm danh.",409);
- const byCandidate=new Map(scores.map(x=>[x.candidate_id,x.scores||{}]));
- const allowed=grants.length?new Set(grants.map(x=>x.criterion)):null;
- const requiredCriteria=(group.criteria||[]).filter(c=>!allowed||allowed.has(c.name)).map(c=>c.name);
- const incomplete=candidates.filter(c=>{
-  const marks=byCandidate.get(c.id)||{};
-  return requiredCriteria.some(name=>typeof marks[name]!=="number"||marks[name]<0||marks[name]>10);
- });
- const scored=candidates.filter(c=>Object.keys(byCandidate.get(c.id)||{}).length>0).length;
- const missingCriteria=candidates.reduce((count,c)=>{
-  const marks=byCandidate.get(c.id)||{};
-  return count+requiredCriteria.filter(name=>typeof marks[name]!=="number").length;
- },0);
- return {group,completeness:{
-  totalCandidates:candidates.length,scoredCandidates:scored,
-  missingCandidates:candidates.length-scored,missingCriterionCells:missingCriteria,
-  partial:incomplete.length>0, incompleteCandidates:incomplete.length
- }};
+ return {profile, userId:user.id, authenticatedAt:Math.max(0,...claims.amr.filter(x=>x.method==="oauth").map(x=>Number(x.timestamp)||0))};
 }
 export default async function handler(req,res){
  if(req.method==="GET"){const key=process.env.CRON_SECRET||"";const supplied=String(req.headers.authorization||"");if(key.length<32||supplied!=="Bearer "+key)return reply(res,401,{ok:false});try{const db=sb(),jobs=await retryReceiptMail(db),invites=await retryInviteJobs(db);return reply(res,200,{ok:true,processed:jobs.length+invites.length});}catch(e){return reply(res,503,{ok:false});}}
  if(req.method!=="POST")return reply(res,405,{ok:false,error:"Chỉ hỗ trợ POST."});
  if(Number(req.headers["content-length"]||0)>12000)return reply(res,413,{ok:false,error:"Yêu cầu quá lớn."});
  const origin=String(req.headers.origin||"");
- if(origin&&origin!=="https://gradesyncfinal.vercel.app")return reply(res,403,{ok:false,error:"Nguồn không hợp lệ."});
+ if(origin&&!["https://gradesyncfinal.vercel.app","https://score.ourstage.io.vn"].includes(origin))return reply(res,403,{ok:false,error:"Nguồn không hợp lệ."});
  try{
   if(!process.env.SUPABASE_SECRET_KEY)throw fail("Máy chủ chưa cấu hình dịch vụ.",503);
   const token=String(req.headers.authorization||"").replace(/^Bearer\s+/,"");
@@ -79,29 +37,24 @@ export default async function handler(req,res){
   const body=typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
   const gid=String(body.groupId||"");
   if(!UUID.test(gid))throw fail("Phiên chấm không hợp lệ.");
-  const db=sb(),{profile,email}=await actor(db,token);
+  const db=sb(),{profile,userId,authenticatedAt}=await actor(db,token);
   const assignment=required(await db.from("grader_assignments").select("id").eq("group_id",gid).eq("grader_id",profile.id).maybeSingle());if(!assignment)throw fail("BGK không được phân công phiên này.",403);
   const scope=required(await db.from("competition_groups").select("casting_id,osc_deleted_at").eq("id",gid).single());
   const publication=required(await db.from("osc_group_publications").select("scheduled_at").eq("group_id",gid).is("cancelled_at",null).order("scheduled_at").limit(1));
   if(scope.osc_deleted_at||publication.some(x=>Date.parse(x.scheduled_at)<=Date.now()))throw fail("Phiên đã công bố, không còn quyền truy cập.",403);
   if(scope.casting_id){const casting=required(await db.from("gs_castings").select("status,publish_at").eq("id",scope.casting_id).single());if(["published","archived"].includes(casting.status)&&(!casting.publish_at||Date.parse(casting.publish_at)<=Date.now()))throw fail("Phiên đã công bố, không còn quyền truy cập.",403);}
   if(publication.length&&body.action!=="completion-status")throw fail("Phiên đã khóa để công bố kết quả.",409);
-  if(body.action==="preflight"){
-   const info=await preflight(db,profile,gid);
-   return reply(res,200,{ok:true,groupName:info.group.name,completeness:info.completeness});
-  }
-  if(body.action==="request"){
-   const {group,completeness}=await preflight(db,profile,gid);
-   if(completeness.partial&&body.confirmPartial!==true)
-    throw fail("Bảng điểm chưa đầy đủ; cần xác nhận rõ số thí sinh/tiêu chí còn thiếu trước khi gửi OTP.",409);
-   if(!process.env.GRADESYNC_OTP_RELAY_SECRET)
-    throw fail("Chưa cấu hình dịch vụ email OTP.",503);
-   const otp=String(crypto.randomInt(0,1000000)).padStart(6,"0");
-   const expires=new Date(Date.now()+5*60*1000).toISOString();
-   const issued=required(await db.rpc("gs_issue_grading_otp",{p_grader:profile.id,p_group:gid,p_digest:digest(profile.id,gid,otp),p_expires:expires}));
-   if(!issued.ok)throw fail(issued.code==="COOLDOWN"?"Chỉ gửi lại OTP sau 60 giây.":"Không thể cấp OTP: "+issued.code,429);
-   try{await sendScoringMail({kind:"otp",to:email,code:otp,groupName:group.name})}catch(e){throw fail(e.message,503)}
-   return reply(res,200,{ok:true,expiresIn:300,completeness,emailMasked:email.replace(/^(.{2}).*(@[^@]+)$/,"$1***$2")});
+  if(body.action==="preflight"||body.action==="submit"){
+   if(Date.now()/1000-authenticatedAt>12*3600)throw fail("Vui lòng đăng nhập lại bằng Google trước khi nộp.",401);
+   const preview=body.action==="preflight";
+   if(!preview&&(body.accepted!==true||!/^[a-f0-9]{64}$/.test(body.version||"")))
+    throw fail("Vui lòng kiểm tra và xác nhận phiên bản bảng điểm.");
+   const data=required(await db.rpc("osc_submit_grading",{p_auth_user:userId,p_group:gid,p_expected:preview?null:body.version}));
+   if(!data?.ok)throw fail(data?.code==="VERSION_CHANGED"?"Điểm hoặc danh sách đã thay đổi. Hãy mở lại hộp thoại để đối soát.":"Phiên hoặc bảng điểm không còn đủ điều kiện nộp.",409);
+   if(preview)return reply(res,200,data);
+   let mail={mailAccepted:false,mailStatus:"pending"};
+   try{mail=await receiptMail(db,gid,profile.id,false)}catch{console.warn("Receipt mail pending")}
+   return reply(res,200,{...data,...mail});
   }
   // Biên bản chứa điểm chi tiết chỉ BCN được cấp quyền mới có thể xuất.
   // Không trả bản snapshot đã chốt cho endpoint xác thực BGK.
@@ -111,16 +64,7 @@ export default async function handler(req,res){
    const job=row?.comparison_code?required(await db.from("osc_receipt_mail_jobs").select("status").eq("comparison_code",row.comparison_code).eq("kind","completion").maybeSingle()):null;
    return reply(res,200,{ok:true,confirmed:!!row,comparisonCode:row?.comparison_code||null,confirmedAt:row?.verified_at||null,mailStatus:job?.status||null});
   }
-  if(body.action==="confirm"){
-   const code=String(body.code||"");
-   if(!/^\d{6}$/.test(code))throw fail("Mã OTP phải đủ 6 chữ số.");
-   const data=required(await db.rpc("gs_finalize_grading_otp",{p_grader:profile.id,p_group:gid,p_digest:digest(profile.id,gid,code)}));
-   if(!data?.ok)throw fail(data.code==="OTP_INVALID"?"OTP không đúng.":data.code==="OTP_EXPIRED"?"OTP đã hết hạn.":"Không thể xác nhận: "+(data?.code||"unknown"),409);
-   let mail={mailAccepted:false,mailStatus:"pending"};
-   try{mail=await receiptMail(db,gid,profile.id,false)}catch(e){console.warn("Receipt email pending",e.code||"transport")}
-   return reply(res,200,{ok:true,sha256:data.sha256,confirmedAt:data.confirmedAt,completeness:data.completeness,comparisonCode:data.comparisonCode,...mail});
-  }
-  throw fail("Tác vụ OTP không hợp lệ.");
+  throw fail("Hãy tải lại trang để sử dụng quy trình nộp bảng điểm hiện tại.");
  }catch(e){
   console.warn("GradeSync OTP request",e.httpStatus||500,e.code||"handled");
   return reply(res,e.httpStatus||500,{ok:false,error:e.message?.slice(0,220)||"Lỗi xác thực máy chủ."});

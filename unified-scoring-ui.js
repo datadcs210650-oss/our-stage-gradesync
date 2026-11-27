@@ -42,14 +42,18 @@ export function installUnifiedScoring(){
  window.oscCompareScan=compareDialog;
  window.loadUnifiedScoring=async function(host){
   if(!["Admin","SuperAdmin"].includes(window.currentUserData?.role))return oldGrid(host);
-  cleanup?.();let active=true,revision=0,reportSeq=0,timer=null,monitorGroup="",aggregate=null,report=null,scopeList=[],currentTab=remember.tab;let unwatch=()=>{};
+  cleanup?.();let active=true,revision=0,reportSeq=0,timer=null,monitorGroup="",aggregate=null,report=null,scopeList=[],currentTab=remember.tab==="monitor"?"monitor":"score";let unwatch=()=>{};
   const root=el("section","space-y-3 min-w-0 h-full");root.dataset.oscUnified="1";
   const head=el("div","bg-white border border-rose-100 rounded-2xl p-4 space-y-3");
-  const header=el("div","flex flex-wrap items-center justify-between gap-2");header.append(el("h3","text-lg font-black text-red-950","QUẢN LÝ CHẤM ĐIỂM"),link(),button("Đối chiếu bản scan",()=>compareDialog()));
+  const header=el("div","flex flex-wrap items-center justify-between gap-2");header.append(el("h3","text-lg font-black text-red-950","QUẢN LÝ CHẤM ĐIỂM"));
   const group=select(),judge=select(),refresh=button("Làm mới dữ liệu điểm",()=>manualRefresh()),bar=el("div","grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2");bar.append(field("Phiên chấm",group),field("Giám khảo",judge),refresh);
   const summary=el("div","grid grid-cols-2 lg:grid-cols-4 gap-2"),state=el("p","text-sm font-bold text-red-900","Đang tải phiên chấm...");
   const tabs=el("div","flex flex-wrap gap-2 border-b border-rose-100 pb-2"),tabButtons={};
-  for(const [id,title] of [["score","Bảng điểm"],["monitor","Giám sát BGK"],["report","Báo cáo & Xuất"]]){tabButtons[id]=button(title,()=>switchTab(id));tabs.append(tabButtons[id]);}
+  for(const [id,title] of [["score","Bảng điểm"],["monitor","Giám sát BGK"]]){tabButtons[id]=button(title,()=>switchTab(id));tabs.append(tabButtons[id]);}
+  const exports=el("details","relative"),label=el("summary","cursor-pointer rounded-lg border px-3 py-2 text-xs font-bold","Xuất báo cáo");
+  const formats=el("div","flex flex-wrap gap-2 py-2");
+  formats.append(button("Excel",()=>exportDialog("xlsx")),button("CSV",()=>exportDialog("csv")),button("Biên bản PDF",()=>window.openPDFConfigModalLive(group.value,judge.value)));
+  exports.append(label,formats);header.append(exports);
   head.append(header,bar,summary,state,tabs);
   const grid=el("div","flex flex-col min-h-0 min-w-0"),monitor=el("div","min-w-0"),reportPanel=el("div","min-w-0 space-y-3");root.append(head,grid,monitor,reportPanel);host.replaceChildren(root);
   let lastReportAt=0;const onFocus=()=>{if(active&&root.isConnected&&(!aggregate||Date.now()-lastReportAt>30000))refreshAll(!!aggregate)};
@@ -103,6 +107,7 @@ export function installUnifiedScoring(){
    if(j&&judge.value!=="ALL"&&[...j.options].some(o=>o.value===judge.value)){j.value=judge.value;window.renderGradingTables?.();}
   }
   function visible(){
+   exports.hidden=currentTab!=="score";
    const personal=currentTab==="score"&&judge.value!=="ALL";
    grid.style.display=personal?"flex":"none";monitor.style.display=currentTab==="monitor"?"block":"none";reportPanel.style.display=currentTab==="report"||(currentTab==="score"&&!personal)?"block":"none";
    for(const [id,b] of Object.entries(tabButtons)){b.className=(id===currentTab?"bg-red-900 text-white":"bg-white border border-rose-100 text-red-900")+" rounded-lg px-3 py-2 text-xs font-bold";b.setAttribute("aria-pressed",String(id===currentTab));}
@@ -111,14 +116,18 @@ export function installUnifiedScoring(){
    if(!data||!active)return;
    const tools=el("div","flex flex-wrap gap-2 items-center"),search=el("input","border rounded-lg p-2 text-xs flex-1"),status=el("p","text-xs text-gray-500",data.note),wrap=el("div","overflow-auto border border-rose-100 rounded-xl max-h-[65vh] bg-white");
    search.placeholder="Tìm tên hoặc số báo danh...";
-   if(currentTab==="report"){tools.append(button("Xuất Excel",()=>exportDialog("xlsx")),button("Xuất CSV",()=>exportDialog("csv")),button("Xuất PDF",()=>window.openPDFConfigModalLive(group.value,judge.value),true));}
-   else tools.append(button("Xuất báo cáo",()=>switchTab("report")));
-   tools.append(search);if(aggregate?.attendanceState?.enabled){const label=el("span","text-xs font-bold "+(aggregate.attendanceState.locked?"text-red-800":"text-emerald-700"),aggregate.attendanceState.locked?"🔒 Điểm danh đã khóa (≥50% BGK)":"Điểm danh đang mở");tools.append(label);}
+   const resultFilter=select(),attendanceFilter=select();
+   for(const [field,title,column] of [[resultFilter,"Mọi kết quả",data.columns.length-1],[attendanceFilter,"Mọi trạng thái điểm danh",data.columns.indexOf("Điểm danh")]]){
+    field.setAttribute("aria-label",title);field.append(new Option(title,""));
+    if(column>=0){for(const value of new Set(data.rows.map(row=>String(row[column]??"")).filter(Boolean)))field.append(new Option(value,value));}
+    field.hidden=column<0;field.onchange=()=>body();
+   }
+   tools.append(search,resultFilter,attendanceFilter);if(aggregate?.attendanceState?.enabled){const label=el("span","text-xs font-bold "+(aggregate.attendanceState.locked?"text-red-800":"text-emerald-700"),aggregate.attendanceState.locked?"🔒 Điểm danh đã khóa (≥50% BGK)":"Điểm danh đang mở");tools.append(label);}
    const table=el("table","w-full text-xs min-w-max border-collapse"),thead=el("thead","sticky top-0 z-10 bg-rose-50"),tr=el("tr"),tbody=el("tbody","divide-y divide-rose-50");
-   for(const col of data.columns)tr.append(el("th","p-3 text-left font-bold whitespace-pre-line border-b border-rose-100",col));const showLive=currentTab==="report"||currentTab==="score"&&judge.value==="ALL";if(showLive)tr.append(el("th","p-3 text-left","Điểm từng BGK đã lưu (chưa nộp vẫn hiển thị)"));thead.append(tr);table.append(thead,tbody);wrap.append(table);
+   for(const col of data.columns)tr.append(el("th","p-3 text-left font-bold whitespace-pre-line border-b border-rose-100",col));const showLive=currentTab==="report"||currentTab==="score"&&judge.value==="ALL";if(showLive)tr.append(el("th","p-3 text-left","Điểm từng BGK đã lưu (chưa nộp vẫn hiển thị)"));thead.append(tr);table.append(thead,tbody);table.classList.add("osc-council-grid");wrap.append(table);
    function body(){tbody.replaceChildren();const q=search.value.trim().toLowerCase(),cached=window._allCandidatesCache||[],scores=window._allScoresCache||[],map=new Map(cached.map(c=>[String(c.code),c.id])),byCand=new Map();for(const s of scores){if(s.groupId!==group.value||(judge.value!=="ALL"&&s.graderCode!==judge.value))continue;const arr=byCand.get(s.candidateId)||[];arr.push(s);byCand.set(s.candidateId,arr);}
-    for(const row of data.rows){if(q&&!row.slice(1,3).join(" ").toLowerCase().includes(q))continue;const tr=el("tr","hover:bg-rose-50");row.forEach((v,i)=>{const td=el("td","p-3 align-top whitespace-pre-line "+(i===row.length-1?(v==="ĐẠT"?"text-emerald-700 font-bold":v==="KHÔNG ĐẠT"?"text-red-700 font-bold":"text-gray-500"):""),v);if(data.columns[i]==="Điểm danh"&&currentTab==="score"&&judge.value==="ALL"){const input=select();input.append(new Option("Có mặt","yes"),new Option("Vắng mặt","no"));input.value=v==="Có mặt"?"yes":"no";input.disabled=window.oscAttendanceLock()||!map.has(String(row[1]));input.onchange=async()=>{const requested=input.value;input.disabled=true;let saved=false;try{saved=await markAttendance(map.get(String(row[1])),requested==="yes")}catch(e){msg(e.message,true)}finally{input.value=saved?requested:(v==="Có mặt"?"yes":"no");input.disabled=window.oscAttendanceLock()}};td.replaceChildren(input);}tr.append(td);});
-     if(showLive){const details=el("td","p-3 min-w-[260px]");const entries=new Map((byCand.get(map.get(String(row[1])))||[]).map(s=>[s.graderCode,s]));const judges=[...judge.options].filter(o=>o.value!=="ALL"&&(judge.value==="ALL"||o.value===judge.value));for(const j of judges){const s=entries.get(j.value),confirmed=window._allVerificationsCache?.[j.value+"_"+group.value]?.isVerified===true;const v=el("div","border rounded-md p-2 mb-1");v.append(el("p","font-bold text-red-900",s?.graderName||j.textContent),el("p","text-gray-600",s?Object.entries(s.scores||{}).map(([k,n])=>k+": "+(n??"—")).join(" · "):"Chưa lưu điểm"),el("p","text-xs "+(confirmed?"text-emerald-700":"text-gray-500"),s?"Tổng: "+(s.totalScore??"—")+" · "+(confirmed?"Đã nộp":"Đã lưu máy chủ / chưa nộp"):confirmed?"Đã nộp · không có điểm":"Chưa có dữ liệu"));details.append(v)}tr.append(details);}
+    for(const row of data.rows){if(resultFilter.value&&row.at(-1)!==resultFilter.value||attendanceFilter.value&&row[data.columns.indexOf("Điểm danh")]!==attendanceFilter.value)continue;if(q&&!row.slice(1,3).join(" ").toLowerCase().includes(q))continue;const tr=el("tr","hover:bg-rose-50");row.forEach((v,i)=>{const td=el("td","p-3 align-top whitespace-pre-line "+(i===row.length-1?(v==="ĐẠT"?"text-emerald-700 font-bold":v==="KHÔNG ĐẠT"?"text-red-700 font-bold":"text-gray-500"):""),v);if(data.columns[i]==="Điểm danh"&&currentTab==="score"&&judge.value==="ALL"){const input=select();input.append(new Option("Có mặt","yes"),new Option("Vắng mặt","no"));input.value=v==="Có mặt"?"yes":"no";input.disabled=window.oscAttendanceLock()||!map.has(String(row[1]));input.onchange=async()=>{const requested=input.value;input.disabled=true;let saved=false;try{saved=await markAttendance(map.get(String(row[1])),requested==="yes")}catch(e){msg(e.message,true)}finally{input.value=saved?requested:(v==="Có mặt"?"yes":"no");input.disabled=window.oscAttendanceLock()}};td.replaceChildren(input);}tr.append(td);});
+     if(showLive){const details=el("td","p-3 min-w-[260px]");const disclosure=el("details"),summary=el("summary","cursor-pointer text-xs font-bold","Xem điểm từng BGK");disclosure.append(summary);details.append(disclosure);const entries=new Map((byCand.get(map.get(String(row[1])))||[]).map(s=>[s.graderCode,s]));const judges=[...judge.options].filter(o=>o.value!=="ALL"&&(judge.value==="ALL"||o.value===judge.value));for(const j of judges){const s=entries.get(j.value),confirmed=window._allVerificationsCache?.[j.value+"_"+group.value]?.isVerified===true;const v=el("div","border rounded-md p-2 mb-1");v.append(el("p","font-bold text-red-900",s?.graderName||j.textContent),el("p","text-gray-600",s?Object.entries(s.scores||{}).map(([k,n])=>k+": "+(n??"—")).join(" · "):"Chưa lưu điểm"),el("p","text-xs "+(confirmed?"text-emerald-700":"text-gray-500"),s?"Tổng: "+(s.totalScore??"—")+" · "+(confirmed?"Đã nộp":"Đã lưu máy chủ / chưa nộp"):confirmed?"Đã nộp · không có điểm":"Chưa có dữ liệu"));disclosure.append(v)}tr.append(details);}
      tbody.append(tr);
     }
    }search.oninput=body;body();reportPanel.replaceChildren(tools,status,wrap);

@@ -1,4 +1,3 @@
-/* BGK Google and legacy login: mandatory email OTP before confirmed score locks. */
 (()=>{
 "use strict";
 const sb=window.supabase;
@@ -8,7 +7,7 @@ function node(tag,text,cls){const e=document.createElement(tag);if(text)e.textCo
 async function api(action,groupId,extras={}){
  const session=(await sb.auth.getSession()).data.session;
  if(!session?.access_token)throw Error("Phiên Google đã hết hạn. Hãy đăng nhập lại.");
- const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),action==="confirm"?55000:15000);
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),action==="submit"?55000:15000);
  try{
   const res=await fetch("/api/grader-confirm",{method:"POST",cache:"no-store",signal:controller.signal,
    headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token},
@@ -30,30 +29,41 @@ async function flushPending(groupId){
 function close(){window.closeCustomModal?.()}
 function actionButton(label,fn,primary=false){const x=node("button",label,primary?"bg-red-900 text-white px-4 py-2 rounded-xl font-bold text-xs":"border px-4 py-2 rounded-xl text-xs");x.type="button";x.onclick=fn;return x}
 function success(box,answer){
- if(!box.isConnected)return;
- const verify=node("a","Xác thực biên bản","inline-flex border rounded-xl px-4 py-2 text-xs font-bold text-red-900");verify.href="https://portal.ourstage.io.vn/xac-thuc-bien-ban";verify.target="_blank";verify.rel="noopener noreferrer";
- box.replaceChildren(node("h3","✓ Bảng điểm đã được khóa","font-extrabold text-lg text-emerald-800"),node("p","Mã đối chiếu bảng điểm","text-xs text-gray-500"),node("p",answer.comparisonCode||"Chưa có mã đối chiếu","text-3xl font-mono tracking-widest font-black text-red-900"),node("p",(answer.mailAccepted===true||answer.mailStatus==="sent")?"Biên bản PDF cá nhân đã được Resend tiếp nhận. Kiểm tra email của bạn.":"Bảng điểm đã khóa. Email đang chờ hoặc chưa gửi thành công; hệ thống sẽ thử lại.","text-xs text-gray-600"),verify,actionButton("Đóng",()=>{close();window._lastInitAuthUid=null;window.loadGradingTable?.(document.getElementById("main-content")).catch(()=>{})},true));
-}
-function openOtpDialog(groupId,partial){
- const box=document.getElementById("custom-modal-box");if(!box)throw Error("Không mở được hộp thoại OTP.");
- const header=node("h3","Xác nhận & khóa bảng điểm","font-extrabold text-lg text-red-900"),explain=node("p","Đang gửi mã OTP…","text-xs text-gray-600"),input=node("input"),error=node("p","","text-xs text-red-700"),row=node("div","","flex flex-wrap gap-2 mt-2");
- input.inputMode="numeric";input.maxLength=6;input.autocomplete="one-time-code";input.placeholder="000000";input.className="border rounded-xl p-3 text-center text-xl tracking-widest w-full";
- const confirm=actionButton("Xác nhận & khóa",async()=>{
-  if(!/^\d{6}$/.test(input.value))return error.textContent="Nhập đủ 6 chữ số.";
-  confirm.disabled=true;try{const answer=await api("confirm",groupId,{code:input.value});if(box.contains(header))success(box,answer)}
-  catch(e){if(!box.contains(header))return;try{const status=await api("completion-status",groupId);if(status.confirmed){success(box,status);return}}catch(_){}error.textContent=e.message;confirm.disabled=false}
- },true);
- const cancel=actionButton("Hủy",close),resend=actionButton("Gửi lại OTP",()=>send());
- const send=async()=>{confirm.disabled=true;resend.disabled=true;error.textContent="";explain.textContent="Đang gửi mã OTP…";try{const r=await api("request",groupId,{confirmPartial:partial});if(!box.contains(header))return;explain.textContent="Mã 6 chữ số đã gửi đến "+r.emailMasked+". Mã hết hạn sau 5 phút.";confirm.disabled=false;setTimeout(()=>{resend.disabled=false},60000)}catch(e){error.textContent=e.message;resend.disabled=false}};
- row.append(confirm,cancel,resend);box.replaceChildren(header,explain,input,error,row);window.openModal();input.focus();send();
+ box.replaceChildren(node("h3","Đã khóa và nộp bảng điểm","font-extrabold text-lg text-emerald-800"),
+  node("p",answer.mailAccepted||answer.mailStatus==="sent"?"Biên bản đã được tiếp nhận để gửi qua email.":"Đã lưu biên bản. Bạn có thể đóng cửa sổ trong khi hệ thống xử lý email.","text-sm"),
+  actionButton("Đóng",()=>{close();window.loadGradingTable?.(document.getElementById("main-content"))},true));
 }
 window.verifyGroupGrading=async function(groupId){
- if(!grader())return notify("Vui lòng đăng nhập bằng Google.",true);
- const box=document.getElementById("custom-modal-box");if(!box)return notify("Không mở được hộp thoại xác nhận.",true);
- const heading=node("h3","Nộp bảng điểm?","font-extrabold text-lg text-red-900"),detail=node("p","Đang đối soát điểm đã lưu…","text-sm text-gray-600");
- const proceed=actionButton("Xác nhận",()=>openOtpDialog(groupId,partial),true);let partial=false;proceed.disabled=true;
- box.replaceChildren(heading,detail,actionButton("Quay lại",close),proceed);window.openModal();
- try{await flushPending(groupId);const check=await api("preflight",groupId);if(!box.contains(heading))return;const c=check.completeness||{};partial=c.partial===true;detail.textContent="Đã nhập điểm "+(c.scoredCandidates||0)+"/"+(c.totalCandidates||0)+" thí sinh; còn "+(c.incompleteCandidates||0)+" hồ sơ chưa đủ tiêu chí, "+(c.missingCriterionCells||0)+" ô điểm thiếu. "+(partial?"Bạn vẫn có thể nộp; ô chưa chấm không được tự điền 0. ":"")+"Bảng điểm sẽ khóa sau xác nhận OTP.";proceed.disabled=false}catch(e){detail.textContent=e.message}
+ if(!grader())return notify("Vui lòng đăng nhập bằng tài khoản BGK được cấp quyền.",true);
+ const box=document.getElementById("custom-modal-box");if(!box)return;
+ const title=node("h3","Khóa và nộp bảng điểm","font-extrabold text-lg text-red-900");
+ const info=node("p","Đang kiểm tra dữ liệu đã lưu trên máy chủ…","text-sm whitespace-pre-line");
+ let version=null;
+ const cancel=actionButton("Quay lại",close);
+ const submit=actionButton("Tôi chịu trách nhiệm và nộp bảng điểm",async()=>{
+  if(submit.disabled||!version)return;
+  submit.disabled=cancel.disabled=true;
+  try{
+   if(window.oscPendingScoreEdits?.(groupId)||navigator.onLine===false)throw Error("Còn thay đổi chưa đồng bộ hoặc thiết bị đang mất mạng.");
+   const result=await api("submit",groupId,{accepted:true,version});
+   if(box.contains(title))success(box,result);
+  }catch(e){
+   if(!box.contains(title))return;
+   try{const status=await api("completion-status",groupId);if(status.confirmed){success(box,status);return}}catch{}
+   info.textContent=e.message;cancel.disabled=false;
+  }
+ },true);
+ submit.disabled=true;box.replaceChildren(title,info,cancel,submit);window.openModal();
+ try{
+  await flushPending(groupId);const result=await api("preflight",groupId);
+  if(!box.contains(title))return;
+  const c=result.completeness;
+  info.textContent=[result.graderName+" · "+result.groupName,
+   "Đã lưu điểm trên máy chủ cho "+c.scoredCandidates+"/"+c.totalCandidates+" thí sinh.",
+   "Chưa chấm: "+c.missingCandidates+" · Chưa đủ tiêu chí: "+c.incompleteCandidates+" hồ sơ.",
+   "Sau khi nộp, bạn không thể chỉnh sửa bảng điểm."].join("\n");
+  version=result.version;submit.disabled=false;
+ }catch(e){info.textContent=e.message}
 };
 /* Legacy BGK also receives criterion visibility from its own RLS-scoped grants. */
 const startApp=window.initApp;
