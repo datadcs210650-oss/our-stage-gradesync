@@ -16,7 +16,9 @@ export function installCastingAdminPages(){
   }
   window.showToast?.("Đã sao chép link riêng cho phiên chấm.");
  }
- function groupLink(groupId){return "https://gradesyncfinal.vercel.app/?groupId="+encodeURIComponent(groupId)}
+ let scoringPublicOrigin="https://gradesyncfinal.vercel.app";
+ function usePublicOrigin(data){scoringPublicOrigin=data?.publicScoringOrigin==="https://score.ourstage.io.vn"?data.publicScoringOrigin:"https://gradesyncfinal.vercel.app";}
+ function groupLink(groupId){return scoringPublicOrigin+"/?groupId="+encodeURIComponent(groupId)}
  const semesters=()=>{
   const year=new Date().getFullYear()%100;
   const out=[];for(const y of [year-1,year,year+1])for(const p of ["SP","SU","FA"])
@@ -24,7 +26,7 @@ export function installCastingAdminPages(){
   return out;
  };
  async function sessionSettings(host){
-  const data=await api("casting-list"),allCastings=data.castings||[],groups=data.groups||[];
+  const data=await api("casting-list"),allCastings=data.castings||[],groups=data.groups||[];usePublicOrigin(data);
   if(!host.isConnected)return;
   const root=el("section","","space-y-4 pb-8"),header=el("div","","flex flex-wrap justify-between items-center gap-3");
   header.append(el("h2","Quản lý phiên chấm","text-xl font-black text-red-950"),btn("+ Tạo phiên chấm",()=>openEditor(null)));
@@ -210,7 +212,7 @@ export function installCastingAdminPages(){
   host.replaceChildren(root);
  }
  async function graderSettings(host,graderId){
-  const data=await api("casting-list");
+  const data=await api("casting-list");usePublicOrigin(data);
   if(!host.isConnected)return;
   const grader=(data.graders||[]).find(g=>g.id===graderId);
   if(!grader)throw Error("Không tìm thấy hồ sơ BGK.");
