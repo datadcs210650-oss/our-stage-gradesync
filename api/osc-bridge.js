@@ -11,6 +11,7 @@ import {CAST_ACTIONS,handleCastingAction} from "../lib/casting-manager.js";
 import {sendScoringMail} from "../lib/scoring-mail-relay.js";
 import {verifyGradingPdf,lookupScan} from "../lib/osc-pdf-service.js";
 import {receiptMail,deliverReceiptJob} from "../lib/receipt-mail.js";
+import {backupAdmin} from "../lib/backup-grader.js";
 const sendJson=(res,status,payload)=>{res.statusCode=status;res.setHeader("Cache-Control","no-store");res.setHeader("Content-Type","application/json; charset=utf-8");res.end(JSON.stringify(payload))};
 const readJsonBody=req=>typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
 const handleError=(res,error)=>{console.error("OSC GradeSync bridge exception",error?.code);return sendJson(res,500,{ok:false,error:"Lỗi máy chủ NỀN TẢNG CHẤM ĐIỂM."})};
@@ -353,6 +354,7 @@ async function handle(req,res){
   if(action==="casting-scan-lookup"){if(Object.keys(b).some(k=>!["action","documentId","comparisonCode"].includes(k)))return sendJson(res,400,{ok:false,error:"Yêu cầu không hợp lệ."});res.setHeader("Cache-Control","no-store");return sendJson(res,200,await lookupScan(sb(),b,false));}
   if(action==="casting-pdf-verify"){if(Object.keys(b).some(k=>!["action","sha256","comparisonCode"].includes(k)))return sendJson(res,400,{ok:false,error:"Yêu cầu không hợp lệ."});return sendJson(res,200,await verifyGradingPdf(sb(),b));}
   const actor=await requireOscManager(req);
+  if(["backup-status","backup-issue","backup-revoke"].includes(action))return sendJson(res,200,await backupAdmin(sb(),actor,b));
   if(["casting-reserve-publication","casting-release-publication","casting-abort-publication"].includes(action)){
    const secret=process.env.GRADESYNC_OTP_RELAY_SECRET||"",timestamp=String(req.headers["x-osc-publication-timestamp"]||""),signature=String(req.headers["x-osc-publication-signature"]||"");
    if(secret.length<32||!/^\d{13}$/.test(timestamp)||Math.abs(Date.now()-Number(timestamp))>60000||!(/^[a-f0-9]{64}$/.test(signature)))fail("Yêu cầu công bố chưa xác thực.","osc/gradesync-forbidden");

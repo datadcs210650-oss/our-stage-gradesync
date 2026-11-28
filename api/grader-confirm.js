@@ -2,6 +2,7 @@ import {createClient} from "@supabase/supabase-js";
 import {restRecoveryOptions} from "../lib/supabase-rest-recovery.js";
 import {receiptMail,retryReceiptMail} from "../lib/receipt-mail.js";
 import {retryInviteJobs} from "../lib/session-invite-mail.js";
+import {backupRequest} from "../lib/backup-grader.js";
 const URL=process.env.SUPABASE_URL||"https://nkpfzjhqtdjcfypkishv.supabase.co";
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const reply=(res,status,data)=>{res.setHeader("Content-Type","application/json; charset=utf-8");res.setHeader("Cache-Control","no-store");res.statusCode=status;res.end(JSON.stringify(data))};
@@ -27,14 +28,16 @@ async function actor(db,token){
 export default async function handler(req,res){
  if(req.method==="GET"){const key=process.env.CRON_SECRET||"";const supplied=String(req.headers.authorization||"");if(key.length<32||supplied!=="Bearer "+key)return reply(res,401,{ok:false});try{const db=sb(),jobs=await retryReceiptMail(db),invites=await retryInviteJobs(db);return reply(res,200,{ok:true,processed:jobs.length+invites.length});}catch(e){return reply(res,503,{ok:false});}}
  if(req.method!=="POST")return reply(res,405,{ok:false,error:"Chỉ hỗ trợ POST."});
- if(Number(req.headers["content-length"]||0)>12000)return reply(res,413,{ok:false,error:"Yêu cầu quá lớn."});
+ if(Number(req.headers["content-length"]||0)>130000)return reply(res,413,{ok:false,error:"Yêu cầu quá lớn."});
  const origin=String(req.headers.origin||"");
- if(origin&&!["https://gradesyncfinal.vercel.app","https://score.ourstage.io.vn"].includes(origin))return reply(res,403,{ok:false,error:"Nguồn không hợp lệ."});
+ if(origin&&!["https://gradesyncfinal.vercel.app","https://score.ourstage.io.vn","https://backup.ourstage.io.vn"].includes(origin))return reply(res,403,{ok:false,error:"Nguồn không hợp lệ."});
  try{
   if(!process.env.SUPABASE_SECRET_KEY)throw fail("Máy chủ chưa cấu hình dịch vụ.",503);
+  const body=typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
+  if(String(body.action||"").startsWith("backup-"))return reply(res,200,await backupRequest(sb(),req,body));
+  if(origin==="https://backup.ourstage.io.vn"||Number(req.headers["content-length"]||0)>12000)throw fail("Yêu cầu không hợp lệ.",403);
   const token=String(req.headers.authorization||"").replace(/^Bearer\s+/,"");
   if(token.length<50||token.length>6000)throw fail("Thiếu phiên xác thực BGK.",401);
-  const body=typeof req.body==="object"&&req.body?req.body:JSON.parse(String(req.body||"{}"));
   const gid=String(body.groupId||"");
   if(!UUID.test(gid))throw fail("Phiên chấm không hợp lệ.");
   const db=sb(),{profile,userId,authenticatedAt}=await actor(db,token);
