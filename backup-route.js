@@ -1,0 +1,1 @@
+"use strict";if(location.hostname==="backup.ourstage.io.vn"&&location.pathname!=="/backup.html"){location.replace("/backup.html"+location.search)}

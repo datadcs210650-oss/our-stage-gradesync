@@ -100,7 +100,7 @@
       "schedule": "0 1 * * *"
     }
   ],
-  "rewrites": [
+  "redirects": [
     {
       "source": "/",
       "has": [
@@ -109,7 +109,8 @@
           "value": "backup.ourstage.io.vn"
         }
       ],
-      "destination": "/backup.html"
+      "destination": "/backup.html",
+      "permanent": false
     }
   ]
 }
