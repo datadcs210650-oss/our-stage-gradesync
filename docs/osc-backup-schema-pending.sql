@@ -6,7 +6,7 @@ create table public.osc_backup_access (
  enabled boolean not null default false, expires_at timestamptz not null,
  generation uuid not null default gen_random_uuid(), failed integer not null default 0,
  window_at timestamptz not null default now(), issued_at timestamptz not null default now(),
- issued_by text not null
+ issued_by text not null, request_id uuid
 );
 create table public.osc_backup_sessions(
  token_hash text primary key check(token_hash ~ '^[a-f0-9]{64}$'),
@@ -37,18 +37,19 @@ begin
 end $$;
 revoke all on function gradesync_internal.backup_actor(text) from public,anon,authenticated;
 grant execute on function gradesync_internal.backup_actor(text) to service_role;
-create function public.osc_backup_admin(p_grader uuid,p_action text,p_hash text,p_expires timestamptz,p_actor text) returns jsonb language plpgsql set search_path='' as $$
-declare g public.profiles%rowtype;a public.osc_backup_access%rowtype;history jsonb;contact text;
+create function public.osc_backup_admin(p_grader uuid,p_action text,p_hash text,p_expires timestamptz,p_actor text,p_request uuid) returns jsonb language plpgsql set search_path='' as $$
+declare g public.profiles%rowtype;a public.osc_backup_access%rowtype;history jsonb;contact text;v_issued uuid;
 begin
  select * into g from public.profiles where id=p_grader and role='Grader' for share;
  if not found then raise exception 'BACKUP_NOT_FOUND';end if;
  select email into contact from public.gs_google_grader_access where profile_id=g.id;
  if p_action='issue' then
-  if g.status<>'Active' or g.extra_data ? 'oscArchivedAt' or contact is null or p_hash is null or p_hash !~ '^[a-f0-9]{64}$' or p_expires is null or p_expires<=now() or p_expires>now()+interval '30 days' then raise exception 'BACKUP_INVALID';end if;
-  insert into public.osc_backup_access(grader_id,secret_hash,enabled,expires_at,issued_by) values(g.id,p_hash,true,p_expires,p_actor)
-   on conflict(grader_id) do update set secret_hash=excluded.secret_hash,enabled=true,expires_at=excluded.expires_at,generation=gen_random_uuid(),failed=0,window_at=now(),issued_at=now(),issued_by=p_actor;
-  delete from public.osc_backup_sessions where grader_id=g.id;
-  insert into public.osc_backup_login_events(grader_id,action,admin_uid) values(g.id,'issued',p_actor);
+  if g.status<>'Active' or g.extra_data ? 'oscArchivedAt' or contact is null or p_hash is null or p_hash !~ '^[a-f0-9]{64}$' or p_expires is null or p_expires<=now() or p_expires>now()+interval '30 days' or p_request is null then raise exception 'BACKUP_INVALID';end if;
+  insert into public.osc_backup_access(grader_id,secret_hash,enabled,expires_at,issued_by,request_id) values(g.id,p_hash,true,p_expires,p_actor,p_request)
+   on conflict(grader_id) do update set secret_hash=excluded.secret_hash,enabled=true,expires_at=excluded.expires_at,generation=gen_random_uuid(),failed=0,window_at=now(),issued_at=now(),issued_by=p_actor,request_id=excluded.request_id
+   where osc_backup_access.request_id is distinct from excluded.request_id returning grader_id into v_issued;
+  if v_issued is not null then delete from public.osc_backup_sessions where grader_id=g.id;
+   insert into public.osc_backup_login_events(grader_id,action,admin_uid) values(g.id,'issued',p_actor);end if;
  elsif p_action='revoke' then
   update public.osc_backup_access set enabled=false,generation=gen_random_uuid() where grader_id=g.id;
   delete from public.osc_backup_sessions where grader_id=g.id;
@@ -56,10 +57,10 @@ begin
  elsif p_action<>'status' then raise exception 'BACKUP_INVALID';end if;
  select * into a from public.osc_backup_access where grader_id=g.id;
  select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc),'[]'::jsonb) into history from (select action,created_at,admin_uid from public.osc_backup_login_events where grader_id=g.id order by created_at desc limit 30) x;
- return jsonb_build_object('ok',true,'enabled',coalesce(a.enabled and a.expires_at>now() and g.status='Active',false),'expiresAt',a.expires_at,'code',g.code,'name',g.name,'email',contact,'history',history);
+ return jsonb_build_object('ok',true,'enabled',coalesce(a.enabled and a.expires_at>now() and g.status='Active',false),'expiresAt',a.expires_at,'code',g.code,'name',g.name,'email',contact,'history',history,'issued',v_issued is not null);
 end $$;
-revoke all on function public.osc_backup_admin(uuid,text,text,timestamptz,text) from public,anon,authenticated;
-grant execute on function public.osc_backup_admin(uuid,text,text,timestamptz,text) to service_role;
+revoke all on function public.osc_backup_admin(uuid,text,text,timestamptz,text,uuid) from public,anon,authenticated;
+grant execute on function public.osc_backup_admin(uuid,text,text,timestamptz,text,uuid) to service_role;
 create function public.osc_backup_login(p_code text,p_hash text,p_token text,p_bucket integer) returns jsonb language plpgsql set search_path='' as $$
 declare g public.profiles%rowtype;a public.osc_backup_access%rowtype;v_count integer;v_now timestamptz:=clock_timestamp();v_exp timestamptz;
 begin
@@ -113,11 +114,11 @@ begin
  v_id:=gradesync_internal.backup_actor(p_token);
  if p_group is null then
   select coalesce(jsonb_agg(to_jsonb(x) order by x.name),'[]'::jsonb) into v_groups from (
-   select g.id,g.name,case when r.grader_id is not null then 'submitted' else 'available' end as status
-   from public.grader_assignments a join public.competition_groups g on g.id=a.group_id
-   left join public.gs_castings c on c.id=g.casting_id left join public.gs_grading_receipts r on r.group_id=g.id and r.grader_id=v_id
-   where a.grader_id=v_id and g.osc_deleted_at is null and not coalesce(c.status='archived' or (c.status='published' and coalesce(c.publish_at,now())<=now()),false)
-   and not exists(select 1 from public.osc_group_publications q where q.group_id=g.id and q.cancelled_at is null and q.scheduled_at<=now()) order by g.name limit 100) x;
+   select gg.id,gg.name,case when r.grader_id is not null then 'submitted' else 'available' end as status
+   from public.grader_assignments a join public.competition_groups gg on gg.id=a.group_id
+   left join public.gs_castings c on c.id=gg.casting_id left join public.gs_grading_receipts r on r.group_id=gg.id and r.grader_id=v_id
+   where a.grader_id=v_id and gg.osc_deleted_at is null and not coalesce(c.status='archived' or (c.status='published' and coalesce(c.publish_at,now())<=now()),false)
+   and not exists(select 1 from public.osc_group_publications q where q.group_id=gg.id and q.cancelled_at is null and q.scheduled_at<=now()) order by gg.name limit 100) x;
   return jsonb_build_object('ok',true,'groups',v_groups);
  end if;
  g:=gradesync_internal.backup_group(v_id,p_group,false);
@@ -304,3 +305,18 @@ create function gradesync_internal.revoke_backup_on_lock() returns trigger langu
 begin if new.status<>'Active' or new.extra_data ? 'oscArchivedAt' then update public.osc_backup_access set enabled=false,generation=gen_random_uuid() where grader_id=new.id and enabled;delete from public.osc_backup_sessions where grader_id=new.id;end if;return new;end $$;
 revoke all on function gradesync_internal.revoke_backup_on_lock() from public,anon,authenticated;
 create trigger osc_backup_revoke_profile after update of status,extra_data on public.profiles for each row execute function gradesync_internal.revoke_backup_on_lock();
+
+create function public.osc_backup_save_batch(p_token text,p_group uuid,p_rows jsonb) returns jsonb language plpgsql set search_path='' as $$
+declare r jsonb;result jsonb:='[]'::jsonb;v jsonb;
+begin
+ if p_rows is null or jsonb_typeof(p_rows)<>'array' or jsonb_array_length(p_rows) not between 1 and 20 or length(p_rows::text)>120000 then raise exception 'BACKUP_INVALID_SCORE';end if;
+ if (select count(*) from jsonb_array_elements(p_rows))<>(select count(distinct x->>'candidateId') from jsonb_array_elements(p_rows) x) then raise exception 'BACKUP_INVALID_SCORE';end if;
+ perform gradesync_internal.backup_actor(p_token);
+ for r in select value from jsonb_array_elements(p_rows) order by value->>'candidateId' loop
+  v:=public.osc_backup_save(p_token,p_group,(r->>'candidateId')::uuid,r->'scores',(r->>'revision')::integer,r->'roles',r->>'note');
+  result:=result||jsonb_build_array(v||jsonb_build_object('candidateId',r->>'candidateId'));
+ end loop;
+ return jsonb_build_object('ok',true,'rows',result);
+end $$;
+revoke all on function public.osc_backup_save_batch(text,uuid,jsonb) from public,anon,authenticated;
+grant execute on function public.osc_backup_save_batch(text,uuid,jsonb) to service_role;
