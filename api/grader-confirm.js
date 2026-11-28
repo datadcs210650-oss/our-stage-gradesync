@@ -15,7 +15,10 @@ async function actor(db,token){
  const user=r.data.user;
  // Token signature was validated by Supabase getUser; inspect only its signed AMR.
  const claims=JSON.parse(Buffer.from(token.split(".")[1],"base64url").toString("utf8"));
- const google=user.identities?.some(i=>i.provider==="google")&&user.app_metadata?.provider==="google"&&user.email_confirmed_at&&claims.amr?.some(x=>x.method==="oauth");
+ const email=String(user.email||"").trim().toLowerCase();
+ const identities=Array.isArray(user.identities)?user.identities:[];
+ const providers=user.app_metadata?.providers;
+ const google=Boolean(email&&user.email_confirmed_at&&Array.isArray(providers)&&providers.includes("google")&&providers.every(p=>p==="email"||p==="google")&&identities.every(i=>i.provider==="email"||i.provider==="google")&&identities.some(i=>i.provider==="google"&&(i.identity_data?.email_verified===true||i.identity_data?.email_verified==="true")&&String(i.identity_data?.email||"").trim().toLowerCase()===email)&&Array.isArray(claims.amr)&&claims.amr.some(x=>x.method==="oauth"));
  if(!google)throw fail("Chỉ cho phép xác thực bằng tài khoản Google đã được cấp quyền.",403);
  const access=required(await db.from("gs_google_grader_access").select("*").eq("auth_user_id",user.id).eq("email",String(user.email||"").toLowerCase()).eq("enabled",true).maybeSingle());
  if(!access)throw fail("BGK chưa được cấp quyền truy cập.",403);
